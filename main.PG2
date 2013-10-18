@@ -1,0 +1,167 @@
+{ ==================================================================== }
+{ ------------------- Main Configuration File ------------------------ }
+{ -------------------- for Patch Experiments ------------------------- }
+{ ==================================================================== }
+{ - classic electrophysiology protocols and various research projects  }
+{ ---------- see the individual files for comments ------------------- }
+{ -------------------------------------------------------------------- }
+{ ------- implemented by Yann Zerlaut : zerlaut@unic.cnrs-gif.fr ----- }
+{ -----------------------------------------------  2013-[...] -------- }
+
+
+{ ==================================================================== }
+{ ------------------ LOCATION CHOICE & AMPLIFIER TYPE ------------ }
+{ choose within the following options : }
+{$DEFINE Home}  { 'Home' or 'PatchSetup'}
+{$DEFINE SIMULATION}  { 'MultiClamp', 'NPI' or  'SIMULATION'}
+{ ==================================================================== }
+
+
+
+const
+{ ==================================================================== }
+{$IFDEF PatchSetup }
+location  = '"T. Bal" Patch Setup'  ;
+data_Path = 'D:\yann\DATA\' ;
+loadnrnPath = 'D:/yann/myelphy/nrn_files/' ;
+root_path = 'D:\yann\myelphy\' ;
+sep='\_';
+{$ENDIF}
+{$IFDEF Home}
+location = 'Personal computer' ;
+data_Path='Z:/home/yann/files/patch/DATA/';
+loadnrnPath='Z:/home/yann/files/patch/myelphy/nrn_files/';
+root_path= 'Z:/home/yann/files/patch/myelphy/';
+sep='/_';
+{$ENDIF}
+const
+{$IFDEF Multiclamp} amplifier='multiclamp'; {$ENDIF } 
+{$IFDEF NPI} amplifier='npi'; {$ENDIF } 
+{$IFDEF SIMULATION}amplifier='nrn_simulation';{$ENDIF } 
+{ ==================================================================== }
+
+
+
+{ =============================================================================
+   We need to set up some global variables that will be used, defined and 
+modified in time across the different protocols in the course of the experiment
+
+e.g. the gain of the amplifier -> global variable
+e.g. the membrane resistance -> experimental value
+
+ in addition, we will store the data in a '/DATA' folder where we will create
+ a folder for each day and where the file name will be determined by the protocol
+ name and the time's start of the protocol
+===============================================================================}
+
+
+var 
+    global : TDBrecord ; // ==> Stores the global variables !! 
+    Exp_Params : TDBrecord ; // ==> Stores the parameters specific to each experience !!
+    {variables to fetch the date and time }
+    Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; 
+    pathOfTheDay : string ;
+    main_protocol : string ; 
+
+
+var already_initiated : boolean ; // to know if we need to reinitialize the TDBrecord
+procedure global_init;
+var ii:integer;
+begin
+DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
+MessageBox(' Does this date and time are ok ? '+CRLF+
+'today is :'+Istr(Day)+'/'+Istr(Month)+'/'+Istr(Year)+' at '+Istr(Hour)+':'+Istr(Minute)
++CRLF+CRLF+' Are you on : '+location+' ? using : '+amplifier+' ?'
++CRLF+CRLF+' if not quit and adjust those parameters'
++CRLF+'(this is important for paths and file savings)');
+PathOfTheDay := data_Path+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
+if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);
+
+ii:=1;
+global.create;
+global.amplifier:=amplifier; // choice of the amplifier
+global.data_Path := data_Path ;
+global.loadnrnPath := loadnrnPath ;
+global.root_path :=root_path ;
+global.sep:=sep;  // separator for loading files  (has to change between linux and mswin)
+global.f_acq:=10; // in kHz
+global.gain1:=1; // gain of the first channel
+global.int_gain1:=ii; // integer coding for this gain
+global.gain2:=1; // gain of the second channel
+global.int_gain2:=ii; //
+global.clamp_int := ii; // integer that code for 1:IC, 2: VC
+global.cont_choice := True; // if True -> continus mode, else episode
+global.main_protocol:='';
+global.protocol:='';
+global.page_num:=ii;
+global.PathOfTheDay := PathOfTheDay ;
+global.saving := False ;
+global.Rs := 0;
+global.Rm := 0;
+global.Cm :=0;
+
+Exp_Params.create;
+already_initiated :=True;
+end;
+
+{Tmacro object, see doc, specifically loads only one file}
+var 
+t_classic_electrophy : Tmacro ; 
+t_transfer_functions : Tmacro ;
+
+
+program classic_electrophy
+global_init;
+t_classic_electrophy.create(root_path+'classic_electrophy'+sep+'init_ce.PG2');
+t_classic_electrophy.ExecuteCommand('Launch');
+
+               
+program transfer_functions
+if already_initiated=False then global_init;
+global.neuron_type:='patch_neuron'; // we add the type of neuron : patch/HH
+global.clamp_int:=1;// IC of course !
+global.main_protocol:='transfer_functions';
+t_transfer_functions.create(root_path+'transfer_functions'+sep+'init_tf.PG2');
+t_transfer_functions.ExecuteCommand('Launch');
+
+                                                            
+InitProcess0  
+main_protocol:=global.main_protocol;
+if main_protocol='transfer_functions' then t_transfer_functions.ExecuteCommand('t_initprocess0');   
+   
+InitProcess
+if main_protocol='transfer_functions' then t_transfer_functions.ExecuteCommand('t_initprocess');
+
+ProcessCont
+if main_protocol='transfer_functions' then t_transfer_functions.ExecuteCommand('t_processcont'); 
+
+EndProcess
+if main_protocol='transfer_functions' then t_transfer_functions.ExecuteCommand('t_endprocess');      
+
+
+
+{ =================== ANALYSIS ====================== }
+
+{
+procedure default_channels;
+var id,h0,ph,cc: integer ;
+begin
+   DestroyWindows(1,1,10);
+   cc :=ChannelCount;
+   if ChannelCount<1 then begin MessageBox('no data loaded !'); cc:=1; end; 
+   ph := Round(PageHeight/cc);
+   h0:=0 ; 
+   for id:=1 to ChannelCount do
+   begin 
+     DefineWindow(1,0,h0,PageWidth,h0+ph);
+     h0:=h0+ph;
+     addObject(1,id,v[id]);
+   end;
+end;
+
+program analysis
+insertpage(1,'default');
+DeleteAllPages('default');
+default_channels;
+}
+

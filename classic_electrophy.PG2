@@ -309,11 +309,6 @@ end;
 --------------- BUILDING THE SEAL TEST PROCEDURE AND DIALOG --------------------
 ================================================================================ }
 
-Const
-  SEALTestAmp=-5; // -5   values charlotte
-  SEALTestDEL=25;  // 25
-  SEALTestDUR=100;  // 75
-
 var 
   tseal_vec : Tvector ; rseal_vec : Tvector ; iseal_vec : Tvector ; 
   { vectors to monitor the evolution of the ileak and resistance of the seal in time } 
@@ -326,40 +321,20 @@ begin { we fill of 0, except between the t0+delay and t0+delay+duration }
   vec.fill(0); vec.fill1(amp_seal,del_seal+vec.Istart,del_seal+dur_seal+vec.Istart);
 end;
 
-procedure SinglePulse_Init(n:integer); 
-begin {when we modify the dialog, we adjust the stimulation params}
-   amp_seal :=-5; del_seal :=25 ; dur_seal := 100;
-   case n of 
-   201 : begin
-	 {we write all the relevant global informations}
-         TDBrecord('PG0.global').cont_choice := False ; 
-         TDBrecord('PG0.global').episode_duration :=  2*del_seal+dur_seal ;
-         TDBrecord('PG0.global').max_EP_num :=0 ;
-         TDBrecord('PG0.global').stim := True ;
-         TDBrecord('PG0.Exp_Params').clear;
-         TDBrecord('PG0.Exp_Params').exp_type:='seal_test';
-         TDBrecord('PG0.Exp_Params').pulse_amplitude:=amp_seal;
-         TDBrecord('PG0.Exp_params').start_at:=del_seal;
-         TDBrecord('PG0.Exp_Params').pulse_duration:=dur_seal;
-	 {then we initialize the stimulation}
-	 stimulator.Channels[1].BuildEp := Build_SealPulse ; 
-	 stimulator.initVectors;
-         end;
-   end;
-end;
-
-procedure SealTest_Event(n:integer); 
+procedure SealTest_Event(n:integer);
+var amplifier : string ; 
 begin    
    seal_dialog.updatevar;
    case n of 
    201 : begin
 	 {we write all the relevant global informations}
+	       amplifier := TDBrecord('PG0.global').amplifier ;
          TDBrecord('PG0.global').cont_choice := False ; 
          TDBrecord('PG0.global').episode_duration :=  2*del_seal+dur_seal ;
          TDBrecord('PG0.global').max_EP_num :=0 ;
          TDBrecord('PG0.global').stim := True ;
          TDBrecord('PG0.global').acquisitionISI:=0.5 ;  // small beak between the stims
-         TDBrecord('PG0.global').FadvanceON := False ;
+         if amplifier='nrn_simulation' then TDBrecord('PG0.global').FadvanceON := True else TDBrecord('PG0.global').FadvanceON := False;
          TDBrecord('PG0.Exp_Params').clear;
          TDBrecord('PG0.Exp_Params').exp_type:='seal_test';
          TDBrecord('PG0.Exp_Params').pulse_amplitude:=amp_seal;
@@ -368,58 +343,50 @@ begin
 	       {then we initialize the stimulation}
 	       stimulator.Channels[1].BuildEp := Build_SealPulse ; 
 	       stimulator.initVectors;
+	       InitializeChannels; // finally, we can initialize the channels
          end;
    end;
-   acquisition.MaxEpcount:=0; acquisition.epduration:=SEALTestDur+2*SEALTestDEL; {ms}
-   acquisition.PeriodPerChannel:=1000.0; {ms}
-   acquisition.triggerMode:=tm_internal; 
-   //amp:=Seal_Vamp;del:=SEALtestDEL;dur:=SEALtestDur ; { Step Parameters, see stimulation.PG2 }
-   //stimulator.Channels[1].BuildEp := Build_Pulse ;  { we use the same function as in stimulation.PG2 }
-   stimulator.initVectors ;
-   RTneuron.FadvanceOn := False;
-   // init channels
 end;
 
-procedure Seal_event(n:integer);
-begin
-    if acquisition.isRunning then acquisition.stop;
-    seal_dialog.updatevar;
-    if n=999 then Init_SealTest;
-end;
-
-procedure seal_quality_monitor;
-begin
+procedure SealTest_Init; 
+begin {when we modify the dialog, we adjust the stimulation params}
+  amp_seal :=-5; del_seal :=25 ; dur_seal := 100;  {pulse parameters}
+  {then we display the channels}
+  addObject(protocol_choice,1,v1);  addObject(protocol_choice,2,v2);   addObject(protocol_choice,2,v3);
+  {then memo to display the values}
   seal_memo.create(''); seal_memo.font.name:='Times New Roman'; seal_memo.font.size:=13;
   seal_memo.font.color:=rgb(0,0,0);  seal_memo.font.style:=fs_bold;
   seal_memo.lines[3]:='Rseal= '+Rstr(Rseal,6,3)+' Mohm';
   seal_memo.lines[5]:='I baseline= '+Rstr(i_baseline,6,3)+' pA';
   addObject(protocol_choice,5,seal_memo);
+  {then the graph to display the time evolution of the parameters}
   tseal_vec.create(t_single,0,-1);iseal_vec.create(t_single,0,-1);rseal_vec.create(t_single,0,-1);
   rseal_graph.create(tseal_vec,rseal_vec,0,0); rseal_graph.Mode := DM_LINE_DIAMOND ; {graph initialisation }
   iseal_graph.create(tseal_vec,iseal_vec,0,0); iseal_graph.Mode := DM_LINE_DIAMOND ;
   addobject(protocol_choice,3,rseal_graph);  {then we plot the vector}
   addobject(protocol_choice,4,iseal_graph);  {then we plot the vector} 
-  Seal_Vamp := SEALTestAmp;
+  
+  {finally the small dialog fot the parameters and the initialisation}
   seal_dialog.create ;
   seal_dialog.getRealA(' Pulse size (mV)',amp_seal,3,1,99);
   seal_dialog.getRealA(' onset (ms)',del_seal,3,1,99);
   seal_dialog.getRealA(' duration (ms)',dur_seal,3,1,99);
   seal_dialog.getCommandA('  init() ',0,999);
-  seal_dialog.OnEvent:=Seal_event ;
+  seal_dialog.OnEvent:=SealTest_event ;
   AddDialog(protocol_choice,6,seal_dialog); 
   DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
   t0_seal := 60*Hour + Minute + Second/60 + MilliSecond/60/1000;
-end;   
-  
+end;
+
 
 procedure seal_process;
 var tt : Tvector ;
 begin
     DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
 
-    tt.create; Vcopy(v1,tt) ; i_baseline := tt.mean(1,SEALTestDel-1); {constantes a ajuster en fonction des parametres du pulse}
-    i_jump := tt.mean(SEALTestDel+20,SEALTestDel+70);
-    if (i_jump-i_baseline)<>0 then Rseal := Seal_Vamp/(i_jump-i_baseline)*1000 else Rseal:=0 ; 
+    tt.create; Vcopy(v1,tt) ; i_baseline := tt.mean(1,del_seal-1); {constantes a ajuster en fonction des parametres du pulse}
+    i_jump := tt.mean(del_seal+20,del_seal+70);
+    if (i_jump-i_baseline)<>0 then Rseal := amp_seal/(i_jump-i_baseline)*1000 else Rseal:=0 ; 
 
     rseal_vec.addtolist(Rseal); iseal_vec.addtolist(i_baseline);
     tseal_vec.addtolist(60*Hour + Minute + Second/60 + MilliSecond/60/1000-t0_seal);
@@ -436,7 +403,228 @@ begin
     seal_memo.refresh;
 end;
 
+{$EDIT VC_membrane_test}
+{ ==============================================================================
+--------------- BUILDING THE MEMBRANE TEST IN VOLTAGE CLAMP --------------------
+================================================================================ }
 
+{ Membrane Test procedure : Voltage Clamp test }
+var
+  VCMT_fit : TcurveFitting;  VCMT_memo:Tmemo;  lVer:TlineVer;  lHor:TlineHor;
+  VCMT_moy : Taverage; VCMT_dialog : Tdialog ;  rs_vec : Tvector ; tmem_vec : Tvector ; 
+  t0_mem : real ; rs_graph : Tgraph ;  mt_dialog : Tdialog ; 
+  mt_cursor : Tcursor ; VCMT_interStim : real ;
+  VCMT_amp, VCMT_t1, VCMT_t2, VCMT_t3, VCMT_t4 : real ; {this will define the coltage s}
+
+
+procedure Build_VCMTstim(seq:longint;var vec:Tvector); 
+begin
+   vec.fill(0);
+   vec.fill1(-VCMT_amp/2,vec.Istart+VCMT_t1,vec.Istart+VCMT_t2);
+   vec.fill1(VCMT_amp/2,vec.Istart+VCMT_t2,vec.Istart+VCMT_t3);
+   vec.fill1(-VCMT_amp/2,vec.Istart+VCMT_t3,vec.Istart+VCMT_t4);
+end;
+  
+var
+  rm,rs,cm,rs2:real;
+
+ //old version,  implemented by gerard, not based on the surface...
+procedure RsCm2(var vec:Tvector;var rm,rs,cm,rs2:real;cursor : Boolean); 
+  var
+    I0,Im1,Is,Ip,tau:real;
+    x0:real;
+    x,xa,xb:real;
+    xorg:real;
+  begin
+    I0:=vec.mean(1,VCMT_t1-2);
+    Im1:=mini(vec,VCMT_t1-5,VCMT_t1+5)-I0;
+    Ip:=Im1; x0:=miniX(vec,VCMT_t1,VCMT_t1+5);
+    xorg:=FirstCrossing(vec,VCMT_t1-5,VCMT_t1+5,I0+Im1/2,false);
+    VCMT_fit.Xorigin:=xorg;
+    if cursor then begin VCMT_fit.xstartFit:=mt_cursor.position[1]; VCMT_fit.XendFit:=mt_cursor.position[2]; end 
+    else begin VCMT_fit.xstartFit:=x0+v1.convX(1); VCMT_fit.XendFit:=VCMT_t2-1;end;
+    VCMT_fit.execute; VCMT_fit.refresh ;
+    tau:=VCMT_fit.Param['a2'];
+    if tau<0 then tau:=-1/tau else tau:=1E9;
+    Is:=VCMT_fit.Param['a3']-I0;
+    Im1:=VCMT_fit.Param['a1']+Is;
+    if Im1<>0 then rs:=VCMT_amp/Im1*1000 else rs:=1E6; 
+    if Ip<>0 then rs2:=VCMT_amp/Ip*1000 else rs2:=1E6;
+    if Is<>0 then Rm:=VCMT_amp/Is*1000-Rs else Rm:=1E6;
+    Cm:=tau*(Rs+Rm)/(Rm*Rs)*1000;       
+    lHor.y:=Is+I0;
+    lVer.x:=xOrg;
+    with VCMT_memo do
+    begin
+      lines[3]:='tau='+Rstr(tau,12,3)+' ms';
+      lines[4]:='rs= '+Rstr(rs,12,3)+' Mohm';
+      lines[5]:='rm= '+Rstr(rm,12,3)+' Mohm';
+      lines[6]:='Cm= '+Rstr(Cm,12,3)+' pF';
+      lines[7]:='Rs2='+Rstr(rs2,12,3)+' Mohm';
+    end;
+    VCMT_memo.refresh;
+  end;
+
+
+procedure RsCm(var vec:Tvector;var rm,rs,cm,rs2:real;cursor : Boolean); 
+  var
+    Ibase,Iend,integral_response,DI,Ijump,tau:real;
+    integral_resist,integral_capa : real ;
+    x0,x,xa,xb,Tint:real;
+    xorg:real;
+
+  begin
+    Ibase:=vec.mean(VCMT_t2-11,VCMT_t2-1); {mean over 10ms}
+    Iend:=vec.mean(VCMT_t3-11,VCMT_t3-1);  {mean over 10ms}
+    DI := Iend-Ibase ; {DI positif ou negatif}
+    if DI = 0 then DI:=1e-9 ; 
+    if DI<0 then 
+       begin
+	  Ijump:=mini(vec,VCMT_t2-5,VCMT_t2+5)-Ibase;
+	  x0:=miniX(vec,VCMT_t2,VCMT_t2+5);
+	  xorg:=FirstCrossing(vec,VCMT_t2-5,VCMT_t2+5,Ibase+Ijump/2,false); {false for downward}
+       end;
+    if DI>0 then 
+       begin
+	  Ijump:=maxi(vec,VCMT_t2-5,VCMT_t2+5)-Ibase;
+	  x0:=maxiX(vec,VCMT_t2,VCMT_t2+5);
+	  xorg:=FirstCrossing(vec,VCMT_t2-5,VCMT_t2+5,Ibase+Ijump/2,true); {true for upward}
+       end;
+
+    VCMT_fit.Xorigin:=xorg;
+
+    if cursor then begin VCMT_fit.xstartFit:=mt_cursor.position[1]; VCMT_fit.XendFit:=mt_cursor.position[2]; end 
+    else begin VCMT_fit.xstartFit:=x0+v1.convX(1); VCMT_fit.XendFit:=VCMT_t3-1;end;
+
+    VCMT_fit.execute; VCMT_fit.refresh ;
+
+    tau:=VCMT_fit.Param['a2']; {in the fit we only use the time constant value}
+    if tau<0 then tau:=-1/tau else tau:=1E9;
+
+    Tint := VCMT_t3-VCMT_t2 ; {length of the integral} 
+    integral_response := Integral(vec,VCMT_t2,VCMT_t2+Tint,VCMT_t2-20,VCMT_t2-1);
+    integral_resist := DI*(Tint+Tau*(exp(-Tint/tau)-1)); {theoretical value given tau and Di, do the calculus}
+    integral_capa := integral_response  - integral_resist ;
+    {then we can deduce all the parameters :}
+    if integral_capa<>0 then rs:=tau*VCMT_amp/integral_capa*1000.0 else RS:=1E6;   { ms*mV / ms*pA *1000 -> Mohm } 
+    if DI<>0 then Rm:=VCMT_amp/DI*1000 else Rm:=1E6;  { mV/pA*1000 -> Mohm  }
+    Cm:=tau*(Rs+Rm)/(Rm*Rs)*1000; {ms/Mohm*1000-> pF }
+    
+    lHor.y:=Iend;
+    lVer.x:=xOrg;
+    with VCMT_memo do
+    begin
+      lines[3]:='tau='+Rstr(tau,12,3)+' ms';
+      lines[4]:='rs= '+Rstr(RS,12,3)+' Mohm';
+      lines[5]:='rm= '+Rstr(rm,12,3)+' Mohm';
+      lines[6]:='Cm= '+Rstr(Cm,12,3)+' pF';
+    end;
+    VCMT_memo.refresh;
+end;
+
+
+
+procedure VCMT_Event(n:integer);
+var amplifier : string ; 
+begin    
+   mt_dialog.updatevar;
+   case n of 
+   999 : begin
+	 {we write all the relevant global informations}
+	       amplifier := TDBrecord('PG0.global').amplifier ;
+         TDBrecord('PG0.global').cont_choice := False ; 
+         TDBrecord('PG0.global').episode_duration :=  VCMT_t1+VCMT_t4 ;
+         TDBrecord('PG0.global').max_EP_num :=10 ; // 10 episodes !!
+         TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.global').acquisitionISI:= VCMT_interStim ;  // small beak between the stims
+         if amplifier='nrn_simulation' then TDBrecord('PG0.global').FadvanceON := True else TDBrecord('PG0.global').FadvanceON := False;
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='VC_MembraneTest_test';
+         TDBrecord('PG0.Exp_Params').pulse_amplitude:=VCMT_amp;
+         TDBrecord('PG0.Exp_params').t1:=VCMT_t1;
+         TDBrecord('PG0.Exp_params').t2:=VCMT_t2;
+         TDBrecord('PG0.Exp_params').t3:=VCMT_t3;
+         TDBrecord('PG0.Exp_params').t4:=VCMT_t4;
+	       {then we initialize the stimulation}
+	       stimulator.Channels[1].BuildEp := Build_VCMTstim ; 
+	       stimulator.initVectors;
+	       InitializeChannels; // finally, we can initialize the channels
+         end;
+   998 : rsCm(VCMT_moy,rm,rs,cm,rs2,True);
+   end;
+end;
+
+
+procedure VCMembTest_Init; {executed only when ze choose the protocol }
+begin
+   VCMT_amp:=-5; VCMT_t1:=20; VCMT_t2:=40; VCMT_t3:=60; VCMT_t4:=80;  // values charlotte
+   {then we display the channels}
+   addObject(protocol_choice,1,v1);  addObject(protocol_choice,2,v2);   addObject(protocol_choice,2,v3);
+
+   rs_vec.create(t_single,0,-1) ; tmem_vec.create(t_single,0,-1) ; { we initialize the vector of the rs values }
+   rs_graph.create(tmem_vec,rs_vec,0,0); rs_graph.Mode := DM_LINE_DIAMOND ; {graph initialisation }
+   addobject(protocol_choice,4,rs_graph);
+
+   lVer.create('',0,cl_black,0); lHor.create('',0,cl_black,0);
+   addObject(protocol_choice,1,lVer); addObject(protocol_choice,1,lHor);
+
+   VCMT_memo.create(''); VCMT_memo.font.name:='Times New Roman'; VCMT_memo.font.size:=11;
+   VCMT_memo.font.color:=rgb(0,0,0);  VCMT_memo.font.style:=fs_bold;
+   addObject(protocol_choice,3,VCMT_memo);
+
+   mt_dialog.create ;
+   mt_dialog.getRealA(' Pulse size (mV)',VCMT_amp,3,1,99);
+   mt_dialog.getRealA('t1',VCMT_t1,3,1,99);
+   mt_dialog.getRealA('t2',VCMT_t2,3,1,99);
+   mt_dialog.getRealA('t3',VCMT_t3,3,1,99);
+   mt_dialog.getRealA('t4',VCMT_t4,3,1,99);
+   mt_dialog.getRealA('inter-Stim-interval (s)',VCMT_interStim,3,1,99);
+   mt_dialog.getCommandA('  init() ',0,999);
+   mt_dialog.setText('');
+   mt_dialog.getCommandA(' Fit "Tau" with cursors ',0,998);
+   mt_dialog.OnEvent:=VCMT_event ;
+   AddDialog(protocol_choice,5,mt_dialog); 
+
+   DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
+   t0_mem := 1000*60*60*Hour + 1000*60*Minute + 1000*Second + MilliSecond;
+
+   mt_cursor.create ; mt_cursor.DoubleCursor:=True ; mt_cursor.style:=cs_X ;
+   mt_cursor.position[1]:=VCMT_t2 ; mt_cursor.position[2]:=VCMT_t2+3 ; 
+   mt_cursor.InstallSource(v1);  mt_cursor.visible:=True ;
+   
+end;
+
+   
+
+procedure mt_initprocess;
+begin
+  VCMT_moy.create(t_single,v1.Istart,v1.Iend);
+  VCMT_moy.cpx:=1;  VCMT_moy.cpy:=1;  VCMT_moy.color:=cl_blue;
+  VCMT_moy.setWorld(VCMT_t2-5,v1.Ymin,VCMT_t2+5,v1.Ymax);
+  addObject(protocol_choice,1,VCMT_moy);
+
+  VCMT_fit.create('');
+  VCMT_fit.standardModel:=fm_expC1 {fm_poly5};
+  VCMT_fit.initialize:=true;  VCMT_fit.reset;  VCMT_fit.setYdata(VCMT_moy);  VCMT_fit.MaxIt:=30;
+
+  VCMT_fit.setWorld(VCMT_moy.xmin,VCMT_moy.ymin,VCMT_moy.xmax,VCMT_moy.ymax);
+  VCMT_fit.cpx:=1;  VCMT_fit.cpy:=1;  VCMT_fit.matchVector(v1);  VCMT_fit.color:=cl_red;
+  addObject(protocol_choice,1,VCMT_fit);
+end;
+
+procedure mt_process;
+begin
+     VCMT_moy.add(v1); {we add each episode result to the average}
+end;
+
+procedure mt_endprocess;
+begin
+  rsCm(VCMT_moy,rm,rs,cm,rs2,False); { and we process the analysis}
+  rs_vec.addtolist(rs); rs_vec.refresh;
+  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
+  tmem_vec.addtolist(0.001*(1000*60*60*Hour + 1000*60*Minute + 1000*Second + MilliSecond -t0_mem)); tmem_vec.refresh;
+  rs_graph.modify(tmem_vec,rs_vec,rs_vec.Istart,rs_vec.Iend); rs_graph.refresh ;
+end;
 
 {$EDIT pulses}
 { ==============================================================================
@@ -593,7 +781,7 @@ begin
 end;
 
 
-procedure Init_StimParameters; 
+procedure Init_PulsesParameters; 
 begin
    amp_sp := 50.0; del_sp:=100.0; dur_sp:=800.0;
    amp1_dp := 50.0; amp2_dp := -50.0; del_dp:=100.0; dur1_dp:=400.0; dur2_dp:=400.0; 
@@ -602,19 +790,7 @@ begin
 end;
 
 
-{ ==============================================================================
---------- loading the NEURON files  --------------------------------------------
-================================================================================ }
-
-procedure load_nrn_files;   // load the NEURON model
-var clamp_int : integer ; full_path : string ;
-begin
-clamp_int := TDBrecord('PG0.global').clamp_int ;
-if clamp_int=1 then full_path := TDBrecord('PG0.global').loadnrnPath+'Iclamp_hh.hoc'
-else full_path := TDBrecord('PG0.global').loadnrnPath+'Vclamp_hh.hoc';
-RTneuron.execute('load_file("'+full_path+'")');
-end;
-
+{$EDIT main_dialog}
 
 { ==============================================================================
 --------- LAUNCHING THE EXPERIMENT ----------------------------------------------
@@ -637,6 +813,18 @@ begin
   if SAVING then acquisition.startandsave else acquisition.start;
 end;
  
+{ ==============================================================================
+--------- loading the NEURON files  --------------------------------------------
+================================================================================ }
+
+procedure load_nrn_files;   // load the NEURON model
+var clamp_int : integer ; full_path : string ;
+begin
+clamp_int := TDBrecord('PG0.global').clamp_int ;
+if clamp_int=1 then full_path := TDBrecord('PG0.global').loadnrnPath+'Iclamp_hh.hoc'
+else full_path := TDBrecord('PG0.global').loadnrnPath+'Vclamp_hh.hoc';
+RTneuron.execute('load_file("'+full_path+'")');
+end;
           
 { ==============================================================================
 --------- BUILDING THE MAIN DIALOG  --------------------------------------------
@@ -653,21 +841,16 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
   
   case n of
     101: begin 
-              protocol_choice := protocol_choice ;               
+              Page := protocol_choice ;               
               case protocol_choice of
-		1 : begin TDBrecord('PG0.global').stim:=False;InitializeChannels; end;
-		2 : begin Init_StimParameters; Init_PulsesDialog; end;
-               //3 : begin TDBrecord('PG0.global').clamp_int:=2 ; seal_quality_monitor; Init_SealTest; end ;
-               //4 : TDBrecord('PG0.global').clamp_int:=2 ; Init_MembTest;
-               //5 : TDBrecord('PG0.global').clamp_int:=1 ; Init_ICMembTest;
-               //6 : TDBrecord('PG0.global').clamp_int:=2 ; begin init_IV_dialog ; Set_IVcurve; end ;
-               //7 : TDBrecord('PG0.global').clamp_int:=2 ; Init_PerforingMonitor;                                                                             
-		8 : begin Init_PulsesDialog; end;
-              end;       
+		             1 : begin TDBrecord('PG0.global').stim:=False;InitializeChannels; end;
+	               2 : SealTest_Init;
+	               3 : VCmembTest_Init;
+              end;
          end;
-    102 : t_channels_setting.ExecuteCommand('Init_AcqChannels'); 
-    111 : begin t_channels_setting.ExecuteCommand('SetGain1');  t_channels_setting.ExecuteCommand('Init_AcqChannels'); end;
-    112 : begin t_channels_setting.ExecuteCommand('SetGain2');  t_channels_setting.ExecuteCommand('Init_AcqChannels'); end;
+    //102 : t_channels_setting.ExecuteCommand('Init_AcqChannels'); 
+    //111 : begin t_channels_setting.ExecuteCommand('SetGain1');  t_channels_setting.ExecuteCommand('Init_AcqChannels'); end;
+    //112 : begin t_channels_setting.ExecuteCommand('SetGain2');  t_channels_setting.ExecuteCommand('Init_AcqChannels'); end;
     200 : launch_exp;
     201 : acquisition.stop ;
     301 : comments := '';
@@ -687,7 +870,6 @@ begin
 DB.create;
 dll_load := TDBrecord('PG0.global').loadnrnpath ; dll_load := 'nrn_load_dll("'+dll_load+'nrnmech.dll")';
 PathOfTheDay := TDBrecord('PG0.global').PathOfTheDay ; // data path
-Init_StimParameters; // initializing the parameters
 //------------
    with MainDialog do
    begin

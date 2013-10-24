@@ -590,11 +590,10 @@ begin
 
    mt_cursor.create ; mt_cursor.DoubleCursor:=True ; mt_cursor.style:=cs_X ;
    mt_cursor.position[1]:=VCMT_t2 ; mt_cursor.position[2]:=VCMT_t2+3 ; 
-   mt_cursor.InstallSource(v1);  mt_cursor.visible:=True ;
-   
+   mt_cursor.InstallSource(v1);  mt_cursor.visible:=True ;  
 end;
 
-   
+{ ------------- then, Procedures of the Acquisition Processes (see doc) ----------}   
 
 procedure mt_initprocess;
 begin
@@ -626,6 +625,156 @@ begin
   rs_graph.modify(tmem_vec,rs_vec,rs_vec.Istart,rs_vec.Iend); rs_graph.refresh ;
 end;
 
+{$EDIT IC_membrane_test}
+{ ==============================================================================
+--------------- BUILDING THE MEMBRANE TEST IN CURRENT CLAMP --------------------
+================================================================================ }
+
+{ Membrane Test procedure : Voltage Clamp test }
+var
+  rm_vec : Tvector ; rm_graph : Tgraph ; 
+  ICMT_amp, ICMT_t1, ICMT_t2, ICMT_interStim : real ;
+  ICMT_dialog : Tdialog ; ICMT_moy : Taverage ; ICMT_fit : TcurveFitting ;
+  ICMT_cursor : Tcursor ; ICMT_memo : Tmemo ;
+  
+
+procedure Build_ICMTstim(seq:longint;var vec:Tvector);  {pulse procedure called at each buildep}
+begin 
+  vec.fill(0); vec.fill1(ICMT_amp,ICMT_t1+vec.Istart,ICMT_t2+vec.Istart);
+end;
+  
+
+{procedure to calculate rm and cm, from the average voltage response...}  
+procedure IC_RmCm(var vec:Tvector;var rm,cm:real;with_cursor : Boolean); 
+  var
+    V0,Vjump,Vs,Vbase,tau:real;
+    x0:real; x,xa,xb:real; xorg:real; 
+    {version valable uniquement pour un pulse négatif }
+  begin
+    V0:=vec.mean(1,ICMT_t1-2);
+    Vjump:=vec.mean(ICMT_t2-20,ICMT_t2-2)-V0;
+    x0:=miniX(vec,ICMT_t1,ICMT_t1+5);
+    xorg:=FirstCrossing(vec,ICMT_t1-5,ICMT_t1+5,V0+Vjump/2,false);
+    ICMT_fit.Xorigin:=xorg;
+
+    if with_cursor then begin ICMT_fit.xstartFit:=ICMT_cursor.position[1]; ICMT_fit.XendFit:=ICMT_cursor.position[2]; end 
+    else begin ICMT_fit.xstartFit:=x0+v1.convX(1); ICMT_fit.XendFit:=ICMT_t2-1;end;
+
+    ICMT_fit.execute; ICMT_fit.refresh ;
+
+    tau:=ICMT_fit.Param['a2'];
+    if tau<0 then tau:=-1/tau else tau:=1E9;
+    Vs:=ICMT_fit.Param['a3']-V0;
+    Vbase:=ICMT_fit.Param['a1']+Vs;
+    if Vs<>0 then Rm:=Vs/ICMT_amp*1000 else Rm:=1E6; { Mohm }
+    Cm:=tau/Rm*1000; { pF }
+
+    with ICMT_memo do
+    begin
+      lines[3]:='tau='+Rstr(tau,12,3)+' ms';
+      lines[5]:='rm= '+Rstr(rm,12,3)+' Mohm';
+      lines[6]:='Cm= '+Rstr(Cm,12,3)+' pF';
+    end;
+    ICMT_memo.refresh;
+  end;
+
+
+procedure ICMT_Event(n:integer);
+var amplifier : string ; 
+begin    
+   ICMT_dialog.updatevar;
+   case n of 
+   999 : begin
+	 {we write all the relevant global informations}
+	       amplifier := TDBrecord('PG0.global').amplifier ;
+         TDBrecord('PG0.global').cont_choice := False ; 
+         TDBrecord('PG0.global').episode_duration :=  ICMT_t1+ICMT_t2 ;
+         TDBrecord('PG0.global').max_EP_num :=20 ; // 20 episodes !!
+         TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.global').acquisitionISI:= ICMT_interStim ;  // small beak between the stims
+         if amplifier='nrn_simulation' then TDBrecord('PG0.global').FadvanceON := True else TDBrecord('PG0.global').FadvanceON := False;
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='IC_MembraneTest_test';
+         TDBrecord('PG0.Exp_Params').pulse_amplitude:=ICMT_amp;
+         TDBrecord('PG0.Exp_params').t1:=ICMT_t1;
+         TDBrecord('PG0.Exp_params').t2:=ICMT_t2;
+	       {then we initialize the stimulation}
+	       stimulator.Channels[1].BuildEp := Build_ICMTstim ; 
+	       stimulator.initVectors;
+	       InitializeChannels; // finally, we can initialize the channels
+         end;
+   998 :IC_RmCm(ICMT_moy,rm,cm,True);
+   end;
+end;
+
+
+
+procedure ICMembTest_Init; {executed only when ze choose the protocol }
+begin
+   ICMT_amp:=200; ICMT_t1:=100; ICMT_t2:=300; ICMT_interStim:=0.2 ; // params
+   {then we display the channels}
+   addObject(protocol_choice,1,v1);  addObject(protocol_choice,2,v2);   addObject(protocol_choice,2,v3);   
+   
+   rm_vec.create(t_single,0,-1) ; tmem_vec.create(t_single,0,-1) ; { we initialize the vector of the rs values }
+   rm_graph.create(tmem_vec,rm_vec,0,0); rm_graph.Mode := DM_LINE_DIAMOND ; {graph initialisation }
+   addobject(protocol_choice,4,rm_graph);
+
+   ICMT_memo.create(''); ICMT_memo.font.name:='Times New Roman'; ICMT_memo.font.size:=11;
+   ICMT_memo.font.color:=rgb(0,0,0);  ICMT_memo.font.style:=fs_bold;
+   addObject(protocol_choice,3,ICMT_memo);
+
+   ICMT_amp := ICMT_amp;
+   ICMT_dialog.create ;
+   ICMT_dialog.getRealA(' Pulse size (pA)',ICMT_amp,3,1,99);
+   ICMT_dialog.getRealA(' t1  ',ICMT_t1,3,1,99);
+   ICMT_dialog.getRealA(' t2  ',ICMT_t2,3,1,99);
+   ICMT_dialog.getCommandA('  init() ',0,999);
+   ICMT_dialog.setText('');
+   ICMT_dialog.getCommandA(' Fit with cursors ',0,998);
+   ICMT_dialog.OnEvent:=ICMT_event ;
+   AddDialog(protocol_choice,5,ICMT_dialog); 
+
+   DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
+   t0_mem := 1000*60*60*Hour + 1000*60*Minute + 1000*Second + MilliSecond;
+
+   ICMT_cursor.create ; ICMT_cursor.Doublecursor:=True ; ICMT_cursor.style:=cs_X ;
+   ICMT_cursor.position[1]:=ICMT_t1 ; ICMT_cursor.position[2]:=ICMT_t2 ; 
+   ICMT_cursor.InstallSource(v1);  ICMT_cursor.visible:=True ; 
+end;
+
+{ ------------- then, Procedures of the Acquisition Processes (see doc) ----------}   
+ 
+
+procedure mtic_initprocess;
+begin
+  ICMT_moy.create(t_single,v1.Istart,v1.Iend);
+  ICMT_moy.cpx:=1;  ICMT_moy.cpy:=1;  ICMT_moy.color:=cl_blue;
+  ICMT_moy.setWorld(ICMT_t1-5,v1.Ymin,ICMT_t2,v1.Ymax);
+  addObject(protocol_choice,1,ICMT_moy);
+
+  ICMT_fit.create('');
+  ICMT_fit.standardModel:=fm_expC1 {fm_poly5};
+  ICMT_fit.initialize:=true;  ICMT_fit.reset;  ICMT_fit.setYdata(ICMT_moy);  ICMT_fit.MaxIt:=30;
+
+  ICMT_fit.setWorld(ICMT_moy.xmin,ICMT_moy.ymin,ICMT_moy.xmax,ICMT_moy.ymax);
+  ICMT_fit.cpx:=1;  ICMT_fit.cpy:=1;  ICMT_fit.matchVector(v1);  ICMT_fit.color:=cl_red;
+  addObject(protocol_choice,1,ICMT_fit);
+end;
+
+procedure mtic_process;
+begin
+     ICMT_moy.add(v1); {we add each episode result to the average}
+end;
+
+procedure mtic_endprocess;
+begin
+  IC_RmCm(ICMT_moy,rm,cm,False); { and we process the analysis}
+  rm_vec.addtolist(rs); rm_vec.refresh;
+  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
+  tmem_vec.addtolist(0.001*(1000*60*60*Hour + 1000*60*Minute + 1000*Second + MilliSecond -t0_mem)); tmem_vec.refresh;
+  rm_graph.modify(tmem_vec,rm_vec,rm_vec.Istart,rm_vec.Iend); rm_graph.refresh ;
+
+end;
 {$EDIT pulses}
 { ==============================================================================
 --------- BUILDING THE PULSES STIMULATION PROCEDURES AND DIALOGS ---------------
@@ -846,6 +995,7 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
 		             1 : begin TDBrecord('PG0.global').stim:=False;InitializeChannels; end;
 	               2 : SealTest_Init;
 	               3 : VCmembTest_Init;
+	               4 : ICmembTest_Init;
               end;
          end;
     //102 : t_channels_setting.ExecuteCommand('Init_AcqChannels'); 

@@ -29,10 +29,10 @@ var
 begin
   ProtocolName[1]:= 'Passive_Recording';
   ProtocolName[2]:= 'Seal_Test';
-  ProtocolName[3]:= 'VC-Membrane_Test'; 
-  ProtocolName[4]:= 'IC-Membrane_Test';
-  ProtocolName[5]:= 'I-V_curve'; 
-  ProtocolName[6]:= 'perforing_monitor';
+  ProtocolName[3]:= 'perforing_monitor';
+  ProtocolName[4]:= 'VC-Membrane_Test'; 
+  ProtocolName[5]:= 'IC-Membrane_Test';
+  ProtocolName[6]:= 'I-V_curve'; 
   ProtocolName[7]:= 'Sinusoids Stim'; 
   ProtocolName[8]:= 'Pulses Stim'; 
   ProtocolName[9]:= 'Stochastic Stim'; 
@@ -66,27 +66,18 @@ procedure FillDBinfo(var DB: TDBrecord); {procedure to write the metadata !}
 var ii,jj:integer; st:string;
 begin
   ii:=TDBrecord('PG0.global').clamp_int;
-  DB.clear;                                              
-  DB.info_spec:='specific infos about the protocol :';  
+  DB.clear; 
+  DB.clone(TDBrecord('PG0.global'));        
+  DB.s:=''+CRLF;                                     
+  DB.info_spec:='+ specific infos about the protocol :';  
   for jj:=1 to TDBrecord('PG0.Exp_params').count do
   begin  
     st:= TDBrecord('PG0.Exp_params').Names[jj] ;
     DB.AddField(st,jj+1);
     DB.ImplicitValue[st]:=TDBrecord('PG0.Exp_params').ImplicitValue[st] ;
   end;                                                                      
-  DB.s :='';
-  DB.info := 'general infos infos written at the beginning of the acquisition : '+CRLF;
   DB.protocol:=ProtocolName[protocol_choice];
-  if ii=1 then DB.clamp := 'I-clamp' else DB.clamp := 'V-clamp' ;
-  for jj:=1 to TDBrecord('PG0.global').count do
-  begin  
-    st:= TDBrecord('PG0.global').Names[jj] ;
-    DB.AddField(st,jj+1);
-    DB.ImplicitValue[st]:=TDBrecord('PG0.global').ImplicitValue[st] ;
-  end;                                                                      
-
   DB.Comment := comments ; {comments is a global variable }
-  DB.s1 := '';
   DB.Day := Day ; DB.Month := Month ; DB.Year := Year ;
   DB.Hour := Hour ; DB.Minute := Minute ; DB.SEcond := Second ;    
 end;
@@ -534,12 +525,12 @@ begin
 	       amplifier := TDBrecord('PG0.global').amplifier ;
          TDBrecord('PG0.global').cont_choice := False ; 
          TDBrecord('PG0.global').episode_duration :=  VCMT_t1+VCMT_t4 ;
-         TDBrecord('PG0.global').max_EP_num :=10 ; // 10 episodes !!
+         TDBrecord('PG0.global').max_EP_num := 10 ; // 10 episodes !!
          TDBrecord('PG0.global').stim := True ;
-         TDBrecord('PG0.global').acquisitionISI:= VCMT_interStim ;  // small beak between the stims
+         TDBrecord('PG0.global').acquisitionISI:= VCMT_interStim ;  // small break between the stims
          if amplifier='nrn_simulation' then TDBrecord('PG0.global').FadvanceON := True else TDBrecord('PG0.global').FadvanceON := False;
          TDBrecord('PG0.Exp_Params').clear;
-         TDBrecord('PG0.Exp_Params').exp_type:='VC_MembraneTest_test';
+         TDBrecord('PG0.Exp_Params').exp_type:='VC_MembraneTest';
          TDBrecord('PG0.Exp_Params').pulse_amplitude:=VCMT_amp;
          TDBrecord('PG0.Exp_params').t1:=VCMT_t1;
          TDBrecord('PG0.Exp_params').t2:=VCMT_t2;
@@ -775,6 +766,196 @@ begin
   rm_graph.modify(tmem_vec,rm_vec,rm_vec.Istart,rm_vec.Iend); rm_graph.refresh ;
 
 end;
+
+{$EDIT perforing_monitor}
+{ ==============================================================================
+---------- BUILDING THE PERFORING MONITOR FOR PERFORATED PATCH -----------------
+================================================================================ }
+
+{uses the functions and the variables from the VC membrane test}
+
+var i_pm : integer ; // integer to reset the mean every 10 measurements
+ 
+ 
+procedure PM_Event(n:integer);
+var amplifier : string ; 
+begin    
+   mt_dialog.updatevar;
+   case n of 
+   999 : begin
+	 {we write all the relevant global informations}
+	       amplifier := TDBrecord('PG0.global').amplifier ;
+         TDBrecord('PG0.global').cont_choice := False ; 
+         TDBrecord('PG0.global').episode_duration :=  VCMT_t1+VCMT_t4 ;
+         TDBrecord('PG0.global').max_EP_num := 0 ;  // limitless
+         TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.global').acquisitionISI:= VCMT_interStim ;  // small break between the stims
+         if amplifier='nrn_simulation' then TDBrecord('PG0.global').FadvanceON := True else TDBrecord('PG0.global').FadvanceON := False;
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='Perforing_Monitor';
+         TDBrecord('PG0.Exp_Params').pulse_amplitude:=VCMT_amp;
+         TDBrecord('PG0.Exp_params').t1:=VCMT_t1;
+         TDBrecord('PG0.Exp_params').t2:=VCMT_t2;
+         TDBrecord('PG0.Exp_params').t3:=VCMT_t3;
+         TDBrecord('PG0.Exp_params').t4:=VCMT_t4;
+	       {then we initialize the stimulation}
+	       stimulator.Channels[1].BuildEp := Build_VCMTstim ; 
+	       stimulator.initVectors;
+	       InitializeChannels; // finally, we can initialize the channels
+         end;
+   998 : rsCm(VCMT_moy,rm,rs,cm,rs2,True);
+   end;
+end;
+
+procedure PerforingMonitor_Init; {executed only when ze choose the protocol }
+begin
+   if VCMT_amp=0 then begin VCMT_amp:=-5; VCMT_t1:=20; VCMT_t2:=40; VCMT_t3:=60; VCMT_t4:=80; end;  // in case not initialized
+   {then we display the channels}
+   addObject(protocol_choice,1,v1);  addObject(protocol_choice,2,v2);   addObject(protocol_choice,2,v3);
+
+   rs_vec.create(t_single,0,-1) ; tmem_vec.create(t_single,0,-1) ; { we initialize the vector of the rs values }
+   rs_graph.create(tmem_vec,rs_vec,0,0); rs_graph.Mode := DM_LINE_DIAMOND ; {graph initialisation }
+   addobject(protocol_choice,4,rs_graph);
+
+   lVer.create('',0,cl_black,0); lHor.create('',0,cl_black,0);
+   addObject(protocol_choice,1,lVer); addObject(protocol_choice,1,lHor);
+
+   VCMT_memo.create(''); VCMT_memo.font.name:='Times New Roman'; VCMT_memo.font.size:=11;
+   VCMT_memo.font.color:=rgb(0,0,0);  VCMT_memo.font.style:=fs_bold;
+   addObject(protocol_choice,3,VCMT_memo);
+
+   mt_dialog.create ;
+   mt_dialog.getRealA(' Pulse size (mV)',VCMT_amp,3,1,99);
+   mt_dialog.setText('');
+   mt_dialog.setText('(params taken from the VC Membrane Test)');
+   mt_dialog.setText('     (to be changed there)  ');
+   mt_dialog.setText('');
+   mt_dialog.getCommandA('  init() ',0,999);
+   mt_dialog.setText('');
+   mt_dialog.getCommandA(' Fit "Tau" with cursors ',0,998);
+   mt_dialog.OnEvent:=PM_event ;
+   AddDialog(protocol_choice,5,mt_dialog); 
+
+   DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
+   t0_mem := 1000*60*60*Hour + 1000*60*Minute + 1000*Second + MilliSecond;
+
+   mt_cursor.create ; mt_cursor.DoubleCursor:=True ; mt_cursor.style:=cs_X ;
+   mt_cursor.position[1]:=VCMT_t2 ; mt_cursor.position[2]:=VCMT_t2+3 ; 
+   mt_cursor.InstallSource(v1);  mt_cursor.visible:=True ;  
+end;
+
+{ ------------- then, Procedures of the Acquisition Processes (see doc) ----------}   
+
+procedure pm_initprocess;
+begin
+mt_initprocess; // rigorously the same
+end;
+
+procedure pm_process;
+begin
+  VCMT_moy.add(v1); {we add each episode result to the average}
+  {then we increment}
+  i_pm := i_pm + 1 ;
+  if i_pm>4 then 
+  begin 
+     VCMT_moy.reset; 
+     i_pm := 0 ; 
+     rsCm(VCMT_moy,rm,rs,cm,rs2,False); { and we process the analysis}
+     rs_vec.addtolist(rs); rs_vec.refresh;
+     DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
+     tmem_vec.addtolist(60*Hour+Minute+Second/60+MilliSecond/60/1000-t0_mem); tmem_vec.refresh;
+     rs_graph.modify(tmem_vec,rs_vec,rs_vec.Istart,rs_vec.Iend); rs_graph.refresh ;
+  end;
+end;
+
+
+{$EDIT IV-curve}
+{ ==============================================================================
+--------- BUILDING THE IV-CURVE PROCEDURES AND DIALOGS -------------------------
+================================================================================ }
+
+var
+   v_start    : real ;  v_step : real ; {step parameters }
+   max_step : integer ; int_repet : integer ; int_step : integer ;{ index for the number of steps }
+   IV_moy :  Taverage ; iv_dialog2 : Tdialog ; iv_dialog : Tdialog ;
+   iv_v : Tvector ; iv_i : Tvector ; iv_graph : Tgraph ;
+   del_iv, dur_iv, interstim_iv : real ;
+
+
+procedure ProcessIV(seq:longint;var vec:Tvector);
+var dv : real;
+begin 
+   dv := (seq-1)*v_step ;
+   vec.fill(0); vec.fill1(v_start+dv,del_iv+vec.Istart,del_iv+dur_iv+vec.Istart);
+end;
+
+procedure IVcurve_Event(n:integer);
+var amplifier : string ; 
+begin    
+   iv_dialog.updatevar;
+   case n of 
+   201 : begin
+	 {we write all the relevant global informations}
+	       amplifier := TDBrecord('PG0.global').amplifier ;
+         TDBrecord('PG0.global').cont_choice := False ; 
+         TDBrecord('PG0.global').episode_duration :=  2*del_iv+dur_iv ;
+         TDBrecord('PG0.global').max_EP_num :=0 ;
+         TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.global').acquisitionISI:= interstim_iv ;  // small beak between the stims
+         if amplifier='nrn_simulation' then TDBrecord('PG0.global').FadvanceON := True else TDBrecord('PG0.global').FadvanceON := False;
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='iv_curve';
+         TDBrecord('PG0.Exp_Params').v_start:=v_start;
+         TDBrecord('PG0.Exp_params').v_step:=v_step;
+         TDBrecord('PG0.Exp_Params').step_number:=max_step;
+	       {then we initialize the stimulation}
+	       stimulator.Channels[1].BuildEp := ProcessIV ; 
+	       stimulator.initVectors;
+	       InitializeChannels; // finally, we can initialize the channels
+         end;
+   end;
+end;
+
+
+procedure IVcurve_Init;
+begin
+   v_start := -20; v_step :=10 ;  int_repet:=0 ; max_step := 10 ;
+   interstim_iv := 1 ; del_iv := 40 ; dur_iv := 120 ;
+   with iv_dialog do
+   begin
+      create;
+      OnEvent :=IVcurve_event ;
+      setText(' ==<| Parameters |> ');
+      getRealA('starting value (mV)',v_start,10,3,200);
+      getRealA('Step absolute (mV)',v_step,10,3,200);
+      getIntegerA('Number of Steps',max_step,10,200);
+      getRealA('Onset/Delay (ms)',del_iv,10,3,200);
+      getRealA('Duration (ms)',dur_iv,10,3,200);
+      getRealA('interstim (s)',interstim_iv,10,3,200);
+      getCommandA('init protocol',0,201);
+   end;
+   AddDialog(protocol_choice,3,iv_dialog);
+end;
+
+
+procedure iv_initprocess;
+begin
+   iv_i.create(t_single,0,-1);
+   iv_i.X0:=v_start ; iv_i.DX := v_step ;
+   iv_i.Mode := DM_LINE_DIAMOND ;
+   addobject(protocol_choice,4,iv_i);
+end;
+
+procedure ivcurve_process;
+var tt:Tvector ;
+begin 
+  tt.create; Vcopy(v1,tt) ; 
+  iv_i.addtolist(tt.mean(del_iv+dur_iv/2,del_iv+4*dur_iv/5));
+  iv_i.invalidate ;
+  //iv_i.SetWorld(iv_i.X0,iv_i.Ymin,iv_i.Xmax,iv_i.Ymax);
+end;
+
+
 {$EDIT pulses}
 { ==============================================================================
 --------- BUILDING THE PULSES STIMULATION PROCEDURES AND DIALOGS ---------------
@@ -994,8 +1175,9 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
               case protocol_choice of
 		             1 : begin TDBrecord('PG0.global').stim:=False;InitializeChannels; end;
 	               2 : SealTest_Init;
-	               3 : VCmembTest_Init;
-	               4 : ICmembTest_Init;
+	               3 : PerforingMonitor_Init;
+	               4 : VCmembTest_Init;
+	               5 : ICmembTest_Init;
               end;
          end;
     //102 : t_channels_setting.ExecuteCommand('Init_AcqChannels'); 
@@ -1117,7 +1299,7 @@ init_windows;
 Init_Main_Dialog;
 
 
-program Launch_from_main
+program Launch_from_Tmacro
 SetProtocolNames;
 init_windows;
 Init_Main_Dialog;

@@ -123,7 +123,7 @@ begin {-- we set all the variables of the acquisition class, then we create
     else acquisition.Fstimulate:=False;  { we stimulate or not }
     
     acquisition.MaxEpCount := max_ep_num ;
-    acquisition.EpDuration := epdur ;
+    if not acquisition.Fcontinuous then acquisition.EpDuration := epdur;
     
     acquisition.TriggerMode:= TM_immediate;
     acquisition.Channels[1].ChannelType:= TI_Neuron; { here we set that we read the acquisition from NEURON }
@@ -956,6 +956,85 @@ begin
 end;
 
 
+{$EDIT sinusoids}
+{ ==============================================================================
+--------- BUILDING THE SINUSOIDS STIMULATION PROCEDURES AND DIALOGS -------------
+================================================================================ }
+
+
+var 
+  amp_sin, freq_sin, phase_sin : real ; // for single sin
+  singlesin_dialog, multiplesin_dialog, chirp_dialog : Tdialog ;
+  freq_start, freq_end, freq_step : real ; // for multiple sin
+  
+
+procedure Build_sin(seq:longint;var vec:Tvector); {Build a sinewave into vec }
+begin
+vec.sinewave(amp_sin,1000.0/freq_sin,phase_sin) ; 
+phase_sin := phase_sin + 1000.0/freq_sin*vec.Xend ; // need to remember the phase at the last moment
+end;
+
+procedure SingleSin_Event(n:integer); 
+begin {when we modify the dialog, we adjust the stimulation params}
+   singlesin_dialog.updatevar;
+   case n of 
+   201 : begin
+	 {we write all the relevant global informations}
+         TDBrecord('PG0.global').cont_choice := True ;
+         TDBrecord('PG0.global').max_EP_num :=0 ;
+         TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='single_sin';
+         TDBrecord('PG0.Exp_Params').sin_amplitude:=amp_sin;
+         TDBrecord('PG0.Exp_params').frequency:=freq_sin;
+         TDBrecord('PG0.Exp_Params').phase_shift:=phase_sin;
+	 {then we initialize the stimulation}
+	 stimulator.Channels[1].BuildEp := Build_Sin ; 
+	 stimulator.initVectors;
+         end;
+   end;
+end;
+
+
+procedure Init_SinDialog;
+begin
+    amp_sin := 40 ;  freq_sin := 10 ;  phase_sin := 0 ; // for single sin
+    freq_start := 0.1 ;  freq_end := 200 ; freq_step := 1 ; // for multiple sin
+    
+   with singlesin_dialog do
+   begin
+      create;
+      OnEvent:=SingleSin_Event; 
+      setText(' ==<| Single Sinusoid Stimulation |> ');
+      getRealA('Amplitude (pA or mV)',amp_sin,10,3,200);
+      getRealA('frequency (Hertz)',freq_sin,10,3,200);
+      getRealA('phase shift (Rd)',phase_sin,10,3,200);
+      getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
+   end;
+   AddDialog(protocol_choice, 3, singlesin_dialog);
+   with chirp_dialog do
+   begin
+      create;
+      //OnEvent:
+      setText(' ==<| Chirp Stimulation |> ');
+      getRealA('Amplitude (pA or mV)',amp_sin,10,3,200);
+      getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
+   end;
+   AddDialog(protocol_choice, 4, chirp_dialog);
+   with multiplesin_dialog do
+   begin
+      create;
+      //OnEvent:=; 
+      setText(' ==<| Multiple Sinusoids Stimulation |> ');
+      getRealA('Amplitude (pA or mV)',amp_sin,10,3,200);
+      getRealA('start frequency (Hz)',freq_start,10,3,200);
+      getRealA('stop frequency (Hz)',freq_end,10,3,200);
+      getRealA('frequency step (Hz)',freq_start,10,3,200);
+      getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
+   end;
+   AddDialog(protocol_choice, 5, multiplesin_dialog);
+end;
+
 {$EDIT pulses}
 { ==============================================================================
 --------- BUILDING THE PULSES STIMULATION PROCEDURES AND DIALOGS ---------------
@@ -1118,6 +1197,78 @@ begin
    amp1_tp := 50.0; amp2_tp := -50.0; amp3_tp := 50.0; 
    del_tp  := 50.0; dur1_tp:= 200.0; dur2_tp:= 400.0; dur3_tp:= 200.0; 
 end;
+
+
+{$EDIT ramps}
+{ ==============================================================================
+--------- BUILDING THE RAMP STIMULATION PROCEDURES AND DIALOGS ---------------
+================================================================================ }
+
+
+{$EDIT stochastic}
+{ ==============================================================================
+--------- BUILDING THE STOCHASTIC STIMULATION PROCEDURES AND DIALOGS ---------------
+================================================================================ }
+
+
+var 
+  wn_mean, wn_std, ou_mean, ou_std, ou_time : real ;
+  whitenoise_dialog, ou_dialog : Tdialog ;
+
+
+procedure Build_WhiteNoise(seq:longint;var vec:Tvector); {Build a ramp into vec }
+var ii:integer; x : real ; y :real ; u1 :real ; u2 : real ;
+begin
+   ii:=vec.Istart ;
+   while ii<vec.Iend do
+   begin
+      u1 :=Random ;
+      u2 :=Random ;
+      if (u1>0) and (u2>0) then 
+      begin
+         x:= SQRT(-2*LN(u1))*COS(2*PI*u2);
+         y:= SQRT(-2*LN(u1))*SIN(2*PI*u2);
+         vec[ii]:=wn_mean+wn_std*x;
+         if ii<vec.Iend then vec[ii+1]:=wn_mean+wn_std*y;
+         ii:=ii+2;
+      end;
+   end;
+end;
+
+procedure WhiteNoise_Event(n:integer); 
+begin {when we modify the dialog, we adjust the stimulation params}
+   whitenoise_dialog.updatevar;
+   case n of 
+   201 : begin
+	 {we write all the relevant global informations}
+         TDBrecord('PG0.global').cont_choice := True ;
+         TDBrecord('PG0.global').max_EP_num :=0 ;
+         TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='white_noise';
+         TDBrecord('PG0.Exp_Params').wn_mean:=wn_mean;
+         TDBrecord('PG0.Exp_params').wn_std:=wn_std;
+	 {then we initialize the stimulation}
+	 stimulator.Channels[1].BuildEp := Build_WhiteNOise ; 
+	 stimulator.initVectors;
+         end;
+   end;
+end;
+
+procedure WN_dialogEvent(n:integer);
+begin {when we modify the dialog, we adjust the stimulation params}
+   wn_dialog.updatevar;
+   case n of 
+   204 : begin
+         cont_choice := True ; Init_AcqChannels(gain1,gain2,cont_choice,clamp_choice);
+         acquisition.Fstimulate:=True;  acquisition.TriggerMode:=TM_internal;
+         Init_StimChannels(cont_choice,clamp_choice);
+         SetRandSeed(wn_seed);
+         stimulator.Channels[1].BuildEp := Build_WhiteNoise ;
+         stimulator.initVectors;
+         end;
+   end;
+end; 
 
 
 {$EDIT main_dialog}

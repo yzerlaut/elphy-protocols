@@ -372,10 +372,10 @@ begin
          TDBrecord('PG0.Exp_Params').pulse_amplitude:=amp_seal;
          TDBrecord('PG0.Exp_params').start_at:=del_seal;
          TDBrecord('PG0.Exp_Params').pulse_duration:=dur_seal;
-               {then we initialize the stimulation}
-               stimulator.Channels[1].BuildEp := Build_SealPulse ; 
-               stimulator.initVectors;
-               InitializeChannels; // finally, we can initialize the channels
+         {then we initialize the stimulation}
+         InitializeChannels; // we can initialize the channels
+         stimulator.Channels[1].BuildEp := Build_SealPulse ; 
+         stimulator.initVectors;
          end;
    end;
 end;
@@ -577,11 +577,11 @@ begin
          TDBrecord('PG0.Exp_params').t2:=VCMT_t2;
          TDBrecord('PG0.Exp_params').t3:=VCMT_t3;
          TDBrecord('PG0.Exp_params').t4:=VCMT_t4;
-               {then we initialize the stimulation}
-               stimulator.Channels[1].BuildEp := Build_VCMTstim ; 
-               stimulator.initVectors;
-               InitializeChannels; // finally, we can initialize the channels
-               TDBrecord('PG0.global').init :=True ; // so we can set the init flag to true
+         {then we initialize the stimulation}
+         InitializeChannels; // we can initialize the channels
+         stimulator.Channels[1].BuildEp := Build_VCMTstim ; 
+         stimulator.initVectors;
+         TDBrecord('PG0.global').init :=True ; // so we can set the init flag to true
          end;
    998 : rsCm(VCMT_moy,rm,rs,cm,rs2,True);
    end;
@@ -733,10 +733,10 @@ begin
          TDBrecord('PG0.Exp_Params').pulse_amplitude:=ICMT_amp;
          TDBrecord('PG0.Exp_params').t1:=ICMT_t1;
          TDBrecord('PG0.Exp_params').t2:=ICMT_t2;
-               {then we initialize the stimulation}
-               stimulator.Channels[1].BuildEp := Build_ICMTstim ; 
-               stimulator.initVectors;
-               InitializeChannels; // finally, we can initialize the channels
+         {then we initialize the stimulation}
+         InitializeChannels; // we can initialize the channels
+         stimulator.Channels[1].BuildEp := Build_ICMTstim ; 
+         stimulator.initVectors;
          end;
    998 :IC_RmCm(ICMT_moy,rm,cm,True);
    end;
@@ -842,10 +842,10 @@ begin
          TDBrecord('PG0.Exp_params').t2:=VCMT_t2;
          TDBrecord('PG0.Exp_params').t3:=VCMT_t3;
          TDBrecord('PG0.Exp_params').t4:=VCMT_t4;
-               {then we initialize the stimulation}
-               stimulator.Channels[1].BuildEp := Build_VCMTstim ; 
-               stimulator.initVectors;
-               InitializeChannels; // finally, we can initialize the channels
+         {then we initialize the stimulation}
+         InitializeChannels; // we can initialize the channels
+         stimulator.Channels[1].BuildEp := Build_VCMTstim ; 
+         stimulator.initVectors;
          end;
    998 : rsCm(VCMT_moy,rm,rs,cm,rs2,True);
    end;
@@ -952,10 +952,10 @@ begin
          TDBrecord('PG0.Exp_Params').v_start:=v_start;
          TDBrecord('PG0.Exp_params').v_step:=v_step;
          TDBrecord('PG0.Exp_Params').step_number:=max_step;
-               {then we initialize the stimulation}
-               stimulator.Channels[1].BuildEp := ProcessIV ; 
-               stimulator.initVectors;
-               InitializeChannels; // finally, we can initialize the channels
+         {then we initialize the stimulation}
+         InitializeChannels; // we can initialize the channels
+         stimulator.Channels[1].BuildEp := ProcessIV ; 
+         stimulator.initVectors;
          end;
    end;
 end;
@@ -1033,6 +1033,7 @@ begin {when we modify the dialog, we adjust the stimulation params}
          TDBrecord('PG0.Exp_params').frequency:=freq_sin;
          TDBrecord('PG0.Exp_Params').phase_shift:=phase_sin;
          {then we initialize the stimulation}
+         InitializeChannels; // we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_Sin ; 
          stimulator.initVectors;
          end;
@@ -1111,6 +1112,7 @@ begin {when we modify the dialog, we adjust the stimulation params}
          {then we initialize the stimulation}
          stimulator.Channels[1].BuildEp := Build_SinglePulse ; 
          stimulator.initVectors;
+         InitializeChannels; // finally, we can initialize the channels
          end;
    end;
 end;
@@ -1145,9 +1147,11 @@ begin {when we modify the dialog, we adjust the stimulation params}
          {then we initialize the stimulation}
          stimulator.Channels[1].BuildEp := Build_DoublePulse ; 
          stimulator.initVectors;
+         InitializeChannels; // finally, we can initialize the channels
          end;
    end;
 end;
+
 
 { ------------ Triple Pulses ----------------------}
 
@@ -1161,6 +1165,7 @@ begin { we fill of 0, except between the t0+delay and t0+delay+duration }
    vec.fill1(amp2_tp,del_tp+dur1_tp+vec.Istart,del_tp+dur1_tp+dur2_tp+vec.Istart);
    vec.fill1(amp3_tp,del_tp+dur1_tp+vec.Istart,del_tp+dur1_tp+dur2_tp+dur3_tp+vec.Istart);
 end;
+
 
 procedure TriplePulse_Init(n:integer); 
 begin {when we modify the dialog, we adjust the stimulation params}
@@ -1182,13 +1187,16 @@ begin {when we modify the dialog, we adjust the stimulation params}
          TDBrecord('PG0.Exp_Params').pulse_duration2:=dur2_tp;
          TDBrecord('PG0.Exp_Params').pulse_duration3:=dur3_tp;
          {then we initialize the stimulation}
+         InitializeChannels; // we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_TriplePulse ; 
          stimulator.initVectors;
          end;
    end;
 end;
 
+
 { ------------ Pulse Train ----------------------}
+
 
 var amp_pt, dur_pt, del_pt, inter_pt : real ;  num_pt : integer;
 pulsetrain_dialog : Tdialog ;
@@ -1212,8 +1220,9 @@ begin {when we modify the dialog, we adjust the stimulation params}
          TDBrecord('PG0.Exp_Params').clear;
          TDBrecord('PG0.Exp_Params').exp_type:='pulse_train';
          TDBrecord('PG0.Exp_Params').pulse_amplitude:=amp_pt;
-         TDBrecord('PG0.Exp_Params').pulse_del:=del_pt;
-          // XXXXXXX
+         TDBrecord('PG0.Exp_Params').pulse_number:=num_pt;
+         TDBrecord('PG0.Exp_Params').pulse_delay:=del_pt;
+         TDBrecord('PG0.Exp_Params').pulse_duration:=inter_pt;
          {then we initialize the stimulation}
          stimulator.Channels[1].BuildEp := Build_PulseTrain ; 
          stimulator.initVectors;
@@ -1228,6 +1237,8 @@ begin
    amp1_dp := 50.0; amp2_dp := -50.0; del_dp:=100.0; dur1_dp:=400.0; dur2_dp:=400.0; 
    amp1_tp := 50.0; amp2_tp := -50.0; amp3_tp := 50.0; 
    del_tp  := 50.0; dur1_tp:= 200.0; dur2_tp:= 400.0; dur3_tp:= 200.0; 
+   del_pt:=100 ; amp_pt := 1000 ; num_pt := 10 ; inter_pt := 5 ;
+   
    with singlepulse_dialog do
    begin
       create;
@@ -1283,10 +1294,111 @@ begin
 end;
 
 
-{$EDIT ramps}
+{$EDIT fancy_ramps}
 { ==============================================================================
 --------- BUILDING THE RAMP STIMULATION PROCEDURES AND DIALOGS ---------------
 ================================================================================ }
+
+var 
+   del_fr, amp1_fr, ramp1_fr, dur1_fr, amp2_fr, ramp2_fr, dur2_fr, amp3_fr, ramp3_fr, dur3_fr, amp4_fr, ramp4_fr, dur4_fr : real; 
+   fancyramp_dialog1, fancyramp_dialog2, fancyramp_dialog3, fancyramp_dialog4 :Tdialog;
+procedure Build_FancyRamp(seq:longint;var vec:Tvector);
+var ii : longint ; tt : real ;
+begin { we fill of 0, except between the t0+delay and t0+delay+duration }
+   vec.fill(0); 
+   for ii:=vec.Istart to vec.Iend-1 do
+   begin
+   tt := vec.ConvX(ii) ;
+   if (del_fr<tt) and (tt<dur1_fr) then vec[ii]:=amp1_fr+(tt-del_fr)*ramp1_fr/dur1_fr;
+   if (del_fr+dur1_fr<tt) and (tt<del_fr+dur1_fr+dur2_fr) then vec[ii]:=amp2_fr+(tt-dur1_fr-del_fr)*ramp2_fr/dur2_fr;
+   if (del_fr+dur1_fr+dur2_fr<tt) and (tt<del_fr+dur1_fr+dur2_fr+dur3_fr) then vec[ii]:=amp3_fr+(tt-dur2_fr-dur1_fr-del_fr)*ramp3_fr/dur3_fr;
+   if (del_fr+dur1_fr+dur2_fr+dur3_fr<tt) and (tt<del_fr+dur1_fr+dur2_fr+dur3_fr+dur4_fr) then 
+         vec[ii]:=amp4_fr+(tt-dur3_fr-dur2_fr-dur1_fr-del_fr)*ramp4_fr/dur4_fr;
+   end;
+end;
+
+procedure FancyRamp_Init(n:integer); 
+begin {when we modify the dialog, we adjust the stimulation params}
+   fancyramp_dialog1.updatevar; fancyramp_dialog2.updatevar;
+   fancyramp_dialog3.updatevar; fancyramp_dialog4.updatevar;
+   case n of 
+   201 : begin
+         {we write all the relevant global informations}
+         TDBrecord('PG0.global').cont_choice := False ; 
+         TDBrecord('PG0.global').episode_duration := 2*del_fr+dur1_fr+dur2_fr+dur3_fr+dur4_fr;
+         TDBrecord('PG0.global').max_EP_num :=0 ;
+         TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='fancy ramp';
+        {then we initialize the stimulation}
+         InitializeChannels; // we can initialize the channels
+         stimulator.Channels[1].BuildEp := Build_FancyRamp ; 
+         stimulator.initVectors;
+         end;
+   end;
+end;
+
+
+procedure Init_FancyRamp;
+begin
+   del_fr := 100 ; dur1_fr := 200 ; dur2_fr := 200 ; dur3_fr := 200 ; dur4_fr := 200;
+   amp1_fr := 200 ; amp2_fr := -100 ; amp3_fr := -200 ; amp4_fr := 100;
+   ramp1_fr := -100 ; ramp2_fr := 200 ; ramp3_fr := 300 ; ramp4_fr := 200;
+  
+   with fancyramp_dialog1 do
+   begin
+      create;
+      getRealA('Onset/Delay (ms)',del_fr,10,3,200);
+      setText('');
+      setText(' ==========<| First Period |>========== ');
+      getRealA('Amplitude Start (pA or mV)',amp1_fr,10,3,200);
+      getRealA('Ramp Raise (pA or mV)',ramp1_fr,10,3,200);
+      getRealA('Ramp Duration (ms)',dur1_fr,10,3,200);
+      setText('');
+      OnEvent:=FancyRamp_Init; 
+   end;
+   AddDialog(protocol_choice, 3, fancyramp_dialog1);
+   with fancyramp_dialog2 do
+   begin
+      create;
+      setText('');
+      setText('');
+      setText(' ==========<| Second Period |>========== ');
+      getRealA('Amplitude Start (pA or mV)',amp2_fr,10,3,200);
+      getRealA('Ramp Raise (pA or mV)',ramp2_fr,10,3,200);
+      getRealA('Ramp Duration (ms)',dur2_fr,10,3,200);
+      setText('');
+      OnEvent:=FancyRamp_Init; 
+   end;
+   AddDialog(protocol_choice, 4, fancyramp_dialog2);
+   with fancyramp_dialog3 do
+   begin
+      create;
+      setText('');
+      setText('');
+      setText(' ==========<| Third Period |>========== ');
+      getRealA('Amplitude Start (pA or mV)',amp3_fr,10,3,200);
+      getRealA('Ramp Raise (pA or mV)',ramp3_fr,10,3,200);
+      getRealA('Ramp Duration (ms)',dur3_fr,10,3,200);
+      setText('');
+      OnEvent:=FancyRamp_Init; 
+   end;
+   AddDialog(protocol_choice, 5, fancyramp_dialog3);   
+   with fancyramp_dialog4 do
+   begin
+      create;
+      setText('');
+      setText('');
+      setText(' ==========<| Fourth Period |>========== ');
+      getRealA('Amplitude Start (pA or mV)',amp4_fr,10,3,200);
+      getRealA('Ramp Raise (pA or mV)',ramp4_fr,10,3,200);
+      getRealA('Ramp Duration (ms)',dur4_fr,10,3,200);
+      setText('');
+      getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
+      OnEvent:=FancyRamp_Init; 
+   end;
+   AddDialog(protocol_choice, 6, fancyramp_dialog4);
+end;
 
 
 {$EDIT stochastic}
@@ -1381,7 +1493,6 @@ end;
 
 
 {$EDIT main_dialog}
-
 { ==============================================================================
 --------- LAUNCHING THE EXPERIMENT ----------------------------------------------
 ================================================================================ }
@@ -1405,6 +1516,7 @@ begin
   if SAVING then acquisition.startandsave else acquisition.start;
 end;
  
+
 { ==============================================================================
 --------- loading the NEURON files  --------------------------------------------
 ================================================================================ }
@@ -1417,6 +1529,7 @@ if clamp_int=1 then full_path := TDBrecord('PG0.global').loadnrnPath+'Iclamp_hh.
 else full_path := TDBrecord('PG0.global').loadnrnPath+'Vclamp_hh.hoc';
 RTneuron.execute('load_file("'+full_path+'")');
 end;
+
           
 { ==============================================================================
 --------- BUILDING THE MAIN DIALOG  --------------------------------------------
@@ -1443,6 +1556,7 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
                        6 : IVcurve_Init;
                        7 : Init_SinDialog;
                        8 : Init_Pulses;
+                       10 : Init_FancyRamp;
                        
               end;
          end;

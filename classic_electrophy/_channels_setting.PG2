@@ -1,0 +1,106 @@
+{ setting the channels for the multiclamp amplifier }
+
+procedure Init_AcqChannels; { Crucial Function }
+var gain1,gain2:real;Continu:boolean;Clamp_int:integer;
+begin { we set all the variables of the acquisition class, then we create the NEURON variables and link it to the analogous variables}
+    { we get the global variables }
+    gain1:=TDBrecord('PG0.global').gain1;gain2:=TDBrecord('PG0.global').gain2;
+    Continu:=TDBrecord('PG0.global').Cont_choice;Clamp_int:=TDBrecord('PG0.global').clamp_int;
+    { done }
+    ClearObjects(TDBrecord('PG0.global').page_num,1); ClearObjects(TDBrecord('PG0.global').page_num,2);
+    RTneuron.ResetParams;
+    acquisition.ChannelCount:=3; { see the documentation, for the details of the acquisition and RTneuron functions }
+    acquisition.Fcontinuous:=Continu; {true or false }
+    acquisition.PeriodPerChannel:=1./TDBrecord('PG0.global').f_acq; // in ms
+    acquisition.TriggerMode:= TM_immediate;
+    acquisition.Channels[1].ChannelType:= TI_Neuron; { here we set that we read the acquisition from NEURON }
+    acquisition.Channels[2].ChannelType:= TI_Neuron;
+    acquisition.Channels[1].DownSamplingFactor:=1;
+    acquisition.Channels[2].DownSamplingFactor:=1;
+    if Clamp_int=1 then { IF CURRENT-CLAMP }
+    begin { we link the analogous signal to the NEURON variables with the right gain }
+      RTneuron.AdcChan[0].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[0].NrnSymbolName:='Vm';    // primary     
+      RTneuron.AdcChan[1].setScale(0,32767,0,20000.0/gain2); RTneuron.AdcChan[1].NrnSymbolName:='Iinj'; // secondary 
+      acquisition.Channels[1].NrnSymbolName:='Vm'; acquisition.Channels[1].unitY:='mV' ;
+      acquisition.Channels[2].NrnSymbolName:='Iinj'; acquisition.Channels[2].unitY:='pA' ;
+    end;                                                                                                        
+    if Clamp_int=2 then { IF VOLTAGE CLAMP }
+    begin
+      RTneuron.AdcChan[0].setScale(0,32767,0,20000.0/gain1); RTneuron.AdcChan[0].NrnSymbolName:='Iinj';         
+      RTneuron.AdcChan[1].setScale(0,32767,0,1000.0/gain2); RTneuron.AdcChan[1].NrnSymbolName:='Vm';  
+      acquisition.Channels[1].NrnSymbolName:='Iinj'; acquisition.Channels[1].unitY:='pA' ;
+      acquisition.Channels[2].NrnSymbolName:='Vm'; acquisition.Channels[2].unitY:='mV' ;
+    end; { we will call this function each time we modify a gain }
+    v1.cpx:=1 ; v2.cpx:=1 ; v1.cpy := 1 ; v2.cpy:= 2; {we set the coupling value -> to couple to future analysis}
+    addObject(TDBrecord('PG0.global').page_num,1,v1);
+    addObject(TDBrecord('PG0.global').page_num,2,v2);
+end;
+
+program Init_AcqChannels
+Init_AcqChannels;
+
+procedure Init_StimChannels; { crucial function as well }
+var Continu:boolean;Clamp_int:integer;
+begin { We link the Elphy stimulation to the NEURON variable, then the NEURON variable to the analogous command }
+  Continu:=TDBrecord('PG0.global').Cont_choice;Clamp_int:=TDBrecord('PG0.global').clamp_int;
+  stimulator.ChannelCount:=1;
+  stimulator.setByProg:=true; { mais on met le build ep plus loin }
+  stimulator.Channels[1].ChannelType:=TO_Neuron;
+  acquisition.Channels[3].ChannelType:= TI_Neuron; { we also set up here the visualisation of the command }
+  acquisition.Channels[3].DownSamplingFactor:=1;
+  if COntinu=False then stimulator.BufferCount := 0; { to have a infinite number of buffers }
+  if Clamp_int=1 then { IF CURRENT CLAMP }
+  begin
+    RTneuron.DacChan[0].NrnSymbolName:='Ith'; RTneuron.DacChan[0].setScale(0,32767,0,4000.0); // command -> I clamp
+    stimulator.Channels[1].NrnSymbolName:='Ith';acquisition.Channels[3].NrnSymbolName:='Ith';
+    acquisition.Channels[3].unitY:='pA';
+  end;
+  if Clamp_int=2 then { IF VOLTAGE CLAMP }
+  begin
+    RTneuron.DacChan[0].NrnSymbolName:='Vth'; RTneuron.DacChan[0].setScale(0,32767,0,200.0); // command -> V clamp
+    stimulator.Channels[1].NrnSymbolName:='Vth';acquisition.Channels[3].NrnSymbolName:='Vth';
+    acquisition.Channels[3].unitY:='mV';
+  end;
+  v3.cpx:=1 ; v3.cpy:= 2; {we couple this channel to v2 }
+  addObject(TDBrecord('PG0.global').page_num,2,v3); {on ajoute aussi l'affichage de la stimulation sur le meme grap que la voie 2 }
+end;
+
+program Init_StimChannels
+Init_StimChannels;
+
+{ GAIN settings }
+procedure SetGain1;
+var Gain1_int:integer;
+begin
+    gain1_int:=TDBrecord('PG0.global').Gain1_int;
+    case Gain1_int of
+    1: TDBrecord('PG0.global').Gain1 := 1.0; 2: TDBrecord('PG0.global').Gain1 := 2.0;
+    3: TDBrecord('PG0.global').Gain1 := 5.0; 4: TDBrecord('PG0.global').Gain1 := 10.0;
+    5: TDBrecord('PG0.global').Gain1 := 20.0; 6: TDBrecord('PG0.global').Gain1 := 50.0;
+    7: TDBrecord('PG0.global').Gain1 := 100.0; 8: TDBrecord('PG0.global').Gain1 := 200.0;
+    9: TDBrecord('PG0.global').Gain1 := 500.0; 10: TDBrecord('PG0.global').Gain1 := 1000.0;
+    11: TDBrecord('PG0.global').Gain1 := 2000.0;
+    end;
+end;   {SetGain1}
+
+program SetGain1
+SetGain1;
+
+procedure SetGain2;
+var Gain2_int:integer;
+begin
+    gain2_int:=TDBrecord('PG0.global').Gain2_int;
+    case Gain2_int of
+    1: TDBrecord('PG0.global').Gain2 := 1.0;   2: TDBrecord('PG0.global').Gain2 := 2.0; 
+    3: TDBrecord('PG0.global').Gain2 := 5.0;  4: TDBrecord('PG0.global').Gain2 := 10.0;
+    5: TDBrecord('PG0.global').Gain2 := 20.0;   6: TDBrecord('PG0.global').Gain2 := 50.0; 
+    7: TDBrecord('PG0.global').Gain2 := 100.0;
+    end;
+end;   {SetGain2}
+
+program SetGain2
+SetGain2;
+
+program Init_bothChannels
+Init_AcqChannels;
+Init_StimChannels;

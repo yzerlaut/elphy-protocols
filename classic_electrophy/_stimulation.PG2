@@ -1,0 +1,201 @@
+var 
+   amp : real;   del  : real;   dur	 : real ; pulse_dialog : Tdialog ; {pulse params}
+   freq	: real ;  phase	: real;  Sin_dialog	 : Tdialog ; {sinewave params }
+   min	: real ;  max	: real;  Ramp_dialog	 : Tdialog ; {ramp params }
+   wn_mean : real ; wn_dur:real; wn_std : real ; wn_seed : integer ; wn_dialog : Tdialog ; {white noise params }
+   Exp_type : string ; // code for the type of stimulation
+      
+procedure Init_StimParameters; 
+begin
+   amp:=50.0 ; freq:=10.0 ; del:=100.0 ; dur:=800.0;
+   phase:= 0.0 ; wn_seed := 1 ; wn_mean :=0 ; wn_std:=1 ; wn_dur:=10;
+   min:=0 ; max:=10 ;
+end;
+
+
+procedure Build_pulse(seq:longint;var vec:Tvector);  {pulse procedure called at each buildep}
+var amp, del, dur : real;
+begin { we fill of 0, except between the t0+delay and t0+delay+duration }
+  amp := TDBrecord('PG0.Exp_Params').pulse_amplitude;
+  del := TDBrecord('PG0.Exp_params').start_at;
+  dur := TDBrecord('PG0.Exp_Params').pulse_duration;
+  vec.fill(0); vec.fill1(amp,del+vec.Istart,del+dur+vec.Istart);
+end;
+
+procedure Pulse_dialogEvent(n:integer); 
+begin {when we modify the dialog, we adjust the stimulation params}
+   pulse_dialog.updatevar;
+   case n of 
+   201 : begin
+         TDBrecord('PG0.global').cont_choice := False ; 
+         TDBrecord('PG0.global').episode_duration :=  2*del+dur ;
+         TDBrecord('PG0.global').max_EP_num :=0 ;
+         TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='pulse';
+         TDBrecord('PG0.Exp_Params').pulse_amplitude:=amp;
+         TDBrecord('PG0.Exp_params').start_at:=del;
+         TDBrecord('PG0.Exp_Params').pulse_duration:=dur;
+         end;
+   end;
+end;
+
+procedure Build_sin(seq:longint;var vec:Tvector); {Build a sinewave into vec }
+begin
+vec.sinewave(amp,1000.0/freq,phase) ; { calculated so that the episode starts at i_phase }
+end;
+
+procedure Sin_dialogEvent(n:integer);
+begin {when we modify the dialog, we adjust the stimulation params}
+   sin_dialog.updatevar;
+   case n of 
+   202 : begin
+         TDBrecord('PG0.global').cont_choice := False ; 
+         acquisition.EpDuration := 10/freq*1000 ; // ms { the simulation lasts 10 periods }
+         acquisition.MaxEPCount:=0; acquisition.Fstimulate:=True;  acquisition.TriggerMode:=TM_internal;
+         stimulator.Channels[1].BuildEp := Build_sin ;
+         stimulator.initVectors;
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='sine-wave';
+         TDBrecord('PG0.Exp_Params').sine_amplitude:=amp;
+         TDBrecord('PG0.Exp_params').sine_frequency:=freq;
+         TDBrecord('PG0.Exp_Params').phase_shift:=phase;
+         end;
+   end;
+end; 
+
+procedure Build_Ramp(seq:longint;var vec:Tvector); {Build a ramp into vec }
+var ii:integer;
+begin
+   for ii:=vec.Istart to vec.Iend do
+   begin
+      if vec.ConvX(ii) < vec.Xstart+del then vec[ii]:=min 
+      else if vec.ConvX(ii) > vec.Xstart+del+dur then vec[ii]:=max 
+      else vec[ii]:= min + (max-min)*(vec.ConvX(ii)-vec.Xstart-del)/dur;
+   end;
+end;
+
+procedure Ramp_dialogEvent(n:integer);
+begin {when we modify the dialog, we adjust the stimulation params}
+   ramp_dialog.updatevar;
+   case n of 
+   203 : begin
+         TDBrecord('PG0.global').cont_choice := False ; 
+         acquisition.EpDuration := 2*del+dur ; // ms { the simulation lasts 10 periods }
+         acquisition.MaxEPCount:=0; acquisition.Fstimulate:=True;  acquisition.TriggerMode:=TM_internal;
+         acquisition.ISI := 0.1 ;
+         stimulator.Channels[1].BuildEp := Build_Ramp ;
+         stimulator.initVectors;
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='ramp';
+         TDBrecord('PG0.Exp_Params').ramp_max:=max;
+         TDBrecord('PG0.Exp_Params').ramp_min:=min;
+         TDBrecord('PG0.Exp_params').start_at:=del;
+         TDBrecord('PG0.Exp_Params').duration:=dur;
+         end;
+   end;
+end; 
+
+procedure Build_WhiteNoise(seq:longint;var vec:Tvector); {Build a ramp into vec }
+var ii:integer; x : real ; y :real ; u1 :real ; u2 : real ;
+begin
+   ii:=vec.Istart ;
+   while ii<vec.Iend do
+   begin
+      u1 :=Random ;
+      u2 :=Random ;
+      if (u1>0) and (u2>0) then 
+      begin
+         x:= SQRT(-2*LN(u1))*COS(2*PI*u2);
+         y:= SQRT(-2*LN(u1))*SIN(2*PI*u2);
+         vec[ii]:=wn_mean+wn_std*x;
+         if ii<vec.Iend then vec[ii+1]:=wn_mean+wn_std*y;
+         ii:=ii+2;
+      end;
+   end;
+end;
+
+procedure WN_dialogEvent(n:integer);
+begin {when we modify the dialog, we adjust the stimulation params}
+   wn_dialog.updatevar;
+   case n of 
+   204 : begin
+         TDBrecord('PG0.global').cont_choice := True ; 
+         acquisition.Fstimulate:=True;  acquisition.TriggerMode:=TM_internal;
+         SetRandSeed(wn_seed);
+         stimulator.Channels[1].BuildEp := Build_WhiteNoise ;
+         stimulator.initVectors;
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='white_noise';
+         TDBrecord('PG0.Exp_Params').wn_mean:=wn_mean;
+         TDBrecord('PG0.Exp_Params').wn_std:=wn_std;
+         TDBrecord('PG0.Exp_params').wn_seed:=wn_seed;
+         end;
+   end;
+end; 
+
+
+procedure Init_StimDialog;
+var pn:integer;
+begin
+   pn:=TDBrecord('PG0.global').page_num;
+   with pulse_dialog do
+   begin
+      create;
+      OnEvent:=Pulse_dialogEvent; 
+      setText(' ==<| Pulse Stimulation |> ');
+      setText('');
+      getRealA('Amplitude (pA or mV)',amp,10,3,200);
+      getRealA('Onset/Delay (ms)',del,10,3,200);
+      getRealA('Duration (ms)',dur,10,3,200);
+      getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
+   end;
+   AddDialog(pn,3,pulse_dialog);
+   with sin_dialog do
+   begin
+      create;
+      OnEvent:=sin_dialogEvent;   
+      setText(' ==<| Sinus Stimulation |> ');
+      setText('');
+      getRealA('Amplitude (pA or mV)',amp,10,3,200);
+      getRealA('Frequency (Hz)',freq,10,3,200);
+      getRealA('Phase Shift (Rd)',phase,10,3,200);
+      getCommandA(' init() ',0,202); // OnEvent flag -> 201 
+   end;
+   AddDialog(pn,4,sin_dialog); 
+   with ramp_dialog do
+   begin
+      create;
+      OnEvent:=ramp_dialogEvent;   
+      setText(' ==<| Ramp Stimulation |> ');
+      setText('');
+      getRealA('min (pA or mV)',min,10,3,200);
+      getRealA('max (pA or mV)',max,10,3,200);
+      getRealA('Onset/Delay (ms)',del,10,3,200);
+      getRealA('Duration (ms)',dur,10,3,200);
+      getCommandA(' init() ',0,203); { OnEvent flag -> 203 }
+   end;
+   AddDialog(pn,5,ramp_dialog); 
+  with wn_dialog do
+   begin
+      create;
+      OnEvent:=wn_dialogEvent;   
+      setText(' ==<| White Noise Stimulation |> ');
+      setText('');
+      getRealA('mean (pA or mV)',wn_mean,10,3,200);
+      getRealA('variance (pA or mV)',wn_std,10,3,200);
+      getRealA('Duration (s)',wn_dur,10,3,200);
+      getIntegerA('Random seed',wn_seed,10,200);
+      getCommandA(' init() ',0,204); { OnEvent flag -> 203 }
+   end;
+   AddDialog(pn,6,wn_dialog); 
+end;
+
+
+program Launch
+Init_StimParameters;
+Init_StimDialog;
+
+program Build_Stimulation
+stimulator.Channels[1].BuildEp := Build_Pulse ; 
+stimulator.initVectors; 

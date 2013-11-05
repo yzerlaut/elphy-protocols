@@ -1,0 +1,563 @@
+{========================================================================
+------- Master file for the classical electrophysioly protocols ---------
+========================================================================}
+
+Const
+   ProtocolCount = 11 ;  
+
+var  { ========= COMMON VARIABLES ============ }
+   protocol_choice : integer; 
+   amplifier : string ; 
+   MainDialog	 : Tdialog ; 
+   dialog : Tdialog ;{ two dialogs for buttons and protocols}
+   comments : string ; { to store the comments }
+   stim : boolean ; 
+   ProtocolName:array[1..protocolCount] of string; ProtoNames:string;
+   SAVING : boolean ;
+   DB:Tdbrecord ;  {for metadata information, storing comments, ... }
+   PathOfTheDay, root_dir : string ;
+   Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; {variables to fetch the date and time }
+   gain1,gain2 : real; gain1_int,gain2_int,clamp_int:integer;cont_choice:boolean;  
+   t_channels_setting,t_stimulation,t_vc_test,t_ic_test,t_iv,t_perf : Tmacro ;
+   dll_load : string ;
+
+
+{ ============================================================================
+ ---- Protocol names and graphical settings ----------------------------------
+ ============================================================================= }
+ 
+ 
+procedure SetProtocolNames;
+var          
+  i:integer;
+begin
+  ProtocolName[1]:= 'choose...';
+  ProtocolName[2]:= 'Passive_Recording';
+  ProtocolName[3]:= 'Seal_Test';
+  ProtocolName[4]:= 'VC-Membrane_Test'; 
+  ProtocolName[5]:= 'IC-Membrane_Test';
+  ProtocolName[6]:= 'I-V_curve'; 
+  ProtocolName[7]:= 'perforing_monitor';
+  ProtocolName[8]:= 'Sinusoids Stim'; 
+  ProtocolName[9]:= 'Pulses Stim'; 
+  ProtocolName[10]:= 'Stochastic Stim'; 
+  ProtoNames:=ProtocolName[1];
+  for i:=2 to ProtocolCount do ProtoNames:=ProtoNames+'|'+ProtocolName[i];
+end;    
+
+procedure init_windows;
+var ii:integer;
+begin
+  deleteallpages('default');
+  for ii:=1 to ProtocolCount do 
+  begin
+  InsertPage(ii,ProtocolName[ii]);
+  DefineWindow(ii,0,0,PageWidth,Round(PageHeight/2.5));
+  DefineWindow(ii,0,Round(PageHeight/2.5),PageWidth,PageHeight);
+  DivideWindow(ii,2,1,2); DivideWindow(ii,3,4,1);
+  Page:=ii; color:=cl_gray;
+  end;
+end;
+
+
+{ ============================================================================
+ ---- File saving and Comments+Information storing ---------------------------
+ ============================================================================= }
+
+procedure FillDBinfo(var DB: TDBrecord); {procedure to write the metadata !}
+var ii,jj:integer; st:string;
+begin
+  ii:=TDBrecord('PG0.global').clamp_int;
+  DB.clear;                                              
+  DB.info_spec:='specific infos about the protocol :';  
+  for jj:=1 to TDBrecord('PG0.Exp_params').count do
+  begin  
+    st:= TDBrecord('PG0.Exp_params').Names[jj] ;
+    DB.AddField(st,jj+1);
+    DB.ImplicitValue[st]:=TDBrecord('PG0.Exp_params').ImplicitValue[st] ;
+  end;                                                                      
+  DB.info := 'general infos infos written at the beginning of the acquisition : '+CRLF;
+  DB.protocol:=ProtocolName[protocol_choice];
+  if ii=1 then DB.clamp := 'I-clamp' else DB.clamp := 'V-clamp' ;
+  DB.s0 := '' ;
+  for jj:=1 to TDBrecord('PG0.global').count do
+  begin  
+    st:= TDBrecord('PG0.global').Names[jj] ;
+    DB.AddField(st,jj+1);
+    DB.ImplicitValue[st]:=TDBrecord('PG0.global').ImplicitValue[st] ;
+  end;                                                                      
+
+  DB.Comment := comments ; {comments is a global variable }
+  DB.s1 := '';
+  DB.Day := Day ; DB.Month := Month ; DB.Year := Year ;
+  DB.Hour := Hour ; DB.Minute := Minute ; DB.SEcond := Second ;    
+end;
+
+
+{ ==============================================================================
+--------- Setting the Acquisition channels -------------------------------------
+================================================================================ }
+
+
+procedure Init_AcqChannels_DEMO; { setting the channels for the RTneuron-simulation mode}
+var 
+   gain1, gain2, epdur, f_acq :real;
+   Continu, stim:boolean;
+   Clamp_int, max_ep_num :integer;
+begin {-- we set all the variables of the acquisition class, then we create 
+      the NEURON variables and link it to the analogous variables
+       -- the NEURON files are loaded thanks to main dialog buttons}
+
+   {we load the informations from the global TDBrecord }
+   Continu:=TDBrecord('PG0.global').cont_choice;
+   Clamp_int:=TDBrecord('PG0.global').clamp_int;
+   stim:=TDBrecord('PG0.global').stim;
+   max_ep_num := TDBrecord('PG0.global').max_EP_num ;
+   f_acq := TDBrecord('PG0.global').f_acq ;
+   epdur := TDBrecord('PG0.global').episode_duration;
+
+   {we delete previous graphical display}
+   ClearObjects(TDBrecord('PG0.global').page_num,1);
+   ClearObjects(TDBrecord('PG0.global').page_num,2);
+
+   { see the documentation, for the details of the acquisition and RTneuron functions }
+   RTneuron.ResetParams;
+    
+   acquisition.Fcontinuous:=Continu; {boolean true ->continuous acquisition, False -> episode mode}
+   acquisition.PeriodPerChannel:=1./f_acq ; {in ms}
+
+    if stim then acquisition.Fstimulate := True
+    else acquisition.Fstimulate:=False;  { we stimulate or not }
+    
+    acquisition.MaxEpCount := max_ep_num ;
+    acquisition.EpDuration := epdur ;
+    
+    acquisition.TriggerMode:= TM_immediate;
+    acquisition.Channels[1].ChannelType:= TI_Neuron; { here we set that we read the acquisition from NEURON }
+    acquisition.Channels[2].ChannelType:= TI_Neuron;
+    acquisition.Channels[3].ChannelType:= TI_Neuron; { we also set up here the visualisation of the command }
+    acquisition.Channels[1].DownSamplingFactor:=1;
+    acquisition.Channels[2].DownSamplingFactor:=1;
+    acquisition.Channels[3].DownSamplingFactor:=1;
+    
+   
+    if Clamp_int=1 then { IF CURRENT-CLAMP }
+    begin { we link the analogous signal to the NEURON variables with the right gain }
+       acquisition.ChannelCount:=3; 
+       acquisition.Channels[1].NrnSymbolName:='cell.soma.v'; acquisition.Channels[1].unitY:='mV' ;
+       acquisition.Channels[2].NrnSymbolName:='stim.Ipico'; acquisition.Channels[2].unitY:='pA' ;
+       v1.cpx:=1 ; v2.cpx:=1 ; v1.cpy := 1 ; v2.cpy:= 2; {we set the coupling value -> to couple to future analysis}
+       addObject(TDBrecord('PG0.global').page_num,1,v1);
+       addObject(TDBrecord('PG0.global').page_num,2,v2);
+    end;                         
+                                                                                   
+    if Clamp_int=2 then { IF VOLTAGE CLAMP }
+    begin
+       acquisition.Channels[1].NrnSymbolName:='stim.Ipico'; acquisition.Channels[1].unitY:='pA' ;
+       acquisition.Channels[2].NrnSymbolName:='cell.soma.v'; acquisition.Channels[2].unitY:='mV' ;
+       acquisition.Channels[3].NrnSymbolName:='stim.Vamp'; acquisition.Channels[3].unitY:='mV';
+       v1.cpx:=1 ; v2.cpx:=1 ; v1.cpy := 1 ; v2.cpy:= 2; v3.cpx:= 1; v3.cpy:= 2; {we set the coupling value -> to couple to future analysis}
+       addObject(TDBrecord('PG0.global').page_num,1,v1);
+       addObject(TDBrecord('PG0.global').page_num,2,v2);
+       addObject(TDBrecord('PG0.global').page_num,3,v3);
+    end; { we will call this function each time we modify a gain }
+end;
+
+
+procedure Init_AcqChannels; { setting the channels for the multiclamp amplifier }
+var gain1,gain2:real;Continu:boolean;Clamp_int:integer;
+begin { we set all the variables of the acquisition class, then we create the NEURON variables and link it to the analogous variables}
+    { we get the global variables }
+    gain1:=TDBrecord('PG0.global').gain1;gain2:=TDBrecord('PG0.global').gain2;
+    Continu:=TDBrecord('PG0.global').cont_choice;Clamp_int:=TDBrecord('PG0.global').clamp_int;
+    { done }
+    ClearObjects(TDBrecord('PG0.global').page_num,1); ClearObjects(TDBrecord('PG0.global').page_num,2);
+    RTneuron.ResetParams;
+    acquisition.ChannelCount:=3; { see the documentation, for the details of the acquisition and RTneuron functions }
+    acquisition.Fcontinuous:=Continu; {true or false }
+    acquisition.PeriodPerChannel:=1./TDBrecord('PG0.global').f_acq; // in ms
+    acquisition.TriggerMode:= TM_immediate;
+    acquisition.Channels[1].ChannelType:= TI_Neuron; { here we set that we read the acquisition from NEURON }
+    acquisition.Channels[2].ChannelType:= TI_Neuron;
+    acquisition.Channels[1].DownSamplingFactor:=1;
+    acquisition.Channels[2].DownSamplingFactor:=1;
+    if Clamp_int=1 then { IF CURRENT-CLAMP }
+    begin { we link the analogous signal to the NEURON variables with the right gain }
+      RTneuron.AdcChan[0].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[0].NrnSymbolName:='Vm';    // primary     
+      RTneuron.AdcChan[1].setScale(0,32767,0,20000.0/gain2); RTneuron.AdcChan[1].NrnSymbolName:='Iinj'; // secondary 
+      acquisition.Channels[1].NrnSymbolName:='Vm'; acquisition.Channels[1].unitY:='mV' ;
+      acquisition.Channels[2].NrnSymbolName:='Iinj'; acquisition.Channels[2].unitY:='pA' ;
+    end;                                                                                                        
+    if Clamp_int=2 then { IF VOLTAGE CLAMP }
+    begin
+      RTneuron.AdcChan[0].setScale(0,32767,0,20000.0/gain1); RTneuron.AdcChan[0].NrnSymbolName:='Iinj';         
+      RTneuron.AdcChan[1].setScale(0,32767,0,1000.0/gain2); RTneuron.AdcChan[1].NrnSymbolName:='Vm';  
+      acquisition.Channels[1].NrnSymbolName:='Iinj'; acquisition.Channels[1].unitY:='pA' ;
+      acquisition.Channels[2].NrnSymbolName:='Vm'; acquisition.Channels[2].unitY:='mV' ;
+    end; { we will call this function each time we modify a gain }
+    v1.cpx:=1 ; v2.cpx:=1 ; v1.cpy := 1 ; v2.cpy:= 2; {we set the coupling value -> to couple to future analysis}
+    addObject(TDBrecord('PG0.global').page_num,1,v1);
+    addObject(TDBrecord('PG0.global').page_num,2,v2);
+end;
+
+
+{ ==============================================================================
+--------- Setting the Stimulation channels -------------------------------------
+================================================================================ }
+
+procedure Init_StimChannels_DEMO; { initializa the stimulator object, see doc}
+var Continu:boolean;Clamp_int:integer;
+begin { We link the Elphy stimulation to the NEURON variable, then the NEURON variable to the analogous command }
+
+   Continu:=TDBrecord('PG0.global').cont_choice;
+   Clamp_int:=TDBrecord('PG0.global').clamp_int;
+   stimulator.ChannelCount:=1;
+   stimulator.setByProg:=true; { mais on met le build ep plus loin }
+   stimulator.Channels[1].ChannelType:=TO_Neuron;
+  
+   if Continu=False then stimulator.BufferCount := 0; { to have a infinite number of buffers }
+  
+   if Clamp_int=1 then { IF CURRENT CLAMP }
+   begin
+      stimulator.Channels[1].NrnSymbolName:='stim.Ipico';
+   end;
+   if Clamp_int=2 then { IF VOLTAGE CLAMP }
+   begin
+      stimulator.Channels[1].NrnSymbolName:='stim.Vamp';
+   end;
+end;
+
+
+procedure Init_StimChannels; { crucial function as well }
+var Continu:boolean;Clamp_int:integer;
+begin { We link the Elphy stimulation to the NEURON variable, then the NEURON variable to the analogous command }
+  Continu:=TDBrecord('PG0.global').cont_choice;Clamp_int:=TDBrecord('PG0.global').clamp_int;
+  stimulator.ChannelCount:=1;
+  stimulator.setByProg:=true; { mais on met le build ep plus loin }
+  stimulator.Channels[1].ChannelType:=TO_Neuron;
+  acquisition.Channels[3].ChannelType:= TI_Neuron; { we also set up here the visualisation of the command }
+  acquisition.Channels[3].DownSamplingFactor:=1;
+  if COntinu=False then stimulator.BufferCount := 0; { to have a infinite number of buffers }
+  if Clamp_int=1 then { IF CURRENT CLAMP }
+  begin
+    RTneuron.DacChan[0].NrnSymbolName:='Ith'; RTneuron.DacChan[0].setScale(0,32767,0,4000.0); // command -> I clamp
+    stimulator.Channels[1].NrnSymbolName:='Ith';acquisition.Channels[3].NrnSymbolName:='Ith';
+    acquisition.Channels[3].unitY:='pA';
+  end;
+  if Clamp_int=2 then { IF VOLTAGE CLAMP }
+  begin
+    RTneuron.DacChan[0].NrnSymbolName:='Vth'; RTneuron.DacChan[0].setScale(0,32767,0,200.0); // command -> V clamp
+    stimulator.Channels[1].NrnSymbolName:='Vth';acquisition.Channels[3].NrnSymbolName:='Vth';
+    acquisition.Channels[3].unitY:='mV';
+  end;
+  v3.cpx:=1 ; v3.cpy:= 2; {we couple this channel to v2 }
+  addObject(TDBrecord('PG0.global').page_num,2,v3); {on ajoute aussi l'affichage de la stimulation sur le meme grap que la voie 2 }
+end;
+
+{ =========================================================================
+------------------- GAIN settings ----------------------------------------
+===========================================================================  }
+
+procedure SetGain1;
+var Gain1_int:integer;
+begin
+    gain1_int:=TDBrecord('PG0.global').Gain1_int;
+    case Gain1_int of
+    1: TDBrecord('PG0.global').Gain1 := 1.0; 2: TDBrecord('PG0.global').Gain1 := 2.0;
+    3: TDBrecord('PG0.global').Gain1 := 5.0; 4: TDBrecord('PG0.global').Gain1 := 10.0;
+    5: TDBrecord('PG0.global').Gain1 := 20.0; 6: TDBrecord('PG0.global').Gain1 := 50.0;
+    7: TDBrecord('PG0.global').Gain1 := 100.0; 8: TDBrecord('PG0.global').Gain1 := 200.0;
+    9: TDBrecord('PG0.global').Gain1 := 500.0; 10: TDBrecord('PG0.global').Gain1 := 1000.0;
+    11: TDBrecord('PG0.global').Gain1 := 2000.0;
+    end;
+end;   {SetGain1}
+
+procedure SetGain2;
+var Gain2_int:integer;
+begin
+    gain2_int:=TDBrecord('PG0.global').Gain2_int;
+    case Gain2_int of
+    1: TDBrecord('PG0.global').Gain2 := 1.0;   2: TDBrecord('PG0.global').Gain2 := 2.0; 
+    3: TDBrecord('PG0.global').Gain2 := 5.0;  4: TDBrecord('PG0.global').Gain2 := 10.0;
+    5: TDBrecord('PG0.global').Gain2 := 20.0;   6: TDBrecord('PG0.global').Gain2 := 50.0; 
+    7: TDBrecord('PG0.global').Gain2 := 100.0;
+    end;
+end;   {SetGain2}
+
+
+procedure InitializeChannels;
+var amplifier : string ;
+begin
+	 amplifier := TDBrecord('PG0.global').amplifier ;
+	 if amplifier='nrn_simulation' then
+	 begin
+	     Init_AcqChannels_DEMO;
+	     if acquisition.Fstimulate then Init_StimChannels_DEMO;
+	 end;
+	 if amplifier='multiclamp' then
+	 begin
+	    Init_AcqChannels;
+	    if acquisition.Fstimulate then Init_StimChannels;
+	 end;
+end;
+
+
+{ ==============================================================================
+--------- BUILDING THE STIMULATION TIME COURSES --------------------------------
+================================================================================ }
+
+var 
+   amp : real;   del  : real;   dur	 : real ; pulse_dialog : Tdialog ; {pulse params}
+   freq	: real ;  phase	: real;  Sin_dialog	 : Tdialog ; {sinewave params }
+   min	: real ;  max	: real;  Ramp_dialog	 : Tdialog ; {ramp params }
+   wn_mean : real ; wn_dur:real; wn_std : real ; wn_seed : integer ; wn_dialog : Tdialog ; {white noise params }
+
+procedure Init_StimParameters; 
+begin
+   amp:=50.0 ; freq:=10.0 ; del:=100.0 ; dur:=800.0;
+   phase:= 0.0 ; wn_seed := 1 ; wn_mean :=0 ; wn_std:=1 ; wn_dur:=10;
+   min:=0 ; max:=10 ;
+end;
+
+{ ------------ Pulse ----------------------}
+
+procedure Build_SinglePulse(seq:longint;var vec:Tvector);  {pulse procedure called at each buildep}
+begin { we fill of 0, except between the t0+delay and t0+delay+duration }
+  vec.fill(0); vec.fill1(amp,del+vec.Istart,del+dur+vec.Istart);
+end;
+
+procedure Pulse_dialogEvent(n:integer); 
+var amplifier :  string;
+begin {when we modify the dialog, we adjust the stimulation params}
+   pulse_dialog.updatevar;
+   case n of 
+   201 : begin
+	 {we write all the relevant global informations}
+         TDBrecord('PG0.global').cont_choice := False ; 
+         TDBrecord('PG0.global').episode_duration :=  2*del+dur ;
+         TDBrecord('PG0.global').max_EP_num :=0 ;
+         TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='pulse';
+         TDBrecord('PG0.Exp_Params').pulse_amplitude:=amp;
+         TDBrecord('PG0.Exp_params').start_at:=del;
+         TDBrecord('PG0.Exp_Params').pulse_duration:=dur;
+	 {then we initialize the stimulation}
+	 stimulator.Channels[1].BuildEp := Build_SinglePulse ; 
+	 stimulator.initVectors;
+         end;
+   end;
+end;
+
+{ ==============================================================================
+--------- BUILDING THE STIMULATION INTERFACE ------------------------------------
+================================================================================ }
+
+procedure Init_StimDialog;
+var pn:integer;
+begin
+   pn:=TDBrecord('PG0.global').page_num;
+   with pulse_dialog do
+   begin
+      create;
+      OnEvent:=Pulse_dialogEvent; 
+      setText(' ==<| Pulse Stimulation |> ');
+      setText('');
+      getRealA('Amplitude (pA or mV)',amp,10,3,200);
+      getRealA('Onset/Delay (ms)',del,10,3,200);
+      getRealA('Duration (ms)',dur,10,3,200);
+      getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
+   end;
+   AddDialog(pn,3,pulse_dialog);
+end;
+
+{ ==============================================================================
+--------- loading the NEURON files  --------------------------------------------
+================================================================================ }
+
+procedure load_nrn_files;   // load the NEURON model
+var clamp_int : integer ; full_path : string ;
+begin
+clamp_int := TDBrecord('PG0.global').clamp_int ;
+if clamp_int=1 then full_path := TDBrecord('PG0.global').loadnrnPath+'Iclamp_hh.hoc'
+else full_path := TDBrecord('PG0.global').loadnrnPath+'Vclamp_hh.hoc';
+RTneuron.execute('load_file("'+full_path+'")');
+end;
+
+
+{ ==============================================================================
+--------- LAUNCHING THE EXPERIMENT ----------------------------------------------
+================================================================================ }
+
+procedure launch_exp;
+var amplifier : string ;
+begin
+  amplifier := TDBrecord('PG0.global').amplifier ;
+  if amplifier='nrn_simulation' then acquisition.Fcontinuous:=True ; // NEURON doesn;t support well episodes
+
+  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
+  
+  acquisition.genericfilename := PathOfTheDay+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)
+  +  '_'+Protocolname[protocol_choice] ;
+  
+  FillDBinfo(DB); {even if we don't save, we will the TDBrecord object...}
+  if SAVING then acquisition.writeDBfileinfo(DB);
+  {if (protocol_choice<>4) and (protocol_choice<>5) then mt_cursor.free ;}
+  if SAVING then acquisition.startandsave else acquisition.start;
+end;
+ 
+          
+procedure MainDialog_update(n:integer); 
+var amplifier : string ;
+begin { Main dialog, fot the choice of the protocol, the start/stop and saving of the acquisition}     
+  if acquisition.IsRunning then acquisition.stop; 
+  MainDialog.updatevar;
+  TDBrecord('PG0.global').Gain1_int:=gain1_int;
+  TDBrecord('PG0.global').Gain2_int:=gain2_int;
+  clamp_int:=TDBrecord('PG0.global').clamp_int; 
+  
+  case n of
+    101: begin 
+              Page := protocol_choice ; TDBrecord('PG0.global').page_num := protocol_choice ;               
+              case protocol_choice of
+               1 : begin
+		                 TDBrecord('PG0.global').stim:=False; 
+		                 amplifier := TDBrecord('PG0.global').amplifier ;
+	                   if amplifier = 'nrn_simulation' then Init_AcqChannels_DEMO;
+	                   if amplifier = 'multiclamp' then Init_AcqChannels;
+		               end; 
+               2 : begin  
+		                 Init_StimParameters;
+		                 Init_StimDialog;      
+                   end;
+               //3 : begin TDBrecord('PG0.global').clamp_int:=2 ; seal_quality_monitor; Init_SealTest; end ;
+               //4 : TDBrecord('PG0.global').clamp_int:=2 ; Init_MembTest;
+               //5 : TDBrecord('PG0.global').clamp_int:=1 ; Init_ICMembTest;
+               //6 : TDBrecord('PG0.global').clamp_int:=2 ; begin init_IV_dialog ; Set_IVcurve; end ;
+               //7 : TDBrecord('PG0.global').clamp_int:=2 ; Init_PerforingMonitor;                                                                             
+              end;       
+         end;
+    102 : t_channels_setting.ExecuteCommand('Init_AcqChannels'); 
+    111 : begin t_channels_setting.ExecuteCommand('SetGain1');  t_channels_setting.ExecuteCommand('Init_AcqChannels'); end;
+    112 : begin t_channels_setting.ExecuteCommand('SetGain2');  t_channels_setting.ExecuteCommand('Init_AcqChannels'); end;
+    200 : launch_exp;
+    201 : acquisition.stop ;
+    301 : comments := '';
+    280 : load_nrn_files ;
+    281 : RTneuron.Execute(dll_load);
+    282 : RTneuron.Restart;
+  end;
+  gain1:=TDBrecord('PG0.global').Gain1;gain2:=TDBrecord('PG0.global').Gain2;    
+  clamp_int:=TDBrecord('PG0.global').clamp_int ;      
+  MainDialog.update;
+end;    
+
+
+procedure Init_Main_Dialog; {we call this procedure when we load the main program, (else values are 0 -> dangerous for division, e.g. freq) }
+var amplifier : string ;
+begin
+DB.create;
+dll_load := TDBrecord('PG0.global').loadnrnpath ; dll_load := 'nrn_load_dll("'+dll_load+'nrnmech.dll")';
+PathOfTheDay := TDBrecord('PG0.global').Data_Path ;
+//------------
+   with MainDialog do
+   begin
+   create;
+   OnEvent := MainDialog_update;
+   setText(' ================================= ');
+   setText(' Setup : '+TDBrecord('PG0.global').amplifier);
+
+   amplifier := TDBrecord('PG0.global').amplifier ;
+   
+   if amplifier='nrn_simulation' then 
+     begin 
+	     getCommandA(' restart NEURON ',0,282);
+	     getCommandA(' load NEURON mech ',0,281);
+	     getCommandA(' load NEURON model ',0,280); 
+     end;
+   setText(' ================================= ');
+   setText(' ---------------< Protocol Selection >----------------- ');
+   setText('');
+   getStringList('  PROTOCOL  ',ProtoNames,'1|2|3|4|5|6|7|8',protocol_choice,101);  { Onevent flag ->199}
+   setText(' ================================= ');
+   getStringList(' IC / VC  ','  Iclamp  |  Vclamp ','1|2',clamp_int,102);  { Onevent flag ->199}
+   setText('');
+   if amplifier='multiclamp' then 
+     begin 
+	setText(' ==<| GAIN  |>== ');
+	getStringListA('Primary Output  ','1 | 2 | 5 | 10 | 20 | 50 | 100 | 200 | 500 | 1000 | 2000',Gain1_int,111);
+	getStringListA('Secondary Output ','1 | 2 | 5 | 10 | 20 | 50 | 100',Gain2_int,112);
+	setText('');
+     end;
+   getBoolean(' saving ? ',SAVING);
+   getCommandA(' => Start ...           ',0,200);
+   getCommandA(' Stop the Acquisition ',0,201);
+   setText('');
+   getMemo(' Comments ',comments,15,4,1,300);
+   getCommandA(' reset comments ',0,301);
+   Caption:='Main Dialog';
+  end;
+Maindialog.show;
+end;
+
+
+{-------------------------------------------------------------------------------
+-------------------- initialisation from file ----------------------------------
+-------------------------------------------------------------------------------}
+
+
+var 
+    already_initiated : boolean ; // to know if we need to reinitialize the TDBrecord
+    global, Exp_params : TDBrecord ;
+
+procedure global_init;
+var ii:integer; PathOfTheDay : string ;
+begin
+
+RTneuron.resetParams;
+
+ii:=1;
+global.create;
+global.amplifier:='nrn_simulation'; // choice of the amplifier
+global.data_Path := 'Z:/home/yann/experiments/DATA/' ;
+global.loadnrnPath := 'Z:/home/yann/experiments/myelphy/nrn_files/' ;
+global.root_path :='Z:/home/yann/experiments/myelphy/' ;
+global.sep:='/_';  // separator for loading files  (has to change between linux and mswin)
+global.f_acq:=10; // in kHz
+global.gain1:=1; // gain of the first channel
+global.int_gain1:=ii; // integer coding for this gain
+global.gain2:=1; // gain of the second channel
+global.int_gain2:=ii; //
+global.clamp_int := ii; // integer that code for 1:IC, 2: VC
+global.cont_choice := False; // if True -> continus mode, else episode
+global.stim := False;  // if True acquisition.Fstimulate := True
+global.main_protocol:='';
+global.protocol:='';
+global.page_num:=ii;
+//global.PathOfTheDay := PathOfTheDay ;
+global.saving := False ;
+global.Rs := 0;
+global.Rm := 0;
+global.Cm :=0;
+global.episode_duration := 0 ;
+global.max_EP_num :=0 ;
+
+
+Exp_Params.create;
+already_initiated :=True;
+InsertPage(1,'fake');DeleteAllPages('fake');InsertPage(1,'default');DeleteAllPages('default');
+Color := cl_gray ;
+end;
+
+program Launch_from_file
+global_init ;
+SetProtocolNames;
+init_windows;
+Init_Main_Dialog;
+
+
+program Launch_from_main
+SetProtocolNames;
+init_windows;
+Init_Main_Dialog;
+

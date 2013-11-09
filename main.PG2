@@ -9,35 +9,125 @@
 { -----------------------------------------------  2013-[...] -------- }
 
 
-{ ==================================================================== }
-{ ------------------ LOCATION CHOICE & AMPLIFIER TYPE ------------ }
-{ choose within the following options : }
-{$DEFINE Home}  { 'Home' or 'PatchSetup'}
-{$DEFINE SIMULATION}  { 'MultiClamp', 'NPI' or  'SIMULATION'}
-{ ==================================================================== }
+var global_dialog : Tdialog ;
+    location_int, amplifier_int, experiment_int : integer ;// ==> amplifier, location and experiment flag
+    global : TDBrecord ; // ==> Stores the global variables !! 
+    Exp_Params : TDBrecord ; // ==> Stores the parameters specific to each experience !!
+    {variables to fetch the date and time }
+    Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; 
+    pathOfTheDay, root_path : string ;
+    main_protocol : string ; 
+    already_initiated : boolean ;
+
+{Tmacro object, see doc, specifically loads only one file}
+var 
+t_classic_electrophy, field_effects, t_transfer_functions : Tmacro ;
 
 
-const
-{ ==================================================================== }
-{$IFDEF PatchSetup }
-location  = '"T. Bal" Patch Setup'  ;
-data_Path = 'D:\yann\DATA\' ;
-loadnrnPath = 'D:/yann/myelphy/nrn_files/' ;
-root_path = 'D:\yann\myelphy\' ;
-sep='\_';
-{$ENDIF}
-{$IFDEF Home}
-location = 'Personal computer' ;
-data_Path='Z:\home\yann\experiments\DATA\';
-loadnrnPath='Z:/home/yann/experiments/myelphy/nrn_files/';
-root_path= 'Z:/home/yann/experiments/myelphy/';
-sep='/_'; {N.B. linux computers have different separators, see above paths}
-{$ENDIF}
-const
-{$IFDEF Multiclamp} amplifier='multiclamp'; {$ENDIF } 
-{$IFDEF NPI} amplifier='npi'; {$ENDIF } 
-{$IFDEF SIMULATION}amplifier= 'nrn_simulation';{$ENDIF } 
-{ ==================================================================== }
+procedure classic_electrophy;
+begin
+global.experiment_type:='classic_electrophy';
+t_classic_electrophy.create(root_path+'classic_electrophy.PG2');
+t_classic_electrophy.ExecuteCommand('Launch_from_Tmacro');
+end;
+
+procedure Efield_effects;
+begin
+global.experiment_type:='field_effects';
+field_effects.create(root_path+'field_effects.PG2');
+field_effects.ExecuteCommand('Launch_from_Tmacro');
+end;
+ 
+              
+procedure transfer_functions;
+begin
+global.neuron_type:='patch_neuron'; // we add the type of neuron : patch/HH
+global.clamp_int:=1;// IC of course !
+global.main_protocol:='transfer_functions';
+//t_transfer_functions.create(root_path+'transfer_functions'+sep+'init_tf.PG2');
+//t_transfer_functions.ExecuteCommand('Launch_from_Tmacro');
+end;
+
+
+procedure global_event(n:integer);
+begin
+    global_dialog.updatevar;
+     case n of
+       101 : begin
+             if location_int=2 then   // MSwin + Bal's Setup
+                 begin
+                    global.location  := '"T. Bal" Patch Setup'  ;
+                    global.data_Path := 'D:\yann\DATA\' ;
+                    global.loadnrnPath := 'D:/yann/myelphy/nrn_files/' ;
+                    root_path := 'D:\yann\myelphy\' ;
+                    global.root_path:= root_path ;
+                    global.sep:='\_';
+                 end;
+             if location_int=1 then   // Linux + Laptop
+                 begin
+                    global.location := 'Personal computer' ;
+                    global.data_Path:='Z:\home\yann\experiments\DATA\';
+                    global.loadnrnPath:='Z:/home/yann/experiments/myelphy/nrn_files/';
+                    root_path:= 'Z:/home/yann/experiments/myelphy/';
+                    global.root_path:=root_path ;
+                    global.sep:='/_'; {N.B. linux computers have different separators, see above paths}
+                 end;
+                 PathOfTheDay := global.data_Path+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'/' ;
+                 global.PathOfTheDay := PathOfTheDay ;
+      
+             end;
+       102 : case amplifier_int of
+             1 : global.amplifier := 'nrn_simulation' ;
+             2 : global.amplifier := 'multiclamp' ;
+             end;
+       103 : case experiment_int of
+              1 : classic_electrophy;
+              2 : field_effects ;
+              3 : transfer_functions ;
+             end;
+    end;   
+    global_dialog.update;
+end;
+
+procedure init_global_dialog;
+begin
+    location_int :=0;
+    amplifier_int := 0 ;
+    experiment_int := 0;
+    global.create;
+    // we initialize some recording quantities
+    global.f_acq:=10; // in kHz
+    global.gain1:=1; // gain of the first channel
+    global.int_gain1:=1; // integer coding for this gain
+    global.gain2:=1; // gain of the second channel
+    global.int_gain2:=1; //
+    global.clamp_int := 1; // integer that code for 1:IC, 2: VC
+    global.cont_choice := True; // if True -> continus mode, else episode
+    global.stim := False;  // if True acquisition.Fstimulate := True
+    
+    Exp_Params.create;
+    already_initiated :=True;
+    InsertPage(1,'fake');DeleteAllPages('fake');InsertPage(1,'default');DeleteAllPages('default');
+    Color := cl_gray ;
+
+  {----- Path for file saving ------- }
+  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
+  
+  with global_dialog do
+  begin
+  create;
+  OnEvent := global_event ;
+  getStringList(' Setup  : ',' | Laptop | Bal Setup ','0|1|2',location_int,101);  { Onevent flag ->199}
+  setText(' ================================= ');
+  getStringList(' Amplifier : ',' | RTneuron-Simulation | MultiClamp | NPI | AxoClamp ','0|1|2|3|4',amplifier_int,102);  { Onevent flag ->199}
+  setText(' ================================= ');
+  setText(' today is :'+Istr(Day)+'/'+Istr(Month)+'/'+Istr(Year)+' ');
+  setText(' (important for data saving) ');
+  setText(' ================================= ');
+  getStringList(' Experiment Type : ',' |Classic Electrophy| Field Effect  | Transfer Function ','0|1|2|3',experiment_int,103);  { Onevent flag ->199}
+  setText(' ================================= ');
+  end;
+end;
 
 
 
@@ -54,96 +144,12 @@ e.g. the membrane resistance -> experimental value
 ===============================================================================}
 
 
-var 
-    global : TDBrecord ; // ==> Stores the global variables !! 
-    Exp_Params : TDBrecord ; // ==> Stores the parameters specific to each experience !!
-    {variables to fetch the date and time }
-    Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; 
-    pathOfTheDay : string ;
-    main_protocol : string ; 
 
 
-var already_initiated : boolean ; // to know if we need to reinitialize the TDBrecord
-procedure global_init;
-var ii:integer;
-begin
-DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
-MessageBox(' Does this date and time are ok ? '+CRLF+
-'today is :'+Istr(Day)+'/'+Istr(Month)+'/'+Istr(Year)+' at '+Istr(Hour)+':'+Istr(Minute)
-+CRLF+CRLF+' Are you on : '+location+' ? using : '+amplifier+' ?'
-+CRLF+CRLF+' if not quit and adjust those parameters'
-+CRLF+'(this is important for paths and file savings)');
-PathOfTheDay := data_Path+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'/' ;
-if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);
-
-RTneuron.resetParams;
-
-ii:=1;
-global.create;
-global.amplifier:=amplifier; // choice of the amplifier
-global.data_Path := PathOfTheDay ;
-global.loadnrnPath := loadnrnPath ;
-global.root_path :=root_path ;
-global.sep:=sep;  // separator for loading files  (has to change between linux and mswin)
-global.f_acq:=10; // in kHz
-global.gain1:=1; // gain of the first channel
-global.int_gain1:=ii; // integer coding for this gain
-global.gain2:=1; // gain of the second channel
-global.int_gain2:=ii; //
-global.clamp_int := ii; // integer that code for 1:IC, 2: VC
-global.cont_choice := True; // if True -> continus mode, else episode
-global.stim := False;  // if True acquisition.Fstimulate := True
-global.main_protocol:='';
-global.protocol:='';
-global.page_num:=ii;
-global.PathOfTheDay := PathOfTheDay ;
-global.saving := False ;
-global.Rs := 0;
-global.Rm := 0;
-global.Cm :=0;
-global.episode_duration := 0 ;
-global.max_EP_num :=0 ;
-
-
-Exp_Params.create;
-already_initiated :=True;
-InsertPage(1,'fake');DeleteAllPages('fake');InsertPage(1,'default');DeleteAllPages('default');
-Color := cl_gray ;
-end;
-
-{Tmacro object, see doc, specifically loads only one file}
-var 
-t_classic_electrophy : Tmacro ; 
-t_transfer_functions : Tmacro ;
-
-
-program classic_electrophy
-global_init;
-t_classic_electrophy.create(root_path+'classic_electrophy'+sep+'init_ce.PG2');
-t_classic_electrophy.ExecuteCommand('Launch');
-
-               
-program transfer_functions
-if already_initiated=False then global_init;
-global.neuron_type:='patch_neuron'; // we add the type of neuron : patch/HH
-global.clamp_int:=1;// IC of course !
-global.main_protocol:='transfer_functions';
-t_transfer_functions.create(root_path+'transfer_functions'+sep+'init_tf.PG2');
-t_transfer_functions.ExecuteCommand('Launch');
-
-                                                            
-InitProcess0  
-main_protocol:=global.main_protocol;
-if main_protocol='transfer_functions' then t_transfer_functions.ExecuteCommand('t_initprocess0');   
-   
-InitProcess
-if main_protocol='transfer_functions' then t_transfer_functions.ExecuteCommand('t_initprocess');
-
-ProcessCont
-if main_protocol='transfer_functions' then t_transfer_functions.ExecuteCommand('t_processcont'); 
-
-EndProcess
-if main_protocol='transfer_functions' then t_transfer_functions.ExecuteCommand('t_endprocess');      
+    
+program Experiments
+init_global_dialog; 
+global_dialog.show;                                                     
 
 
 
@@ -165,10 +171,8 @@ begin
      addObject(1,id,v[id]);
    end;
 end;
+}
 
 program analysis
 insertpage(1,'default');
 DeleteAllPages('default');
-default_channels;
-}
-

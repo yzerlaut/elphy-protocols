@@ -1,4 +1,4 @@
-{$EDIT Main}
+{$EDIT CE_start}
 {========================================================================
 ------- Master file for the classical electrophysioly protocols ---------
 ========================================================================}
@@ -70,6 +70,11 @@ begin
   //DB.clone(TDBrecord('PG0.global'));        
   DB.s:=''+CRLF;                                     
   DB.info_spec:='+ specific infos about the protocol :';  
+  for jj:=1 to TDBrecord('PG0.global').count do
+  begin  
+    st:= TDBrecord('PG0.global').Names[jj] ;
+    DB.ImplicitValue[st]:=TDBrecord('PG0.global').ImplicitValue[st] ;
+  end;                                                                      
   for jj:=1 to TDBrecord('PG0.Exp_params').count do
   begin  
     st:= TDBrecord('PG0.Exp_params').Names[jj] ;
@@ -77,13 +82,7 @@ begin
     DB.ImplicitValue[st]:=TDBrecord('PG0.Exp_params').ImplicitValue[st] ;
   end;                                                                      
   DB.protocol:=ProtocolName[protocol_choice];
-  {for jj:=1 to TDBrecord('PG0.global').count do
-  begin  
-    st:= TDBrecord('PG0.global').Names[jj] ;
-    DB.AddField(st,jj+1);
-    DB.ImplicitValue[st]:=TDBrecord('PG0.global').ImplicitValue[st] ;
-  end;  }                                                                    
-  DB.Comment := comments ; {comments is a global variable }
+  DB.Comments := comments ; {comments is a global variable }
   DB.Day := Day ; DB.Month := Month ; DB.Year := Year ;
   DB.Hour := Hour ; DB.Minute := Minute ; DB.SEcond := Second ;    
 end;
@@ -129,10 +128,10 @@ begin {-- we set all the variables of the acquisition class, then we create
     if stim then acquisition.Fstimulate := True
     else acquisition.Fstimulate:=False;  { we stimulate or not }
     
+    acquisition.TriggerMode:= TM_internal;
     acquisition.MaxEpCount := max_ep_num ;
-    if not acquisition.Fcontinuous then acquisition.EpDuration := epdur;
+    if not acquisition.Fcontinuous then begin acquisition.EpDuration := epdur;  acquisition.ISI := acquisitionISI ; end;
     
-    acquisition.TriggerMode:= TM_immediate;
     acquisition.Channels[1].ChannelType:= TI_Neuron; { here we set that we read the acquisition from NEURON }
     acquisition.Channels[2].ChannelType:= TI_Neuron;
     acquisition.Channels[3].ChannelType:= TI_Neuron; { we also set up here the visualisation of the command }
@@ -201,7 +200,7 @@ begin {-- we set all the variables of the acquisition class, then we create
     acquisition.MaxEpCount := max_ep_num ;
     acquisition.EpDuration := epdur ;
     
-    acquisition.TriggerMode:= TM_immediate;
+    acquisition.TriggerMode:= TM_internal;
     acquisition.Channels[1].ChannelType:= TI_Neuron; { here we set that we read the acquisition from NEURON }
     acquisition.Channels[2].ChannelType:= TI_Neuron;
     acquisition.Channels[1].DownSamplingFactor:=1;
@@ -343,7 +342,21 @@ begin
 Rtneuron.DacChan[0].HoldingValue:=0;
 Rtneuron.DacChan[0].UseHoldingValue:=True;    
 Rtneuron.DacChan[1].HoldingValue:=0;
-Rtneuron.DacChan[1].UseHoldingValue:=True;    
+Rtneuron.DacChan[1].UseHoldingValue:=True;  
+with stimulator do
+  begin
+    stimulator.setValue(0,0,0,0);   
+    stimulator.setValue(0,0,1,0);   
+    stimulator.setValue(0,1,0,0);  
+end;  
+end;
+
+procedure passive_recording_init;
+begin
+TDBrecord('PG0.global').cont_choice:=True;
+TDBrecord('PG0.global').stim:=False;
+InitializeChannels;
+acquisition.InstallProcess(nil, nil, nil, set_dac_to_zero);
 end;
 {$EDIT seal_test}
 { ==============================================================================
@@ -1343,7 +1356,7 @@ end;
 ================================================================================ }
 
 var 
-   del_fr, amp1_fr, ramp1_fr, dur1_fr, amp2_fr, ramp2_fr, dur2_fr, amp3_fr, ramp3_fr, dur3_fr, amp4_fr, ramp4_fr, dur4_fr : real; 
+   del_fr, amp1_fr, ramp1_fr, dur1_fr, amp2_fr, ramp2_fr, dur2_fr, amp3_fr, ramp3_fr, dur3_fr, amp4_fr, ramp4_fr, dur4_fr, isi_fr : real; 
    fancyramp_dialog1, fancyramp_dialog2, fancyramp_dialog3, fancyramp_dialog4 :Tdialog;
 procedure Build_FancyRamp(seq:longint;var vec:Tvector);
 var ii : longint ; tt : real ;
@@ -1370,16 +1383,31 @@ begin {when we modify the dialog, we adjust the stimulation params}
          TDBrecord('PG0.global').cont_choice := False ; 
          TDBrecord('PG0.global').episode_duration := 2*del_fr+dur1_fr+dur2_fr+dur3_fr+dur4_fr;
          TDBrecord('PG0.global').max_EP_num :=0 ;
+         TDBrecord('PG0.global').acquisitionISI := isi_fr ;
          TDBrecord('PG0.global').stim := True ;
          TDBrecord('PG0.Exp_Params').clear;
-         TDBrecord('PG0.Exp_Params').exp_type:='fancy ramp';
+         TDBrecord('PG0.Exp_Params').exp_type:='fancy_ramp';
+         TDBrecord('PG0.Exp_Params').exp_type:='triple_pulse';
+         TDBrecord('PG0.Exp_Params').pulse_amplitude1:=amp1_fr;
+         TDBrecord('PG0.Exp_Params').pulse_amplitude2:=amp2_fr;
+         TDBrecord('PG0.Exp_Params').pulse_amplitude3:=amp3_fr;
+         TDBrecord('PG0.Exp_Params').pulse_ramp1:=ramp1_fr;
+         TDBrecord('PG0.Exp_Params').pulse_ramp2:=ramp2_fr;
+         TDBrecord('PG0.Exp_Params').pulse_ramp3:=ramp3_fr;
+         TDBrecord('PG0.Exp_params').start_at:=del_fr;
+         TDBrecord('PG0.Exp_Params').pulse_duration1:=dur1_fr;
+         TDBrecord('PG0.Exp_Params').pulse_duration2:=dur2_fr;
+         TDBrecord('PG0.Exp_Params').pulse_duration3:=dur3_fr; 
         {then we initialize the stimulation}
          InitializeChannels; // we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_FancyRamp ; 
          stimulator.initVectors;
          acquisition.InstallProcess(nil, nil, nil, set_dac_to_zero);
+         AddDialog(protocol_choice, 3, fancyramp_dialog1);
          end;
    end;
+   fancyramp_dialog1.update; fancyramp_dialog2.update;
+   fancyramp_dialog3.update; fancyramp_dialog4.update;
 end;
 
 
@@ -1388,6 +1416,7 @@ begin
    del_fr := 100 ; dur1_fr := 200 ; dur2_fr := 200 ; dur3_fr := 200 ; dur4_fr := 200;
    amp1_fr := 200 ; amp2_fr := -100 ; amp3_fr := -200 ; amp4_fr := 100;
    ramp1_fr := -100 ; ramp2_fr := 200 ; ramp3_fr := 300 ; ramp4_fr := 200;
+   isi_fr := 200 ; 
   
    with fancyramp_dialog1 do
    begin
@@ -1438,6 +1467,7 @@ begin
       getRealA('Ramp Raise (pA or mV)',ramp4_fr,10,3,200);
       getRealA('Ramp Duration (ms)',dur4_fr,10,3,200);
       setText('');
+      getRealA('ISI (ms)',isi_fr,10,3,200);
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
       OnEvent:=FancyRamp_Init; 
    end;
@@ -1503,11 +1533,7 @@ end;
 procedure launch_exp;
 var amplifier: string ; init : boolean ;
 begin
-
-  {if ProtocolName[protocol_choice]<>'VC-Membrane_Test' then mt_cursor.free ;
-  if ProtocolName[protocol_choice]<>'perforing_monitor' then mt_cursor.free ;
-  if ProtocolName[protocol_choice]<>'IC-Membrane_Test' then icmt_cursor.free ; }
-  
+ 
   amplifier := TDBrecord('PG0.global').amplifier ;
 
   if amplifier='nrn_simulation' then acquisition.Fcontinuous:=True ; // NEURON doesn;t support well episodes
@@ -1518,7 +1544,7 @@ begin
    +  '_'+Protocolname[protocol_choice] ;
   
   FillDBinfo(DB); {even if we don't save, we will the TDBrecord object...}
-  if SAVING then acquisition.writeDBfileinfo(DB);
+  //if SAVING then acquisition.writeDBfileinfo(DB);
   {if (protocol_choice<>4) and (protocol_choice<>5) then mt_cursor.free ;}
   if SAVING then acquisition.startandsave else acquisition.start;
 end;
@@ -1553,9 +1579,12 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
   
   case n of
     101: begin 
-              Page := protocol_choice ;               
+              Page := protocol_choice ;     
+              if (protocol_choice<>3) or (protocol_choice<>4) then mt_cursor.free ;
+              if protocol_choice<>5 then icmt_cursor.free ; // we delete the cursors 
+          
               case protocol_choice of
-                       1 : begin TDBrecord('PG0.global').stim:=False;InitializeChannels; end;
+                       1 : passive_recording_init ;
                        2 : SealTest_Init;
                        3 : VCmembTest_Init;
                        4 : PerforingMonitor_Init;
@@ -1563,6 +1592,7 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
                        6 : IVcurve_Init;
                        7 : Init_SinDialog;
                        8 : Init_Pulses;
+                       // 9 : 
                        10 : Init_FancyRamp;
                        
               end;
@@ -1682,8 +1712,6 @@ init_windows;
 Init_Main_Dialog;
 
 program set_to_zero
-RTneuron.ResetParams;
-acquisition.Fstimulate:=False;
 Rtneuron.DacChan[0].HoldingValue:=0;
 Rtneuron.DacChan[0].UseHoldingValue:=True;    
 Rtneuron.DacChan[1].HoldingValue:=0;

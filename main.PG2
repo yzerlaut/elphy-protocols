@@ -59,7 +59,7 @@ begin
        100 : begin
              if location_int=2 then   // MSwin + Bal's Setup
                  begin
-                    global.location  := '"T. Bal" Patch Setup'  ;
+                    global.location  := 'Patch Setup'  ;
                     global.data_Path := 'D:\yann\DATA\' ;
                     global.loadnrnPath := 'D:/yann/myelphy/nrn_files/' ;
                     root_path := 'D:\yann\myelphy\' ;
@@ -93,23 +93,23 @@ end;
 
 procedure init_global_dialog;
 begin
-    location_int :=1;
-    amplifier_int := 1 ;
+    location_int :=2;
+    amplifier_int := 2 ;
     experiment_int := 1;
     global.create;
     // we initialize some recording quantities
-    global.f_acq:=10.; // in kHz
-    global.gain1:=1.; // gain of the first channel
-    global.int_gain1:=1.; // integer coding for this gain
-    global.gain2:=1.; // gain of the second channel
-    global.int_gain2:=1.; //
-    global.clamp_int := 1.; // integer that code for 1:IC, 2: VC
+    global.f_acq:=10; // in kHz
+    global.gain1:=1; // gain of the first channel
+    global.int_gain1:=1; // integer coding for this gain
+    global.gain2:=1; // gain of the second channel
+    global.int_gain2:=1; //
+    global.clamp_int := 1; // integer that code for 1:IC, 2: VC
     global.cont_choice := True; // if True -> continus mode, else episode
     global.stim := False;  // if True acquisition.Fstimulate := True
-    global.max_EP_num := 0. ;
-    global.f_acq := 10. ;  // in kHz
-    global.episode_duration := 2000. ;
-    global.acquisitionISI := 1. ;  
+    global.max_EP_num := 0 ;
+    global.f_acq := 10 ;  // in kHz
+    global.episode_duration := 2000 ;
+    global.acquisitionISI := 1;  
     
     Exp_Params.create;
     already_initiated :=True;

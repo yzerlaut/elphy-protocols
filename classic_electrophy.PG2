@@ -78,15 +78,24 @@ begin
   for jj:=1 to TDBrecord('PG0.Exp_params').count do
   begin  
     st:= TDBrecord('PG0.Exp_params').Names[jj] ;
-    DB.AddField(st,jj+1);
+    //DB.AddField(st,TDBrecord('PG0.global').count+jj+1);
     DB.ImplicitValue[st]:=TDBrecord('PG0.Exp_params').ImplicitValue[st] ;
   end;                                                                      
   DB.protocol:=ProtocolName[protocol_choice];
   DB.Comments := comments ; {comments is a global variable }
-  DB.Day := Day ; DB.Month := Month ; DB.Year := Year ;
-  DB.Hour := Hour ; DB.Minute := Minute ; DB.SEcond := Second ;    
 end;
 
+procedure my_initprocess0;
+var Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; PathOfTheDay, sep : string ; {variables to fetch the date and time }
+begin
+  PathOfTheDay := TDBrecord('PG0.global').PathOfTheDay ;
+  sep := TDBrecord('PG0.global').sep ;
+  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
+  acquisition.genericfilename := PathOfTheDay+sep+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)
+  +  '_'+Protocolname[protocol_choice] ;
+  FillDBinfo(DB); 
+  if acquisition.saving then acquisition.writeDBfileinfo(DB);
+end;
 
 {$EDIT channels_settings} 
 { Acquisition + Stimulation + Gain settings }
@@ -348,7 +357,7 @@ with stimulator do
     stimulator.setValue(0,0,0,0);   
     stimulator.setValue(0,0,1,0);   
     stimulator.setValue(0,1,0,0);  
-end;  
+end; 
 end;
 
 procedure passive_recording_init;
@@ -356,7 +365,7 @@ begin
 TDBrecord('PG0.global').cont_choice:=True;
 TDBrecord('PG0.global').stim:=False;
 InitializeChannels;
-acquisition.InstallProcess(nil, nil, nil, set_dac_to_zero);
+acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
 end;
 {$EDIT seal_test}
 { ==============================================================================
@@ -419,7 +428,7 @@ begin
          InitializeChannels; // we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_SealPulse ; 
          stimulator.initVectors;
-         acquisition.InstallProcess(nil, nil, seal_process, set_dac_to_zero);
+         acquisition.InstallProcess(my_initprocess0, nil, seal_process, set_dac_to_zero);
 end;
 
 procedure SealTest_Event(n:integer);
@@ -639,7 +648,7 @@ begin
          InitializeChannels; // we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_VCMTstim ; 
          stimulator.initVectors;
-         acquisition.InstallProcess(nil, mt_initprocess, mt_process, mt_endprocess);
+         acquisition.InstallProcess(my_initprocess0, mt_initprocess, mt_process, mt_endprocess);
 end;
          
 
@@ -649,6 +658,7 @@ begin
    mt_dialog.updatevar;
    case n of 
    999 : prepare_mt ; 
+   998 : rsCm(VCMT_moy,rm,rs,cm,rs2,True);
    end;
 end;
 
@@ -656,7 +666,7 @@ end;
 procedure VCMembTest_Init; {executed only when ze choose the protocol }
 begin
    VCMT_amp:=-50; VCMT_t1:=20; VCMT_t2:=40; VCMT_t3:=60; VCMT_t4:=80;  // values charlotte
-   VCMT_interStim := 200 ;
+   VCMT_interStim := 50 ;
    TDBrecord('PG0.global').clamp_int := 2 ;
    {then we display the channels}
    addObject(protocol_choice,1,v1);  addObject(protocol_choice,2,v2);   addObject(protocol_choice,2,v3);
@@ -804,7 +814,7 @@ begin
          InitializeChannels; // we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_ICMTstim ; 
          stimulator.initVectors;
-         acquisition.InstallProcess(nil, mtic_initprocess, mtic_process, mtic_endprocess);
+         acquisition.InstallProcess(my_initprocess0, mtic_initprocess, mtic_process, mtic_endprocess);
 end;
 
          
@@ -903,7 +913,7 @@ begin
          InitializeChannels; // we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_VCMTstim ; 
          stimulator.initVectors;
-         acquisition.InstallProcess(nil, mt_initprocess, pm_process, set_dac_to_zero);
+         acquisition.InstallProcess(my_initprocess0, mt_initprocess, pm_process, set_dac_to_zero);
 end;
 
 
@@ -1008,7 +1018,7 @@ begin
          InitializeChannels; // we can initialize the channels
          stimulator.Channels[1].BuildEp := ProcessIV ; 
          stimulator.initVectors;
-         acquisition.InstallProcess(nil, iv_initprocess, ivcurve_process, set_dac_to_zero);
+         acquisition.InstallProcess(my_initprocess0, iv_initprocess, ivcurve_process, set_dac_to_zero);
 end;
          
 procedure IVcurve_Event(n:integer);
@@ -1078,7 +1088,7 @@ begin
          InitializeChannels; // we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_Sin ; 
          stimulator.initVectors;
-         acquisition.InstallProcess(nil, nil, nil, set_dac_to_zero);
+         acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
 end;
          
          
@@ -1164,7 +1174,7 @@ begin {when we modify the dialog, we adjust the stimulation params}
          InitializeChannels; // finally, we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_SinglePulse ; 
          stimulator.initVectors;
-         acquisition.InstallProcess(nil, nil, nil, set_dac_to_zero);
+         acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
          end;
    end;
 end;
@@ -1200,7 +1210,7 @@ begin {when we modify the dialog, we adjust the stimulation params}
          InitializeChannels; // finally, we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_DoublePulse ; 
          stimulator.initVectors;
-         acquisition.InstallProcess(nil, nil, nil, set_dac_to_zero);
+         acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
          end;
    end;
 end;
@@ -1243,7 +1253,7 @@ begin {when we modify the dialog, we adjust the stimulation params}
          InitializeChannels; // finally, we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_TriplePulse ; 
          stimulator.initVectors;
-         acquisition.InstallProcess(nil, nil, nil, set_dac_to_zero);
+         acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
          end;
    end;
 end;
@@ -1281,7 +1291,7 @@ begin {when we modify the dialog, we adjust the stimulation params}
          InitializeChannels; // finally, we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_PulseTrain ; 
          stimulator.initVectors;
-         acquisition.InstallProcess(nil, nil, nil, set_dac_to_zero);
+         acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
          end;
    end;
 end;
@@ -1387,7 +1397,6 @@ begin {when we modify the dialog, we adjust the stimulation params}
          TDBrecord('PG0.global').stim := True ;
          TDBrecord('PG0.Exp_Params').clear;
          TDBrecord('PG0.Exp_Params').exp_type:='fancy_ramp';
-         TDBrecord('PG0.Exp_Params').exp_type:='triple_pulse';
          TDBrecord('PG0.Exp_Params').pulse_amplitude1:=amp1_fr;
          TDBrecord('PG0.Exp_Params').pulse_amplitude2:=amp2_fr;
          TDBrecord('PG0.Exp_Params').pulse_amplitude3:=amp3_fr;
@@ -1402,7 +1411,7 @@ begin {when we modify the dialog, we adjust the stimulation params}
          InitializeChannels; // we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_FancyRamp ; 
          stimulator.initVectors;
-         acquisition.InstallProcess(nil, nil, nil, set_dac_to_zero);
+         acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
          AddDialog(protocol_choice, 3, fancyramp_dialog1);
          end;
    end;
@@ -1535,17 +1544,8 @@ var amplifier: string ; init : boolean ;
 begin
  
   amplifier := TDBrecord('PG0.global').amplifier ;
-
   if amplifier='nrn_simulation' then acquisition.Fcontinuous:=True ; // NEURON doesn;t support well episodes
 
-  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
-  
-  acquisition.genericfilename := PathOfTheDay+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)
-   +  '_'+Protocolname[protocol_choice] ;
-  
-  FillDBinfo(DB); {even if we don't save, we will the TDBrecord object...}
-  //if SAVING then acquisition.writeDBfileinfo(DB);
-  {if (protocol_choice<>4) and (protocol_choice<>5) then mt_cursor.free ;}
   if SAVING then acquisition.startandsave else acquisition.start;
 end;
  
@@ -1676,9 +1676,12 @@ RTneuron.resetParams;
 
 global.create;
 global.amplifier:='multiclamp'; // choice of the amplifier
-global.PathOfTheDay := 'D:\yann\DATA\' ; //'Z:/media/home/yann/experiments/DATA/' ;
+DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
+global.sep:='\_';  // separator for loading files  (has to change between linux and mswin)
+PathOfTheDay := 'D:\yann\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year) ; //'Z:/media/home/yann/experiments/DATA/' ;
+if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);
+global.PathOfTheDay := PathOfTheDay ;
 global.loadnrnPath := 'D:/yann/myelphy/nrn_files/' ;
-global.sep:='/_';  // separator for loading files  (has to change between linux and mswin)
 global.f_acq:=10; // in kHz
 global.gain1:=1; // gain of the first channel
 global.int_gain1:=1; // integer coding for this gain
@@ -1716,6 +1719,12 @@ Rtneuron.DacChan[0].HoldingValue:=0;
 Rtneuron.DacChan[0].UseHoldingValue:=True;    
 Rtneuron.DacChan[1].HoldingValue:=0;
 Rtneuron.DacChan[1].UseHoldingValue:=True;    
+with stimulator do
+  begin
+    stimulator.setValue(0,0,0,0);   
+    stimulator.setValue(0,0,1,0);   
+    stimulator.setValue(0,1,0,0);  
+end; 
 
 program Launch_from_Tmacro
 SetProtocolNames;

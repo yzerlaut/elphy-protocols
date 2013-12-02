@@ -1,0 +1,134 @@
+{------------------------------------------------------------------------------
+-------  This file illustrate how to use the RTneuron-Simulation mode ----------
+-------------------------------------------------------------------------------
+  Simple current step injection into a single compartment neuron  --------------}
+  
+  
+const load_nrn_path = 'Z:/home/yann/experiments/myelphy/nrn_files/' ;
+
+var main_dialog : Tdialog ;  amp,  t0_trial : real ;
+
+
+procedure my_InitProcess; {executer avec acquisition.start, mais apres tout, ici tous les objets ont ete initialises, donc on peut les utiliser}
+begin
+   t0_trial := v1.Xend ; // to get the time that has last since the experiment start
+end;
+
+procedure my_processcont;
+begin
+    if (v1.Xend-t0_trial)<1.2 then acquisition.stop;
+end;
+
+
+procedure init_artificial_cell(stim_with_elphy:boolean);
+var i : integer ;
+begin
+   RTneuron.Execute('create soma') ;
+   RTneuron.Execute('L=diam=79.8') ;  // single compartment neuron of 20000 um2 surface
+   RTneuron.Execute('soma insert pas') ; // inserting passive properties
+   RTneuron.Execute('soma insert hh') ; // inserting hodgkin huxley mechanism
+   RTneuron.FadvanceON:=True;  // so that NEURON calculates
+
+   acquisition.PeriodPerChannel := 0.1 ; {ms} //acquisition frequency
+   acquisition.Fcontinuous:=true;
+   acquisition.ChannelCount := 2;
+   acquisition.TriggerMode:= TM_immediate;
+   
+   for i:=1 to acquisition.ChannelCount do 
+   begin 
+     acquisition.Channels[i].ChannelType := TI_Neuron;
+     acquisition.Channels[i].DownSamplingFactor:=1;
+   end;
+   acquisition.Channels[1].unitY:='mV';
+   addObject(1,1,v1); v1.title:='V_intra(t)'; // graphical settings
+   acquisition.Channels[1].NrnSymbolName:='soma.v(.5)';
+   RTneuron.Execute('objref stim') ;   // stimulation mechanism
+   if not stim_with_elphy then
+   begin
+       acquisition.Fstimulate := False ; {we DON'T stimulate in Elphy!!}
+       RTneuron.Execute('stim = new IClamp(.5)') ;   
+       acquisition.Channels[2].unitY:='nA';
+   end;
+   if stim_with_elphy then
+   begin
+       acquisition.Fstimulate := True ; {we DON'T stimulate in Elphy!!}
+       RTneuron.Execute('stim = new myIClamp(.5)') ;   
+       acquisition.Channels[2].unitY:='nA';
+   end;
+   addObject(1,2,v2); v1.title:='Iinj(t)'; // graphical sttings
+   acquisition.Channels[2].NrnSymbolName:='stim.i';
+   v1.cpx:=1 ; v2.cpx:=1;
+   acquisition.InstallProcess(nil, nil, my_processcont, nil);
+end;
+
+
+procedure set_stimulation_with_NEURON(Istim:real);
+begin
+   RTneuron.Execute('stim.amp = '+Rstr(Istim/1000.)); // pA -> nA
+   RTneuron.Execute('stim.del = 500'); //ms
+   RTneuron.Execute('stim.dur = 300'); //ms
+   RTneuron.Execute('finitialize(e_pas)');
+end;
+
+procedure Build_Pulse(seq:longint;var vec:Tvector);
+var choice, rdm : real;
+begin
+   vec.fill(0); 
+   vec.fill1(amp,vec.Xstart+0.5, vec.Xstart+0.8);
+end;
+
+procedure set_stimulation_with_Elphy(Istim:real);
+begin
+   stimulator.ChannelCount:=1;
+   stimulator.setByProg:=true; { mais on met le build ep plus loin }
+   stimulator.Channels[1].ChannelType:=TO_Neuron;
+   stimulator.Channels[1].NrnSymbolName := 'stim.Ipico'; // in pA
+   stimulator.Channels[1].BuildEp := Build_Pulse;
+   stimulator.initVectors ;
+end;
+
+procedure dialogEvent(n:integer);
+var is_already_inh : integer ; ii :integer ;
+begin
+   main_dialog.updatevar;
+   case n of
+     122 : RTneuron.Restart;
+     123 : RTneuron.execute('nrn_load_dll("'+load_nrn_path+'nrnmech.dll")');
+     201 : begin init_artificial_cell(False); set_stimulation_with_NEURON(amp); end;
+     2011 : begin init_artificial_cell(True); set_stimulation_with_Elphy(amp); end;
+     210 : acquisition.start;
+     211 : acquisition.stop;
+   end;
+end;
+
+
+program LAUNCH
+amp:=300 ;
+with main_dialog do
+begin
+      create;
+      OnEvent:=dialogEvent;
+      setText('In ject a current step into a model');
+      setText('single comp. Hodgkin Huxley ');
+      setText('______________________________________');
+      getCommandA('restart NEURON',0,122); 
+      getCommandA('load NEURON mechanisms',0,123); 
+      setText('');
+      getRealA('Amplitude (pA)', amp, 6, 2, 200) ;
+      getCommandA(' Init() NEURON stim',0,201); { OnEvent flag -> 201 }
+      getCommandA(' Init() Elphy stim',0,2011); { OnEvent flag -> 201 }
+      getCommandA(' Start .. ',0,210); { OnEvent flag -> 201 }
+      getCommandA(' Stop the acquisition ',0,211); { OnEvent flag -> 201 }
+      show;
+end;
+
+
+// in case you do not have any window preconfigured
+program init_windows
+DeleteAllPages('default');
+InsertPage(1, 'current_step');
+DeleteAllPages('current_step');
+Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
+Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
+Definewindow(1, 0, Round(PageHeight*2/3), PageWidth, PageHeight);
+Page:=1; color:=cl_gray;

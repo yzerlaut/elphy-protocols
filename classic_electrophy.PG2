@@ -1069,7 +1069,6 @@ var
 procedure Build_sin(seq:longint;var vec:Tvector); {Build a sinewave into vec }
 begin
 vec.sinewave(amp_sin,1.0/freq_sin,phase_sin) ; 
-//phase_sin := phase_sin + 1.0/freq_sin*vec.Xend ; // need to remember the phase at the last moment
 end;
 
 procedure prepare_singlesin;
@@ -1077,7 +1076,6 @@ begin
          {we write all the relevant global informations}
          amplifier := TDBrecord('PG0.global').amplifier ;
          TDBrecord('PG0.global').cont_choice := True ;  // single sinusiod in continuous mode
-         //TDBrecord('PG0.global').max_EP_num :=0 ;
          TDBrecord('PG0.global').stim := True ;
          TDBrecord('PG0.Exp_Params').clear;
          TDBrecord('PG0.Exp_Params').exp_type:='single_sin';
@@ -1100,6 +1098,32 @@ begin {when we modify the dialog, we adjust the stimulation params}
    end;
 end;
 
+procedure prepare_multiplesin;
+begin
+         {we write all the relevant global informations}
+         amplifier := TDBrecord('PG0.global').amplifier ;
+         TDBrecord('PG0.global').cont_choice := True ;  // single sinusiod in continuous mode
+         TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='single_sin';
+         TDBrecord('PG0.Exp_Params').sin_amplitude:=amp_sin;
+         TDBrecord('PG0.Exp_params').frequency:=freq_sin;
+         TDBrecord('PG0.Exp_Params').phase_shift:=phase_sin;
+         {then we initialize the stimulation}
+         InitializeChannels; // we can initialize the channels
+         stimulator.Channels[1].BuildEp := Build_Sin ; 
+         stimulator.initVectors;
+         acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
+end;
+         
+         
+procedure MultipleSin_Event(n:integer); 
+begin {when we modify the dialog, we adjust the stimulation params}
+   multiplesin_dialog.updatevar;
+   case n of 
+   201 : prepare_multiplesin;
+   end;
+end;
 
 procedure Init_SinDialog;
 begin

@@ -1,0 +1,144 @@
+{------------------------------------------------------------------------------
+-------  Illustration of how to use the RTneuron-Simulation mode ----------
+-------------------------------------------------------------------------------
+   we to construct an algorithm that looks for }
+
+const load_nrn_path = 'Z:/home/yann/experiments/myelphy/nrn_files/' ;
+
+var main_dialog : Tdialog ;  amp, middle_v, pm_v, t0_trial : real ;
+
+procedure Build_DoublePulse(seq:longint;var vec:Tvector);
+var choice, rdm : real;
+begin
+   vec.fill(0); 
+   rdm := Random;
+   // we randomly alternate the plus and minus before or after
+   if rdm<0.5 then choice:=1 else choice:=-1;
+   vec.fill1(middle_v+choice*pm_v,vec.Xstart+200, vec.Xstart+500);
+   vec.fill1(middle_v+choice*pm_v,vec.Xstart+700, vec.Xstart+1000);
+end;
+
+var THdetect : Tdetector;
+    spiketimes : Tvector ;
+
+procedure InitTHdetect;
+var 
+threshold : real ;refrac : real ; yinit : real;
+begin
+   spiketimes.create(t_single,0,-1);
+   threshold := -10.0 ; // threshold at : ... mV 
+   refrac := 0.003 ; // at least ... s between two events
+   yinit := -60.0 ;
+   THdetect.create;
+   THdetect.InitCrossings(v1,spiketimes,TRUE,FALSE,threshold,threshold,refrac,yinit,FALSE);
+   //THdetect.addevent(At_threshold_event,0);  // in case we would need an additional procedure
+end;
+
+
+procedure my_InitProcess; {executer avec acquisition.start, mais apres tout, ici tous les objets ont ete initialises, donc on peut les utiliser}
+begin
+   InitTHdetect;
+   t0_trial := v1.Xend ; // to get the time that has last since the experiment start
+end;
+
+procedure my_processcont;
+begin
+    if (v1.Xend-t0_trial)<1.7 then acquisition.stop;
+end;
+
+procedure my_endprocess;
+begin
+    THdetect.Update(v1.Iend); // code en dur, similaire a calculsum
+    if spiketimes.Iend>0 then MessageBox('spike!');
+end;
+
+procedure Build_Pulse(seq:longint;var vec:Tvector);
+var choice, rdm : real;
+begin
+   vec.fill(0); 
+   vec.fill1(amp,vec.Xstart+0.2, vec.Xstart+0.4);
+   vec.fill1(amp,vec.Xstart+0.8, vec.Xstart+1.0);
+   vec.fill1(amp,vec.Xstart+1.4, vec.Xstart+1.6);
+end;
+
+procedure init_experiment(Istim:real);
+var i : integer ;
+begin
+   // ----- ARTIFICIAL CELL
+   RTneuron.Execute('create soma') ;
+   RTneuron.Execute('L=diam=79.8') ;  // single compartment neuron of 20000 um2 surface
+   RTneuron.Execute('soma insert pas') ; // inserting passive properties
+   RTneuron.Execute('soma insert hh') ; // inserting hodgkin huxley mechanism
+   RTneuron.FadvanceON:=True;  // so that NEURON calculates
+   // ------ THEN DETERMINISTIC PART THAT CHANGES THE EFFECTIVE THRESHOLD
+   RTneuron.Execute('objref det_stim');
+   RTneuron.Execute('set_stim = new IClamp(.5)');
+   // ------ SMALL CONDUCTANCE SHOTNOISE ON TOP OF IT (to add fluctuations)
+   RTneuron.Execute('objref synE, nsE, ncE, synI, nsI, ncI') ;
+   RTneuron.Execute('synE = new ExpSyn(.5)') ;
+   RTneuron.Execute('synI = new ExpSyn(.5)') ;
+   acquisition.PeriodPerChannel := 0.1 ; {ms} //acquisition frequency
+   
+   // ------ THEN ELPHY ACQUISITION AND STIMULATION
+   acquisition.Fcontinuous:=true;
+   acquisition.ChannelCount := 2;
+   for i:=1 to acquisition.ChannelCount do 
+   begin 
+     acquisition.Channels[i].ChannelType := TI_Neuron;
+     acquisition.Channels[i].DownSamplingFactor:=1;
+   end;
+   acquisition.Channels[1].unitY:='mV';
+   addObject(1,1,v1); v1.title:='V_intra(t)'; // graphical settings
+   acquisition.Channels[1].NrnSymbolName:='soma.v(.5)';
+
+   acquisition.Fstimulate := True ;  // WE stimulate in Elphy
+   RTneuron.Execute('objref stim') ;   
+   RTneuron.Execute('stim = new myIClamp(.5)') ;   
+   acquisition.Channels[2].unitY:='nA';
+   stimulator.ChannelCount:=1;
+   stimulator.setByProg:=true; { mais on met le build ep plus loin }
+   stimulator.Channels[1].ChannelType:=TO_Neuron;
+   stimulator.Channels[1].NrnSymbolName := 'stim.Ipico'; // in pA
+   stimulator.Channels[1].BuildEp := Build_Pulse;
+   stimulator.initVectors ;
+
+   addObject(1,2,v2); v1.title:='Iinj(t)'; // graphical sttings
+   acquisition.Channels[2].NrnSymbolName:='stim.i';
+   v1.cpx:=1 ; v2.cpx:=1;
+   acquisition.InstallProcess(nil, my_initprocess, my_processcont, my_endprocess);
+end;
+
+
+
+
+procedure dialogEvent(n:integer);
+var is_already_inh : integer ; ii :integer ;
+begin
+   main_dialog.updatevar;
+   case n of
+     122 : RTneuron.Restart;
+     123 : RTneuron.execute('nrn_load_dll("'+load_nrn_path+'nrnmech.dll")');
+     201 : init_experiment(amp);
+     210 : acquisition.start;
+     211 : acquisition.stop;
+   end;
+   main_dialog.update;
+end;
+
+
+program LAUNCH
+amp:=300 ;
+with main_dialog do
+begin
+      create;
+      OnEvent:=dialogEvent;
+      setText('______________________________________');
+      getCommandA('restart NEURON',0,122); 
+      getCommandA('load NEURON mechanisms',0,123); 
+      setText('');
+      getRealA('Amplitude (pA)', amp, 6, 2, 200) ;
+      getCommandA(' Initialize() ',0,201); { OnEvent flag -> 201 }
+      getCommandA(' Start .. ',0,210); { OnEvent flag -> 201 }
+      getCommandA(' Stop the acquisition ',0,211); { OnEvent flag -> 201 }
+      show;
+end;

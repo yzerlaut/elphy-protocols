@@ -1058,7 +1058,7 @@ stimulation ON)  --------------------------------------------------------------
 //   different start and stop than the VC stimulation
 
 var
-   v_start_iv , v_step_iv : real ; {step parameters }
+   v_start_iv, v_start0_iv , v_step_iv : real ; {step parameters }
    max_step_iv : integer ; int_repet : integer ; int_step : integer ;{ index for the number of steps }
    IV_moy :  Taverage ; iv_dialog2 : Tdialog ; iv_dialog : Tdialog ;
    iv_v : Tvector ; iv_i : Tvector ; iv_graph : Tgraph ;
@@ -1069,7 +1069,8 @@ procedure ProcessIV(seq:longint;var vec:Tvector);
 var dv : real;
 begin 
    dv := (seq-1)*v_step_iv ;
-   vec.fill(0); vec.fill1(v_start_iv+dv,del_iv+vec.Istart,del_iv+dur_iv+vec.Istart);
+   vec.fill(0); 
+   vec.fill1(v_start_iv+dv,del_iv+vec.Istart,del_iv+dur_iv+vec.Istart);
 end;
 
 procedure iv_initprocess;
@@ -1144,6 +1145,7 @@ begin
       getRealA('Duration (ms)',dur_sp_EF,10,3,200);
       setText('');
       getCommandA('init protocol',0,201);
+      caption := 'IV with field';
    end;
    prepare_iv;
    Stim_dialog.show;

@@ -22,82 +22,39 @@ field_min = [-20, -15, -10, -5, -2.5, -1]
 field_max = [20, 15, 10, 5, 2.5, 1]
 
 for ii in range(len(field_min)):
-    tt.annotate(str(field_min[ii])+' mV/mm', (0.1, 1.08-ii*0.1), fontsize = 10,
+    tt.annotate(str(field_min[ii])+' mV/mm', (0.4, 1.08-ii*0.1), fontsize = 10,
                  xycoords="axes fraction", va="center", ha="center",
                  bbox=dict(boxstyle="round, pad=.7", fc="lightgray"))
 for ii in range(len(field_max)):
-    tt.annotate(str(field_max[ii])+' mV/mm', (0.1, -0.08+ii*0.1), fontsize = 10,
+    tt.annotate(str(field_max[ii])+' mV/mm', (0.4, -0.08+ii*0.1), fontsize = 10,
                  xycoords="axes fraction", va="center", ha="center",
                  bbox=dict(boxstyle="round, pad=.7", fc="lightgray"))
 
-if os.path.exists(path+'low_conduct.txt'):
-    ax = plt.subplot2grid((8,3),(0,0))
-    ax.axis('off')
-    plt.annotate("LOW \n CONDUCTIVITY", (0.5, 1.), color='k', fontsize = 13,
-                 xycoords="axes fraction", va="center", ha="center",
-                 bbox=dict(boxstyle="round, pad=1", fc="b"))
-    [i, v] = np.loadtxt(path+'low_conduct.txt')
-    pp.plot(i, v, 'bD')
-    p = polyfit(i, v, 1)
-    pp.plot(i, p[1]+p[0]*i, 'b-', lw=5, alpha=.5)    
-    
-    plt.annotate("["+str(round(p[0],2))+" $I_{inj}$ +"+str(round(p[1],2))+"] mV/mm",
-                (-0.3, 0.2), fontsize=12, color='b', xycoords="axes fraction")
-
-    for ii in range(len(field_min)):
-        tt.annotate(str(round((field_min[ii]-p[1])/p[0],1))+' $\mu$A',
-                    (0.4, 1.08-ii*0.1), fontsize = 12, color='b',
-                 xycoords="axes fraction", va="center", ha="center")
-    for ii in range(len(field_max)):
-        tt.annotate(str(round((field_max[ii]-p[1])/p[0],1))+' $\mu$A',
-                    (0.4, -0.08+ii*0.1), fontsize = 12, color='b',
-                    xycoords="axes fraction", va="center", ha="center")
-
-if os.path.exists(path+'middle_conduct.txt'):
+if os.path.exists(path+'conduct.txt'):
     ax = plt.subplot2grid((8,3),(0,1))
     ax.axis('off')
-    plt.annotate("MIDDLE \n CONDUCTIVITY", (0.5, 1.), color='k', fontsize = 13,
+    plt.annotate("CONDUCTIVITY ?", (0.4, 1.), color='k', fontsize = 13,
                  xycoords="axes fraction", va="center", ha="center",
-                 bbox=dict(boxstyle="round, pad=1", fc="g"))
-    [i, v] = np.loadtxt(path+'middle_conduct.txt')
-    pp.plot(i, v, 'gD')
+                 bbox=dict(boxstyle="round, pad=1", fc="lightgray"))
+    [i, v] = np.loadtxt(path+'conduct.txt')
+    pp.plot(i, v, 'kD')
     p = polyfit(i, v, 1)
-    pp.plot(i, p[1]+p[0]*i, 'g-', lw=5, alpha=.5)    
+    pp.plot(i, p[1]+p[0]*i, 'k-', lw=5, alpha=.5)    
     
     plt.annotate("["+str(round(p[0],2))+" $I_{inj}$ +"+str(round(p[1],2))+"] mV/mm",
-                (-0.1, 0.2), fontsize=11, color='g', xycoords="axes fraction")
+                (-0.3, 0.2), fontsize=12, color='k', xycoords="axes fraction")
 
     for ii in range(len(field_min)):
         tt.annotate(str(round((field_min[ii]-p[1])/p[0],1))+' $\mu$A',
-                    (0.6, 1.08-ii*0.1), fontsize = 12, color='g',
+                    (0.7, 1.08-ii*0.1), fontsize = 12, color='k',
                  xycoords="axes fraction", va="center", ha="center")
     for ii in range(len(field_max)):
         tt.annotate(str(round((field_max[ii]-p[1])/p[0],1))+' $\mu$A',
-                    (0.6, -0.08+ii*0.1), fontsize = 12, color='g',
+                    (0.7, -0.08+ii*0.1), fontsize = 12, color='k',
                     xycoords="axes fraction", va="center", ha="center")
-
-if os.path.exists(path+'high_conduct.txt'):
-    ax = plt.subplot2grid((8,3),(0,2))
-    ax.axis('off')
-    plt.annotate("HIGH \n CONDUCTIVITY", (0.5, 1.), color='k', fontsize = 13,
-                 xycoords="axes fraction", va="center", ha="center",
-                 bbox=dict(boxstyle="round, pad=1", fc="r"))
-    [i, v] = np.loadtxt(path+'high_conduct.txt')
-    pp.plot(i, v, 'rD')
-    p = polyfit(i, v, 1)
-    pp.plot(i, p[1]+p[0]*i, 'r-', lw=5, alpha=.5)    
+else:
+    print "Filename problem, conduct.txt, no such file existing !"
     
-    plt.annotate("["+str(round(p[0],2))+" $I_{inj}$ +"+str(round(p[1],2))+"] mV/mm",
-                (0., 0.2), fontsize=11, color='r', xycoords="axes fraction")
-
-    for ii in range(len(field_min)):
-        tt.annotate(str(round((field_min[ii]-p[1])/p[0],1))+' $\mu$A',
-                    (0.8, 1.08-ii*0.1), fontsize = 12, color='r',
-                 xycoords="axes fraction", va="center", ha="center")
-    for ii in range(len(field_max)):
-        tt.annotate(str(round((field_max[ii]-p[1])/p[0],1))+' $\mu$A',
-                    (0.8, -0.08+ii*0.1), fontsize = 12, color='r',
-                    xycoords="axes fraction", va="center", ha="center")
         
 plt.savefig(path+'c-f-relationship.pdf')
 

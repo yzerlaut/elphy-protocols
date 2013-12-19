@@ -33,10 +33,10 @@ begin
   ProtocolName[4]:= 'perforing_monitor';
   ProtocolName[5]:= 'IC-Membrane_Test';
   ProtocolName[6]:= 'I-V_curve'; 
-  ProtocolName[7]:= 'Sinusoids Stim'; 
-  ProtocolName[8]:= 'Pulses Stim'; 
-  ProtocolName[9]:= 'Stochastic Stim'; 
-  ProtocolName[10]:= 'fancy Ramps/Pulses'; 
+  ProtocolName[7]:= 'Sinusoids_Stim'; 
+  ProtocolName[8]:= 'Pulses_Stim'; 
+  ProtocolName[9]:= 'Stochastic_Stim'; 
+  ProtocolName[10]:= 'fancy_Ramps-Pulses'; 
   ProtoNames:=ProtocolName[1];
   for i:=2 to ProtocolCount do ProtoNames:=ProtoNames+'|'+ProtocolName[i];
 end;    
@@ -118,8 +118,8 @@ begin {-- we set all the variables of the acquisition class, then we create
    Clamp_int:=TDBrecord('PG0.global').clamp_int;
    stim:=TDBrecord('PG0.global').stim;
    {we delete previous graphical display}
-   ClearObjects(protocol_choice,1);
-   ClearObjects(protocol_choice,2);
+   ClearObjects(1,1);
+   ClearObjects(1,2);
 
    { see the documentation, for the details of the acquisition and RTneuron functions }
    RTneuron.ResetParams;
@@ -150,8 +150,8 @@ begin {-- we set all the variables of the acquisition class, then we create
        acquisition.Channels[1].NrnSymbolName:='soma.v(.5)'; acquisition.Channels[1].unitY:='mV' ;
        acquisition.Channels[2].NrnSymbolName:='stim.Ipico'; acquisition.Channels[2].unitY:='pA' ;
        v1.cpx:=1 ; v2.cpx:=1 ; v1.cpy := 1 ; v2.cpy:= 2; {we set the coupling value -> to couple to future analysis}
-       addObject(protocol_choice,1,v1);
-       addObject(protocol_choice,2,v2);
+       addObject(1,1,v1);
+       addObject(1,2,v2);
     end;                         
                                                                                    
     if Clamp_int=2 then { IF VOLTAGE CLAMP }
@@ -160,8 +160,8 @@ begin {-- we set all the variables of the acquisition class, then we create
        acquisition.Channels[1].NrnSymbolName:='stim.Ipico'; acquisition.Channels[1].unitY:='pA' ;
        acquisition.Channels[2].NrnSymbolName:='soma.v(.5)'; acquisition.Channels[2].unitY:='mV' ;
        v1.cpx:=1 ; v2.cpx:=1 ; v1.cpy := 1 ; v2.cpy:= 2;  {we set the coupling value -> to couple to future analysis}
-       addObject(protocol_choice,1,v1);
-       addObject(protocol_choice,2,v2);
+       addObject(1,1,v1);
+       addObject(1,2,v2);
     end; { we will call this function each time we modify a gain }
 end;
 
@@ -188,9 +188,9 @@ begin {-- we set all the variables of the acquisition class, then we create
    epdur := TDBrecord('PG0.global').episode_duration;
    acquisitionISI := TDBrecord('PG0.global').acquisitionISI ;  
    {we delete previous graphical display}
-   ClearObjects(protocol_choice,1);
-   ClearObjects(protocol_choice,2);
-   ClearObjects(protocol_choice,3);
+   ClearObjects(1,1);
+   ClearObjects(1,2);
+   ClearObjects(1,3);
 
    { see the documentation, for the details of the acquisition and RTneuron functions }
    RTneuron.ResetParams;
@@ -228,8 +228,8 @@ begin {-- we set all the variables of the acquisition class, then we create
     
     {then graphical options}
     v1.cpx:=1 ; v2.cpx:=1 ; v1.cpy := 1 ; v2.cpy:= 2; {we set the coupling value -> to couple to future analysis}
-    addObject(protocol_choice,1,v1);
-    addObject(protocol_choice,2,v2);
+    addObject(1,1,v1);
+    addObject(1,2,v2);
 end;
 
 { ==============================================================================
@@ -285,7 +285,7 @@ begin { We link the Elphy stimulation to the NEURON variable, then the NEURON va
     acquisition.Channels[3].NrnSymbolName:='Vth'; acquisition.Channels[3].unitY:='mV';
   end;
 
-  addObject(protocol_choice,2,v3); {on ajoute aussi l'affichage de la stimulation sur le meme grap que la voie 2 }
+  addObject(1,2,v3); {on ajoute aussi l'affichage de la stimulation sur le meme grap que la voie 2 }
   v3.cpx:=1 ; v3.cpy:= 2; v3.color := CL_red ; {we couple this channel to v2 }
 end;
 
@@ -434,21 +434,32 @@ end;
 
 procedure SealTest_Init; 
 begin {when we modify the dialog, we adjust the stimulation params}
+
+  // initialize windows 
+  DestroyAllWindows(1);
+  Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
+  Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
+  Definewindow(1, 0, Round(PageHeight*2/3), Round(PageWidth/3), PageHeight);
+  Definewindow(1, Round(PageWidth/3), Round(PageHeight*2/3), Round(2*PageWidth/3), PageHeight);
+  Definewindow(1, Round(2*PageWidth/3), Round(PageHeight*2/3), Round(5*PageWidth/6), PageHeight);
+  Definewindow(1, Round(5*PageWidth/6), Round(PageHeight*2/3), PageWidth, PageHeight);
+  color:=cl_gray;
+
   amp_seal :=-5; del_seal :=25 ; dur_seal := 100;  {pulse parameters}
   {then we display the channels}
-  addObject(protocol_choice,1,v1);  addObject(protocol_choice,2,v2);   addObject(protocol_choice,2,v3);
+  addObject(1,1,v1);  addObject(1,2,v2);   addObject(1,2,v3);
   {then memo to display the values}
   seal_memo.create(''); seal_memo.font.name:='Times New Roman'; seal_memo.font.size:=13;
   seal_memo.font.color:=rgb(0,0,0);  seal_memo.font.style:=fs_bold;
   seal_memo.lines[3]:='Rseal= '+Rstr(Rseal,6,3)+' Mohm';
   seal_memo.lines[5]:='I baseline= '+Rstr(i_baseline,6,3)+' pA';
-  addObject(protocol_choice,5,seal_memo);
+  addObject(1,5,seal_memo);
   {then the graph to display the time evolution of the parameters}
   tseal_vec.create(t_single,0,-1);iseal_vec.create(t_single,0,-1);rseal_vec.create(t_single,0,-1);
   rseal_graph.create(tseal_vec,rseal_vec,0,0); rseal_graph.Mode := DM_LINE_DIAMOND ; {graph initialisation }
   iseal_graph.create(tseal_vec,iseal_vec,0,0); iseal_graph.Mode := DM_LINE_DIAMOND ;
-  addobject(protocol_choice,3,rseal_graph);  {then we plot the vector}
-  addobject(protocol_choice,4,iseal_graph);  {then we plot the vector} 
+  addobject(1,3,rseal_graph);  {then we plot the vector}
+  addobject(1,4,iseal_graph);  {then we plot the vector} 
   
   {finally the small dialog fot the parameters and the initialisation}
   seal_dialog.create ;
@@ -457,7 +468,7 @@ begin {when we modify the dialog, we adjust the stimulation params}
   seal_dialog.getRealA(' duration (ms)',dur_seal,3,1,99);
   seal_dialog.getCommandA('  init() ',0,999);
   seal_dialog.OnEvent:=SealTest_event ;
-  AddDialog(protocol_choice,6,seal_dialog); 
+  AddDialog(1,6,seal_dialog); 
   DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
   t0_seal := 60*Hour + Minute + Second/60 + MilliSecond/60/1000;
   Prepare_SealTest ; // first initialization
@@ -591,7 +602,7 @@ begin
   VCMT_moy.create(t_single,v1.Istart,v1.Iend);
   VCMT_moy.cpx:=1;  VCMT_moy.cpy:=1;  VCMT_moy.color:=cl_blue;
   VCMT_moy.setWorld(VCMT_t2-5,v1.Ymin,VCMT_t2+5,v1.Ymax);
-  addObject(protocol_choice,1,VCMT_moy);
+  addObject(1,1,VCMT_moy);
 
   VCMT_fit.create('');
   VCMT_fit.standardModel:=fm_expC1 {fm_poly5};
@@ -599,7 +610,7 @@ begin
 
   VCMT_fit.setWorld(VCMT_moy.xmin,VCMT_moy.ymin,VCMT_moy.xmax,VCMT_moy.ymax);
   VCMT_fit.cpx:=1;  VCMT_fit.cpy:=1;  VCMT_fit.matchVector(v1);  VCMT_fit.color:=cl_red;
-  addObject(protocol_choice,1,VCMT_fit);
+  addObject(1,1,VCMT_fit);
 end;
 
 procedure mt_process;
@@ -661,18 +672,18 @@ begin
    VCMT_interStim := 50 ;
    TDBrecord('PG0.global').clamp_int := 2 ;
    {then we display the channels}
-   addObject(protocol_choice,1,v1);  addObject(protocol_choice,2,v2);   addObject(protocol_choice,2,v3);
+   addObject(1,1,v1);  addObject(1,2,v2);   addObject(1,2,v3);
 
    rs_vec.create(t_single,0,-1) ; tmem_vec.create(t_single,0,-1) ; { we initialize the vector of the rs values }
    rs_graph.create(tmem_vec,rs_vec,0,0); rs_graph.Mode := DM_LINE_DIAMOND ; {graph initialisation }
-   addobject(protocol_choice,4,rs_graph);
+   addobject(1,4,rs_graph);
 
    lVer.create('',0,cl_black,0); lHor.create('',0,cl_black,0);
-   addObject(protocol_choice,1,lVer); addObject(protocol_choice,1,lHor);
+   addObject(1,1,lVer); addObject(1,1,lHor);
 
    VCMT_memo.create(''); VCMT_memo.font.name:='Times New Roman'; VCMT_memo.font.size:=11;
    VCMT_memo.font.color:=rgb(0,0,0);  VCMT_memo.font.style:=fs_bold;
-   addObject(protocol_choice,6,VCMT_memo);
+   addObject(1,6,VCMT_memo);
 
    mt_dialog.create ;
    mt_dialog.getRealA(' Pulse size (mV)',VCMT_amp,3,1,99);
@@ -685,7 +696,7 @@ begin
    mt_dialog.setText('');
    mt_dialog.getCommandA(' Fit "Tau" with cursors ',0,998);
    mt_dialog.OnEvent:=VCMT_event ;
-   AddDialog(protocol_choice,5,mt_dialog); 
+   AddDialog(1,5,mt_dialog); 
 
    DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
    t0_mem := 1000*60*60*Hour + 1000*60*Minute + 1000*Second + MilliSecond;
@@ -759,7 +770,7 @@ begin
   ICMT_moy.create(t_single,0,0);//v1.Istart,v1.Iend);
   ICMT_moy.cpx:=1;  ICMT_moy.cpy:=1;  ICMT_moy.color:=cl_blue;
   //ICMT_moy.setWorld(ICMT_t1-5,v1.Ymin,ICMT_t2,v1.Ymax);
-  addObject(protocol_choice,1,ICMT_moy);
+  addObject(1,1,ICMT_moy);
 
   ICMT_fit.create('');
   ICMT_fit.standardModel:=fm_expC1 {fm_poly5};
@@ -768,7 +779,7 @@ begin
   ICMT_fit.setWorld(ICMT_moy.xmin,ICMT_moy.ymin,ICMT_moy.xmax,ICMT_moy.ymax);
   ICMT_fit.cpx:=1;  ICMT_fit.cpy:=1;  //ICMT_fit.matchVector(v1); 
   ICMT_fit.color:=cl_red;
-  addObject(protocol_choice,1,ICMT_fit);
+  addObject(1,1,ICMT_fit);
 end;
 
 procedure mtic_process;
@@ -827,15 +838,15 @@ procedure ICMembTest_Init; {executed only when ze choose the protocol }
 begin
    ICMT_amp:=200; ICMT_t1:=100; ICMT_t2:=300; ICMT_interStim:=0.2 ; // params
    {then we display the channels}
-   addObject(protocol_choice,1,v1);  addObject(protocol_choice,2,v2);   addObject(protocol_choice,2,v3);   
+   addObject(1,1,v1);  addObject(1,2,v2);   addObject(1,2,v3);   
    
    rm_vec.create(t_single,0,-1) ; tmem_vec.create(t_single,0,-1) ; { we initialize the vector of the rs values }
    rm_graph.create(tmem_vec,rm_vec,0,0); rm_graph.Mode := DM_LINE_DIAMOND ; {graph initialisation }
-   addobject(protocol_choice,4,rm_graph);
+   addobject(1,4,rm_graph);
 
    ICMT_memo.create(''); ICMT_memo.font.name:='Times New Roman'; ICMT_memo.font.size:=11;
    ICMT_memo.font.color:=rgb(0,0,0);  ICMT_memo.font.style:=fs_bold;
-   addObject(protocol_choice,6,ICMT_memo);
+   addObject(1,6,ICMT_memo);
 
    ICMT_amp := ICMT_amp;
    ICMT_dialog.create ;
@@ -846,7 +857,7 @@ begin
    ICMT_dialog.setText('');
    ICMT_dialog.getCommandA(' Fit with cursors ',0,998);
    ICMT_dialog.OnEvent:=ICMT_event ;
-   AddDialog(protocol_choice,5,ICMT_dialog); 
+   AddDialog(1,5,ICMT_dialog); 
 
    DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
    t0_mem := 1000*60*60*Hour + 1000*60*Minute + 1000*Second + MilliSecond;
@@ -923,18 +934,18 @@ procedure PerforingMonitor_Init; {executed only when ze choose the protocol }
 begin
    if VCMT_amp=0 then begin VCMT_amp:=-5; VCMT_t1:=20; VCMT_t2:=40; VCMT_t3:=60; VCMT_t4:=80; end;  // in case not initialized
    {then we display the channels}
-   addObject(protocol_choice,1,v1);  addObject(protocol_choice,2,v2);   addObject(protocol_choice,2,v3);
+   addObject(1,1,v1);  addObject(1,2,v2);   addObject(1,2,v3);
 
    rs_vec.create(t_single,0,-1) ; tmem_vec.create(t_single,0,-1) ; { we initialize the vector of the rs values }
    rs_graph.create(tmem_vec,rs_vec,0,0); rs_graph.Mode := DM_LINE_DIAMOND ; {graph initialisation }
-   addobject(protocol_choice,6,rs_vec);
+   addobject(1,6,rs_vec);
 
    lVer.create('',0,cl_black,0); lHor.create('',0,cl_black,0);
-   addObject(protocol_choice,1,lVer); addObject(protocol_choice,1,lHor);
+   addObject(1,1,lVer); addObject(1,1,lHor);
 
    VCMT_memo.create(''); VCMT_memo.font.name:='Times New Roman'; VCMT_memo.font.size:=11;
    VCMT_memo.font.color:=rgb(0,0,0);  VCMT_memo.font.style:=fs_bold;
-   addObject(protocol_choice,4,VCMT_memo);
+   addObject(1,4,VCMT_memo);
 
    mt_dialog.create ;
    mt_dialog.getRealA(' Pulse size (mV)',VCMT_amp,3,1,99);
@@ -944,7 +955,7 @@ begin
    mt_dialog.setText('');
    mt_dialog.getCommandA('  init() ',0,999);
    mt_dialog.OnEvent:=PM_event ;
-   AddDialog(protocol_choice,5,mt_dialog); 
+   AddDialog(1,5,mt_dialog); 
 
    DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
    t0_mem := 1000*60*60*Hour + 1000*60*Minute + 1000*Second + MilliSecond;
@@ -979,7 +990,7 @@ begin
    iv_i.create(t_single,0,-1);
    iv_i.X0:=v_start ; iv_i.DX := v_step ;
    iv_i.Mode := DM_LINE_DIAMOND ;
-   addobject(protocol_choice,4,iv_i);
+   addobject(1,4,iv_i);
 end;
 
 procedure ivcurve_process;
@@ -1041,7 +1052,7 @@ begin
       getRealA('interstim (s)',interstim_iv,10,3,200);
       getCommandA('init protocol',0,201);
    end;
-   AddDialog(protocol_choice,4,iv_dialog);
+   AddDialog(1,4,iv_dialog);
    prepare_iv;
 end;
 
@@ -1092,33 +1103,40 @@ begin {when we modify the dialog, we adjust the stimulation params}
    end;
 end;
 
-procedure multiplesin_initprocess;
-begin
-    t0_trial := v1.Xend ;
-end;
 
 procedure multiplesin_processcont;
 begin
-    if (v1.Xend-t0_trial)>3 then acquisition.stop;
+    if (v1.Xend-t0_trial)>4./freq_sin then acquisition.stop;
     if not continu_flag then acquisition.stop;
 end;
 
 
+processcont
+begin
+    multiplesin_processcont;
+end;
+
 procedure multiplesin_endprocess;
 begin
-    while global_freq_index<freq_step_num do
+    if global_freq_index<freq_step_num then
     begin
       global_freq_index :=global_freq_index+1;
       freq_sin := freq_vec[global_freq_index];
       amp_sin := amp_freq_vec[global_freq_index];
-                                            
-     InitializeChannels; 
+      singlesin_dialog.update; // to see the values of the amp and frequencies                                      
+
+     RTneuron.execute('finitialize()'); // reinitializing NEURON
      stimulator.Channels[1].BuildEp := Build_Sin ; 
      stimulator.initVectors;
-     acquisition.InstallProcess(my_initprocess0, multiplesin_initprocess, multiplesin_processcont, multiplesin_endprocess);
-     if continu_flag then acquisition.start;//andsave(True);
-     
+     t0_trial := v1.Xend ;
+     //acquisition.InstallProcess(my_initprocess0, nil, multiplesin_processcont, multiplesin_endprocess);
     end;
+    if continu_flag then begin if SAVING then acquisition.startandsave(True) else acquisition.start;  end;
+end;
+
+endprocess
+begin
+    multiplesin_endprocess;
 end;
 
 procedure Shuffle_2Vector(var vec1, vec2:Tvector);   // identically shuffles 2 vectors...
@@ -1145,17 +1163,17 @@ begin
           exponent := LN(min_amp_sin)+ii/freq_step_num*(LN(max_amp_sin)-LN(min_amp_sin)) ;
           amp_freq_vec[ii] := Exp(exponent) ;
      end;
-     Shuffle_2Vector(freq_vec, amp_freq_vec);
+     Shuffle_2Vector(freq_vec, amp_freq_vec); // then we shuffle the order of frequencies
      
      global_freq_index := 0 ; // we start the sequence of stimulation
      continu_flag := True;
-     
+
      {we write all the relevant global informations}
      amplifier := TDBrecord('PG0.global').amplifier ;
      TDBrecord('PG0.global').cont_choice := True ;  // single sinusiod in continuous mode
      TDBrecord('PG0.global').stim := True ;
      TDBrecord('PG0.Exp_Params').clear;
-     TDBrecord('PG0.Exp_Params').exp_type:='single_sin';
+     TDBrecord('PG0.Exp_Params').exp_type:='multiple_sin';
      TDBrecord('PG0.Exp_Params').freq_start:=freq_start;
      TDBrecord('PG0.Exp_params').freq_stop:=freq_end;
      TDBrecord('PG0.Exp_Params').min_amp_freq:=min_amp_sin;
@@ -1164,7 +1182,7 @@ begin
      InitializeChannels; // we can initialize the channels
      stimulator.Channels[1].BuildEp := Build_Sin ; 
      stimulator.initVectors;
-     acquisition.InstallProcess(my_initprocess0, multiplesin_initprocess, multiplesin_processcont, multiplesin_endprocess);
+     //acquisition.InstallProcess(my_initprocess0, nil, multiplesin_processcont, multiplesin_endprocess);
 end;
          
          
@@ -1179,6 +1197,12 @@ end;
 
 procedure Init_SinDialog;
 begin
+    DestroyAllWindows(1);
+    Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
+    Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
+    Definewindow(1, 0, Round(PageHeight*2/3), PageWidth, PageHeight);
+    DivideWindow(1,3,3,1);
+
     amp_sin := 40 ;  freq_sin := 10 ;  phase_sin := 0 ; // for single sin
     freq_start := 0.1 ;  freq_end := 200 ; freq_step_num := 10 ; // for multiple sin
     min_amp_sin := 40 ; max_amp_sin := 40 ;
@@ -1193,7 +1217,7 @@ begin
       getRealA('phase shift (Rd)',phase_sin,10,3,200);
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
    end;
-   AddDialog(protocol_choice, 3, singlesin_dialog);
+   AddDialog(1, 3, singlesin_dialog);
    with chirp_dialog do
    begin
       create;
@@ -1202,7 +1226,7 @@ begin
       getRealA('Amplitude (pA or mV)',amp_sin,10,3,200);
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
    end;
-   AddDialog(protocol_choice, 4, chirp_dialog);
+   AddDialog(1, 4, chirp_dialog);
    with multiplesin_dialog do
    begin
       create;
@@ -1217,9 +1241,7 @@ begin
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
       getBooleanA('continu ?', continu_flag, 200);
    end;
-   AddDialog(protocol_choice, 5, multiplesin_dialog);
-   //prepare_sin ; // we init with a single sin
-   SAVING:=True;
+   AddDialog(1, 5, multiplesin_dialog);
 end;
 
 {$EDIT pulses}
@@ -1396,7 +1418,7 @@ begin
       getRealA('Duration (ms)',dur_sp,10,3,200);
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
    end;
-   AddDialog(protocol_choice, 3, singlepulse_dialog);
+   AddDialog(1, 3, singlepulse_dialog);
    with doublepulse_dialog do
    begin
       create;
@@ -1409,7 +1431,7 @@ begin
       getRealA('Duration 2 (ms)',dur2_dp,10,3,200);
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
    end;
-   AddDialog(protocol_choice, 4, doublepulse_dialog);
+   AddDialog(1, 4, doublepulse_dialog);
    with triplepulse_dialog do
    begin
       create;
@@ -1424,7 +1446,7 @@ begin
       getRealA('Duration 3 (ms)',dur3_tp,10,3,200);
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
    end;
-   AddDialog(protocol_choice, 5, triplepulse_dialog);
+   AddDialog(1, 5, triplepulse_dialog);
    with pulsetrain_dialog do
    begin
       create;
@@ -1437,7 +1459,7 @@ begin
       getIntegerA('Pulse Number',num_pt,10,200);
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
    end;
-   AddDialog(protocol_choice, 6, pulsetrain_dialog);
+   AddDialog(1, 6, pulsetrain_dialog);
 end;
 
 
@@ -1493,7 +1515,7 @@ begin {when we modify the dialog, we adjust the stimulation params}
          stimulator.Channels[1].BuildEp := Build_FancyRamp ; 
          stimulator.initVectors;
          acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
-         AddDialog(protocol_choice, 3, fancyramp_dialog1);
+         AddDialog(1, 3, fancyramp_dialog1);
          end;
    end;
    fancyramp_dialog1.update; fancyramp_dialog2.update;
@@ -1520,7 +1542,7 @@ begin
       setText('');
       OnEvent:=FancyRamp_Init; 
    end;
-   AddDialog(protocol_choice, 3, fancyramp_dialog1);
+   AddDialog(1, 3, fancyramp_dialog1);
    with fancyramp_dialog2 do
    begin
       create;
@@ -1533,7 +1555,7 @@ begin
       setText('');
       OnEvent:=FancyRamp_Init; 
    end;
-   AddDialog(protocol_choice, 4, fancyramp_dialog2);
+   AddDialog(1, 4, fancyramp_dialog2);
    with fancyramp_dialog3 do
    begin
       create;
@@ -1546,7 +1568,7 @@ begin
       setText('');
       OnEvent:=FancyRamp_Init; 
    end;
-   AddDialog(protocol_choice, 5, fancyramp_dialog3);   
+   AddDialog(1, 5, fancyramp_dialog3);   
    with fancyramp_dialog4 do
    begin
       create;
@@ -1561,7 +1583,7 @@ begin
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
       OnEvent:=FancyRamp_Init; 
    end;
-   AddDialog(protocol_choice, 6, fancyramp_dialog4);
+   AddDialog(1, 6, fancyramp_dialog4);
 end;
 
 
@@ -1660,7 +1682,7 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
   
   case n of
     101: begin 
-              Page := protocol_choice ;     
+              Page := 1 ;     
               if (protocol_choice<>3) or (protocol_choice<>4) then mt_cursor.free ;
               if protocol_choice<>5 then icmt_cursor.free ; // we delete the cursors 
           

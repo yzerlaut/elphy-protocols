@@ -25,8 +25,12 @@ var i : integer ;
 begin
    RTneuron.Execute('create soma') ;
    RTneuron.Execute('L=diam=79.8') ;  // single compartment neuron of 20000 um2 surface
-   RTneuron.Execute('soma insert pas') ; // inserting passive properties
-   RTneuron.Execute('soma insert hh') ; // inserting hodgkin huxley mechanism
+   // ----------- inserting passive properties (~RC circuit)
+   RTneuron.Execute('soma insert pas') ; 
+   RTneuron.Execute('g_pas = 5e-5');
+   RTneuron.Execute('cm=1');
+   // ------------ inserting hodgkin huxley mechanism
+   RTneuron.Execute('soma insert hh') ; 
    RTneuron.FadvanceON:=True;  // so that NEURON calculates
 
    acquisition.PeriodPerChannel := 0.1 ; {ms} //acquisition frequency
@@ -51,7 +55,7 @@ begin
    end;
    if stim_with_elphy then
    begin
-       acquisition.Fstimulate := True ; {we DON'T stimulate in Elphy!!}
+       acquisition.Fstimulate := True ; {we DO stimulate in Elphy!!}
        RTneuron.Execute('stim = new myIClamp(.5)') ;   
        acquisition.Channels[2].unitY:='nA';
    end;

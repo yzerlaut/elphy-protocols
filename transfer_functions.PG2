@@ -1,0 +1,757 @@
+{$EDIT TF_START}
+{========================================================================
+------- Master file for the transfer functions experiments ---------
+========================================================================}
+
+Const
+   ProtocolCount = 3 ;  
+
+var  { ========= COMMON VARIABLES ============ }
+   protocol_choice : integer; 
+   amplifier, comments, PathOfTheDay, root_dir : string ; 
+   MainDialog, dialog, StimDialog : Tdialog ;{ two dialogs for buttons and protocols}
+   stim, SAVING : boolean ; 
+   ProtocolName:array[1..protocolCount] of string; ProtoNames:string;
+   DB:Tdbrecord ;  {for metadata information, storing comments, ... }
+   Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; {variables to fetch the date and time }
+   gain1,gain2 : real; gain1_int,gain2_int,clamp_int:integer;cont_choice:boolean;  
+   dll_load : string ;
+
+
+{ ============================================================================
+ ---- Protocol names and graphical settings ----------------------------------
+ ============================================================================= }
+                                             
+ 
+procedure SetProtocolNames;
+var          
+  i:integer;                           
+begin
+  ProtocolName[1]:= 'Balanced_Ge-Gi_Shotnoise';
+  ProtocolName[2]:= 'Massive_Transfer_Function';
+  ProtocolName[3]:= 'Input_by_self_Spikes'; 
+  ProtoNames:=ProtocolName[1];
+  for i:=2 to ProtocolCount do ProtoNames:=ProtoNames+'|'+ProtocolName[i];
+end;    
+
+
+procedure init_windows;
+begin
+  deleteallpages('default');
+  InsertPage(1,'transfer_functions');
+  Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
+  Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
+  Definewindow(1, 0, Round(PageHeight*2/3), PageWidth, PageHeight);
+  DivideWindow(1,3,1,2); // for ge and gi
+  Page:=1; color:=cl_gray;
+end;
+
+{$EDIT Info_recording}
+{ ============================================================================
+ ---- File saving and Comments+Information storing ---------------------------
+this is stored in a TDBrecord object attached to the .DAT file
+ ============================================================================= }
+ 
+
+procedure FillDBinfo(var DB: TDBrecord); {procedure to write the metadata !}
+var jj:integer; st:string;
+begin
+  DB.clear; 
+  DB.s:=''+CRLF;                                     
+  DB.info_spec:='+ specific infos about the protocol :';  
+  for jj:=1 to TDBrecord('PG0.global').count do
+  begin  
+    st:= TDBrecord('PG0.global').Names[jj] ;
+    DB.ImplicitValue[st]:=TDBrecord('PG0.global').ImplicitValue[st] ;
+  end;                                                                      
+  for jj:=1 to TDBrecord('PG0.Exp_params').count do
+  begin  
+    st:= TDBrecord('PG0.Exp_params').Names[jj] ;
+    DB.AddField(st,jj+1);
+    DB.ImplicitValue[st]:=TDBrecord('PG0.Exp_params').ImplicitValue[st] ;
+  end;                                                                      
+  DB.protocol:=ProtocolName[protocol_choice];
+  DB.Comments := comments ; {comments is a global variable }
+  DB.Day := Day ; DB.Month := Month ; DB.Year := Year ;
+  DB.Hour := Hour ; DB.Minute := Minute ; DB.SEcond := Second ;    
+end;
+
+
+{$EDIT channels_settings} 
+{ Acquisition + Stimulation + Gain settings }
+
+
+{ ==============================================================================
+--------- Setting the Acquisition channels -------------------------------------
+================================================================================ }
+
+
+
+procedure Set_DCsim_Channels;
+var 
+   i :integer;
+begin {-- we set all the variables of the acquisition class, then we create 
+      the NEURON variables and link it to the analogous variables
+       -- the NEURON files are loaded thanks to main dialog buttons}
+
+   acquisition.ChannelCount := 4; // vm, Iinj, ge, gi
+
+   {we delete previous graphical display}
+   ClearObjects(1,1); ClearObjects(1,2);
+
+   acquisition.Fcontinuous:=true;
+   acquisition.Fstimulate := False ; {we DON'T stimulate in Elphy!!}
+   acquisition.PeriodPerChannel:=0.1 ; { in ms }
+ 
+   RTneuron.FadvanceON:=True; { in dynamic clamp -> NEURON calculus }  
+   RTneuron.execute('create soma');
+   RTneuron.execute('insert pas');
+   RTneuron.execute('L=diam=79.8'); RTneuron.Execute('g_pas = 5e-5');
+   RTneuron.execute('insert hh');
+   
+   RTneuron.Execute('objref stim');
+   RTneuron.Execute('soma stim = new Exp2Syn_eiNtwk(.5)');
+   for i:=1 to 6 do 
+   begin 
+     acquisition.Channels[i].ChannelType := TI_Neuron;
+     acquisition.Channels[i].DownSamplingFactor:=1;
+   end;
+   acquisition.Channels[1].unitY:='mV'; addObject(1,1,v1); v1.title:='V_intra(t)';
+   acquisition.Channels[1].NrnSymbolName:='soma.v(.5)';
+   acquisition.Channels[2].unitY:='pA'; addObject(1,2,v2); v1.title:='Iinj(t)';
+   acquisition.Channels[2].NrnSymbolName:='stim.Ipico';
+   acquisition.Channels[3].unitY:='uS'; addObject(1,3,v3);  v3.title:='Ge(t)';
+   acquisition.Channels[3].NrnSymbolName:='stim.ge';
+   acquisition.Channels[4].unitY:='uS'; addObject(1,4,v4); v4.title:='Gi(t)';
+	 acquisition.Channels[4].NrnSymbolName:='stim.gi';
+   v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ; v4.cpx:=1 ;
+   v1.cpy:=1 ; v2.cpy := 2 ; v3.cpy:=3 ;  v4.cpy:=4 ; {we set the coupling value -> to couple to future analysis} 
+   v2.color := CL_Olive ; v3.color := CL_Blue ; v4.color := CL_Red ; 
+end;
+
+procedure Set_DCchannels;
+var 
+   gain1, gain2, epdur, f_acq, acquisitionISI :real;
+   Continu, stim :boolean;
+   Clamp_int, max_ep_num, i :integer;
+begin {-- we set all the variables of the acquisition class, then we create 
+      the NEURON variables and link it to the analogous variables
+       -- the NEURON files are loaded thanks to main dialog buttons}
+
+   acquisition.ChannelCount := 6; // for the whole classic_electrophy protocols
+
+   {we delete previous graphical display}
+   ClearObjects(1,1); ClearObjects(1,2);
+
+   acquisition.Fcontinuous:=true;
+   acquisition.Fstimulate := False ; {we DON'T stimulate in Elphy!!}
+   gain1 := TDBrecord('PG0.global').gain1 ;
+   gain2 := TDBrecord('PG0.global').gain2 ;
+   f_acq := TDBrecord('PG0.global').f_acq ;
+   acquisition.PeriodPerChannel:=1./f_acq ; { in ms }
+
+   for i:=1 to 6 do 
+   begin 
+     acquisition.Channels[i].ChannelType := TI_Neuron;
+     acquisition.Channels[i].DownSamplingFactor:=1;
+   end;
+   acquisition.Channels[1].unitY:='mV'; addObject(1,1,v1); v1.title:='V_intra(t)';
+   acquisition.Channels[1].NrnSymbolName:='cell.soma.v(.5)';
+   acquisition.Channels[3].unitY:='uS'; addObject(1,3,v3);  v3.title:='Ge(t)';
+   acquisition.Channels[3].NrnSymbolName:='cell.syn.ge';
+   acquisition.Channels[4].unitY:='uS'; addObject(1,4,v4); v4.title:='Gi(t)';
+	 acquisition.Channels[4].NrnSymbolName:='cell.syn.gi';
+   v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ; v4.cpx:=1 ;
+   v1.cpy:=1 ; v2.cpy := 2 ; v3.cpy:=3 ;  v4.cpy:=4 ; {we set the coupling value -> to couple to future analysis} 
+end;
+
+
+procedure InitializeChannels;
+var amplifier : string ;
+begin
+         amplifier := TDBrecord('PG0.global').amplifier ;
+         if amplifier='nrn_simulation' then Set_DCsim_Channels else Set_DCchannels;
+end;
+
+
+
+
+{$EDIT balanced_shotnoise_exp} 
+{ ==============================================================================
+----- Response to a shotnoise of excitatory and inhibitory conductance ---------
+================================================================================ }
+
+
+var
+   TFdialog : Tdialog;
+   THdetect : Tdetector;
+   spiketimes : Tvector ;
+   stop_flag : boolean ;
+{ *** Balanced Conductance Shotnoise Stim *** }
+var
+   freq_ge, freq_gi, qe, qi, tau1E, tau2E, tau1I, tau2I, Ee, Ei	: real; { excitatory time constant}
+   Nexc, Ninh	: integer;   SEED : integer;  vsum : Tvector; ind : integer ;
+
+procedure initTFparameters;
+begin
+   freq_ge :=1; freq_gi :=1; Nexc := 4000; Ninh := 500;
+   qe:=1.8;  { nS }  
+   tau1E:=8; {ms}
+   tau2E:=0.4; {ms}
+   qi:= 1.1;  { uS }  tau1I:=10; {ms} tau2I:=0.1; {ms}
+   Ee:= 0; Ei:= -80; SEED :=1 ;
+end;
+
+procedure At_threshold_event(n:integer);
+begin
+    Statuslinetxt('Spike Number at t: '+Istr(spiketimes.Iend));
+    if n>30 then begin acquisition.stop ; end;
+end; 
+
+procedure tf_InitProcess; {executer avec acquisition.start, mais apres tout, ici tous les objets ont ete initialises, donc on peut les utiliser}
+var 
+threshold : real ;refrac : real ; yinit : real;
+begin
+   spiketimes.create(t_single,0,-1);
+   threshold := -30.0 ; // threshold at : ... mV 
+   refrac := 0.003 ; // at least ... s between two events
+   yinit := -80.0 ;
+   THdetect.create;
+   THdetect.InitCrossings(v1,spiketimes,TRUE,FALSE,threshold,threshold,refrac,yinit,FALSE);
+   THdetect.addevent(At_threshold_event,0);
+end;
+
+
+procedure tf_processCont; // procedure appelle environ tous les 40msr
+begin
+THdetect.Update(v1.Iend); // code en dur, similaire a calculsum
+end;
+
+procedure tf_EndProcess; 
+begin // we set the stimulation variable in NEURON to 0 !
+      THdetect.Update(v1.Iend);  
+      RTneuron.DacChan[0].HoldingValue:=0;
+      RTneuron.DacChan[0].UseHoldingValue:=True;  
+end;
+
+procedure InitGeGi_exp(f_exc, f_inh:real; SEED:integer);
+begin
+   // Elphy Params initialization
+   InitializeChannels;
+   RTneuron.FadvanceON:=True;
+   acquisition.InstallProcess(tf_InitProcess, tf_initprocess, tf_processcont, tf_endprocess);
+
+   // NEURON initialization 
+   RTneuron.execute('objref ncE, nsE, ncI, nsI');
+   
+   // parameters of the synapses
+   RTneuron.execute('stim.tau1E = '+Rstr(tau1E)); RTneuron.execute('stim.tau2E = '+Rstr(tau2E));
+   RTneuron.execute('stim.tau1I = '+Rstr(tau1I)); RTneuron.execute('stim.tau2I = '+Rstr(tau2I));
+   RTneuron.execute('stim.Ee = '+Rstr(Ee)); RTneuron.execute('stim.Ei = '+Rstr(Ei));
+   
+   // configuring the excitatory presynaptic events
+   RTneuron.execute('nsE = new NetStim(.5)');
+   RTneuron.execute('nsE.start = 0'); RTneuron.execute('nsE.number = 1e30');
+   RTneuron.execute('nsE.noise = 1'); RTneuron.execute('nsE.seed('+Rstr(SEED)+')');
+   if f_exc*Nexc<>0 then RTneuron.execute('nsE.interval = 1000/'+Rstr(f_exc*Nexc)) else RTneuron.execute('nsE.interval = 1e30');
+   RTneuron.execute('ncE = new NetCon(nsE, stim)');
+   RTneuron.execute('ncE.weight = 0.001*'+Rstr(Qe));
+   // configuring the inhibitory presynaptic events
+   RTneuron.execute('nsI = new NetStim(.5)');
+   RTneuron.execute('nsI.start = 0'); RTneuron.execute('nsI.number = 1e30');
+   RTneuron.execute('nsI.noise = 1'); RTneuron.execute('nsI.seed('+Rstr(SEED+1)+')');
+   if f_inh*Ninh<>0 then RTneuron.execute('nsI.interval = 1000/'+Rstr(f_inh*Ninh)) else RTneuron.execute('nsI.interval = 1e30');
+   RTneuron.execute('ncI = new NetCon(nsI, stim)');
+   RTneuron.execute('ncI.weight = -0.001*'+Rstr(Qi));
+   
+   RTneuron.execute('finitialize()');
+end;
+
+
+{ ==============================================================================
+--------- BUILDING THE Experiment DIALOG  --------------------------------------------
+================================================================================ }
+
+
+procedure TFdialogEvent(n:integer);
+var is_already_inh : integer ; ii :integer ;
+begin
+   TFdialog.updatevar;
+   case n of
+     201 : InitGeGi_exp(freq_ge,freq_gi,SEED);
+     end; 
+     TFdialog.update;
+end;  
+
+procedure InitTFdialog;
+begin
+   initTFparameters;
+   with TFdialog do
+   begin
+      create;
+      OnEvent:=TFdialogEvent;
+      { !! Very Important : at every GUI event, we call this function}
+      setText(' |  __---   Transfer Function Experiments   ---__  | ');
+      setText('Conductance Shotnoise from a balanced Network');
+      setText('______________________________________');
+      getIntegerA('SEED (int)',SEED,6,200);
+      setText('o==> EXCITATION');
+      getIntegerA('Nexc (# exc synapses)',Nexc,6,200);
+      getRealA('excitatory quantal (nS)',qe,10,2,200);
+      getRealA('Tau1_E (ms)',tau1E,10,2,200);
+      getRealA('Tau2_E (ms)',tau2E,10,2,200);
+      getRealA('Ee (revers. pot.) (mV)',Ee,10,2,200);
+      setText('o==> INHIBITION');
+      getIntegerA('Ninh (# inh synapses)',Ninh,6,200);
+      getRealA('inhibitory quantal (nS)',qi,10,2,200);
+      getRealA('Tau1_I (ms)',tau1I,10,2,200);
+      getRealA('Tau2_I (ms)',tau2I,10,2,200);
+      getRealA('Ei (revers. pot.) (mV)',Ei,10,2,200);
+      setText('');
+      setText(' === frequencies ===');
+      getRealA('excitatory frequency (Hz)',freq_ge,10,3,200);
+      getRealA('inhibitory frequency (Hz)',freq_gi,10,3,200);
+      getCommandA(' Initialize() ',0,201); { OnEvent flag -> 201 }
+   end;
+   TFdialog.show;
+end;
+
+
+{$EDIT massive_TF_scan} 
+{ ==============================================================================
+---- Doing a massive frequency scan to determine the final transfer function ---
+================================================================================ }
+
+var vec_fe_full,vec_fi_full : Tvector ;
+var global_step : integer ;  continu_flag : boolean ;
+var fe_min0,fe_max0,fe_min1,fe_max1,fi_min,fi_max, t0_trial, t0_full :real;
+var current_string : string ; grid_seed : integer ; 
+var recorded_fe,recorded_fi,recorded_t : Tvector ;
+var rest_flag,jump_to_next:boolean ; // flag pour alterner de la stimulation et des periods de repos...
+
+
+procedure init_massivetf_const;
+begin
+   vec_fe_full.create(t_single,0,-1); vec_fi_full.create(t_single,0,-1);
+   fe_min0 := 0.1 ; fe_max0 := 10; fe_min1 := 5 ; fe_max1 := 20;
+   fi_min := 0.1 ; fi_max := 15;  jump_to_next:=False ;
+   recorded_fe.create(t_single,0,-1);
+   recorded_fi.create(t_single,0,-1);
+   recorded_t.create(t_single,0,-1);
+end;
+
+
+procedure Shuffle_Vector(var vec:Tvector);
+var ii,i1,i2:integer; temp:real;
+begin
+    for ii:=0 to 10*vec.Iend do 
+    begin
+        i1:= Random(vec.Iend); i2:= Random(vec.Iend);
+        temp:= vec[i1]; vec[i1]:=vec[i2]; vec[i2]:=temp;
+    end;
+end;
+
+procedure gen_grid_frequency; // a bit complicated, but we want to increase the precision when the index (~time) raises
+var vec_i1,vec_fe1,vec_fi1 : Tvector;
+var vec_i2,vec_fe2,vec_fi2 : Tvector;
+var vec_i3,vec_fe3,vec_fi3 : Tvector;
+var vec_i4,vec_fe4,vec_fi4 : Tvector;
+var fe0,dfe : Tvector ; n_grid : integer ;
+var flag:Boolean; ee,ii:integer ; dfi : real ;
+begin
+    dfi := (fi_max-fi_min)/16 ;  
+    dfe.create(t_single,0,16);  fe0.create(t_single,0,16); 
+    for ii:=0 to 16 do dfe[ii]:=(fe_max0-fe_min0)/16 + ii*((fe_max1-fe_min1)/16-(fe_max0-fe_min0)/16)/16; 
+    for ii:=0 to 16 do fe0[ii]:=fe_min0+ii/16*(fe_min1-fe_min0);
+    vec_i1.create(t_smallint,0,8); 
+    for ii:=0 to vec_i1.Iend do vec_i1[ii]:=ii;
+    vec_fe1.create(t_smallint,0,-1);vec_fi1.create(t_single,0,-1);
+    vec_i2.create(t_smallint,0,25-9-1);
+    for ii:=0 to vec_i2.Iend do vec_i2[ii]:=ii;
+    vec_fe2.create(t_single,0,-1);vec_fi2.create(t_single,0,-1);
+    vec_i3.create(t_smallint,0,81-25-1);
+    for ii:=0 to vec_i3.Iend do vec_i3[ii]:=ii;
+    vec_fe3.create(t_single,0,-1);vec_fi3.create(t_single,0,-1);
+    vec_i4.create(t_smallint,0,289-81-1);
+    for ii:=0 to vec_i4.Iend do vec_i4[ii]:=ii;
+    vec_fe4.create(t_single,0,-1);vec_fi4.create(t_single,0,-1);
+    n_grid:=16 ;          
+    for ee:=0 to n_grid do begin
+      for ii:=0 to n_grid do begin 
+        flag := True;              
+        if ( ee Mod 8 = 0 ) then begin 
+            if ( ii mod 8 = 0 ) then begin 
+                vec_fe1.addToList(fe0[ii]+ee*dfe[ii]);
+                vec_fi1.addToList(fi_min+dfi*ii);
+                flag := False ; end; end ;   
+        if (ee mod 4 = 0) and flag then begin
+            if ( ii mod 4 = 0) then begin
+                vec_fe2.addToList(fe0[ii]+ee*dfe[ii]);
+                vec_fi2.addToList(fi_min+dfi*ii);
+                flag := False ; end ; end ; 
+        if (ee mod 2 = 0) and flag then begin 
+            if (ii mod 2 = 0) then begin 
+                vec_fe3.addToList(fe0[ii]+ee*dfe[ii]);
+                vec_fi3.addToList(fi_min+dfi*ii);
+                flag := False ;  end; end;  
+        if (ee mod 1 = 0) and flag then begin 
+            if (ii mod 1 = 0) then begin 
+                vec_fe4.addToList(fe0[ii]+ee*dfe[ii]);
+                vec_fi4.addToList(fi_min+dfi*ii);
+                flag := False ; end ; end;    
+      end;
+   end;       
+   Shuffle_Vector(vec_i1);
+   for ii:=0 to vec_i1.Iend do 
+   begin 
+   ee := Round(vec_i1[ii]) ; 
+   vec_fe_full.AddToList(vec_fe1[ee]);vec_fi_full.AddToList(vec_fi1[ee]);
+   end;    
+   Shuffle_Vector(vec_i2);
+   for ii:=0 to vec_i2.Iend do 
+   begin 
+   ee := Round(vec_i2[ii]) ; 
+   vec_fe_full.AddToList(vec_fe2[ee]);vec_fi_full.AddToList(vec_fi2[ee]);
+   end;       
+   Shuffle_Vector(vec_i3);
+   for ii:=0 to vec_i3.Iend do 
+   begin 
+   ee := Round(vec_i3[ii]) ; 
+   vec_fe_full.AddToList(vec_fe3[ee]);vec_fi_full.AddToList(vec_fi3[ee]);
+   end;              
+   Shuffle_Vector(vec_i4);     
+   for ii:=0 to vec_i4.Iend do 
+   begin 
+   ee := Round(vec_i4[ii]) ; 
+   vec_fe_full.AddToList(vec_fe4[ee]);vec_fi_full.AddToList(vec_fi4[ee]);
+   end;                              
+end;
+
+procedure Init_single_exp(f_exc, f_inh:real; SEED:integer);
+begin         
+   // configuring the excitatory presynaptic events
+   RTneuron.execute('nsE.start = 0'); RTneuron.execute('nsE.number = 1e30');
+   RTneuron.execute('nsE.noise = 1'); RTneuron.execute('nsE.seed('+Rstr(SEED)+')');
+   if f_exc*Nexc<>0 then RTneuron.execute('nsE.interval = 1000/'+Rstr(f_exc*Nexc)) else RTneuron.execute('nsE.interval = 1e30');
+   RTneuron.execute('ncE.weight = 0.001*'+Rstr(Qe));
+   RTneuron.execute('ncE.delay = 0');
+   // configuring the inhibitory presynaptic events
+   RTneuron.execute('nsI.start = 0'); RTneuron.execute('nsI.number = 1e30');
+   RTneuron.execute('nsI.noise = 1'); RTneuron.execute('nsI.seed('+Rstr(SEED+1)+')');
+   if f_inh*Ninh<>0 then RTneuron.execute('nsI.interval = 1000/'+Rstr(f_inh*Ninh)) else RTneuron.execute('nsI.interval = 1e30');
+   RTneuron.execute('ncI.weight = -0.001*'+Rstr(Qi));
+   RTneuron.execute('ncI.delay = 0');
+   
+   RTneuron.execute('finitialize()');
+end;
+
+
+procedure massive_nrn_init;
+begin
+   // NEURON initialization, need to initialize it only once...      
+   RTneuron.execute('objref ncE, nsE, ncI, nsI');
+   RTneuron.execute('soma nsE = new NetStim(.5)');
+   RTneuron.execute('ncE = new NetCon(nsE, stim)');
+   RTneuron.execute('soma nsI = new NetStim(.5)');                       
+   RTneuron.execute('ncI = new NetCon(nsI, stim)');
+   // parameters of the synapses
+   
+   
+   RTneuron.execute('stim.tau1E = '+Rstr(tau1E)); RTneuron.execute('stim.tau2E = '+Rstr(tau2E));
+   RTneuron.execute('stim.tau1I = '+Rstr(tau1I)); RTneuron.execute('stim.tau2I = '+Rstr(tau2I));
+   RTneuron.execute('stim.Ee = '+Rstr(Ee)); RTneuron.execute('stim.Ei = '+Rstr(Ei));
+    
+end;
+
+
+// ===================== Process functions ================== //
+
+
+procedure massive_processCont; // procedure appelle environ tous les 40ms
+begin
+THdetect.Update(v1.Iend); // code en dur, similaire a calculsum
+if not continu_flag or (v1.Xend-t0_trial>5) or jump_to_next then acquisition.stop ;
+if rest_flag and (v1.Xend-t0_trial>2) then acquisition.stop ;
+end;
+
+ProcessCont
+begin
+if protocol_choice=1 then tf_processcont;
+if protocol_choice=2 then massive_processcont;
+end;
+
+
+procedure massive_EndProcess2; 
+begin // we set the stimulation variable in NEURON to 0 !
+      global_step := global_step+1 ;
+      freq_ge := vec_fe_full[global_step] ; freq_gi := vec_fi_full[global_step] ;
+      Init_single_exp(freq_ge,freq_gi,SEED);
+      recorded_fe.addtolist(freq_ge);recorded_fe.SaveAsObject(current_string+'_fe') ;
+      recorded_fi.addtolist(freq_gi);recorded_fi.SaveAsObject(current_string+'_fi') ;
+      recorded_t.addtolist(v1.Xend-t0_trial);recorded_t.SaveAsObject(current_string+'_t') ;
+      t0_trial := v1.Xend ; 
+      TFdialog.update;TFdialog.updatevar; 
+      RTneuron.execute('print g_pas');   
+      acquisition.startandsave(true);
+end;
+
+procedure massive_EndProcess; 
+begin // we set the stimulation variable in NEURON to 0 !
+    if jump_to_next then jump_to_next:=False ;
+    if continu_flag=False then rest_flag:=False; // to be sure to cancel the stimulation
+    if rest_flag then  // we are not in pause so we progress in the scan..
+    begin 
+      global_step := global_step+1 ;
+      freq_ge := vec_fe_full[global_step] ; freq_gi := vec_fi_full[global_step] ;
+      Init_single_exp(freq_ge,freq_gi,SEED);
+      recorded_fe.addtolist(freq_ge);recorded_fe.SaveAsObject(current_string+'_fe') ;
+      recorded_fi.addtolist(freq_gi);recorded_fi.SaveAsObject(current_string+'_fi') ;
+      recorded_t.addtolist(v1.Xend-t0_trial);recorded_t.SaveAsObject(current_string+'_t') ;
+      RTneuron.FadvanceON:=True;
+      rest_flag:=False;
+    end
+    else 
+    begin 
+      Init_single_exp(0.,0.,SEED);
+      rest_flag :=True;
+      recorded_fe.addtolist(0);recorded_fe.SaveAsObject(current_string+'_fe') ;
+      recorded_fi.addtolist(0);recorded_fi.SaveAsObject(current_string+'_fi') ;
+      recorded_t.addtolist(v1.Xend-t0_trial);recorded_t.SaveAsObject(current_string+'_t') ;
+    end;
+    t0_trial := v1.Xend ; 
+    TFdialog.update;TFdialog.updatevar;    
+    if continu_flag then acquisition.startandsave(true);
+end;
+
+Initprocess
+begin
+   tf_initprocess;
+end;
+
+EndProcess
+begin
+   if protocol_choice = 2 then massive_endprocess;
+end;
+
+procedure Run_MassiveTF;
+begin
+   // Elphy Params initialization
+   //acquisition.InstallProcess(nil, tf_initprocess, massive_processcont, massive_endprocess);
+   
+   DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time} 
+   current_string := PathOfTheDay+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second);     
+   continu_flag := True ;
+   freq_ge := vec_fe_full[global_step] ; freq_gi := vec_fi_full[global_step] ;
+   Init_single_exp(freq_ge,freq_gi,SEED);
+   recorded_fe.addtolist(freq_ge);recorded_fe.SaveAsObject(current_string+'_fe') ;
+   recorded_fi.addtolist(freq_gi);recorded_fi.SaveAsObject(current_string+'_fi') ;      
+   recorded_t.addtolist(0);recorded_t.SaveAsObject(current_string+'_t') ;              
+   acquisition.startandsave;
+end;
+
+
+procedure MassiveDialogEvent(n:integer);
+var is_already_inh : integer ; ii :integer ;
+begin
+   TFdialog.updatevar;
+   case n of
+     201 : Run_MassiveTF;
+     301 : begin SetRandSeed(grid_seed); gen_grid_frequency; InitializeChannels; massive_nrn_init;end;
+     end;
+     TFdialog.update;
+end;  
+
+procedure InitMassivedialog;
+begin
+   init_massivetf_const;
+   with TFdialog do
+   begin
+      create;
+      OnEvent:=MassiveDialogEvent;
+      { !! Very Important : at every GUI event, we call this function}
+      setText(' |  __---   Transfer Function Experiments   ---__  | ');
+      setText('Conductance Shotnoise from a balanced Network');
+      setText('______________________________________');
+      getIntegerA('SEED (int)',grid_SEED,6,200);
+      setText('o==> EXCITATION');
+      getRealA(' fe_min (fi=fi_min)',fe_min0,10,3,200);
+      getRealA(' fe_max (fi=fi_min)',fe_max0,10,3,200);
+      getRealA(' fe_min (fi=fi_max)',fe_min1,10,3,200);
+      getRealA(' fe_max (fi=fi_max)',fe_max1,10,3,200);
+      setText('o==> INHIBITION');
+      getRealA(' fi_min ',fi_min,10,3,200);
+      getRealA(' fi_max ',fi_max,10,3,200);
+      setText('');
+      getCommandA(' Generate and Shuffle the stim ',0,301); { OnEvent flag -> 201 }
+      getCommandA(' Run massive TF ',0,201); { OnEvent flag -> 201 }
+      getIntegerA('Current Step ',global_step,6,200);
+      getRealA(' current fe',freq_ge,10,3,200);
+      getRealA(' current fi',freq_gi,10,3,200);
+      getboolean('Continue Running (stop asap...)',continu_flag);
+      getboolean('jump to the next one',jump_to_next);
+      Caption:='Massive-TF';
+      Show;
+   end;
+end;
+
+
+{$EDIT Input_from_self_spikes} 
+{ ==============================================================================
+--- Response to a shotnoise generated by the output frequency of the neuron ------
+================================================================================ }
+
+
+
+{$EDIT singleExp_dialog}
+
+
+{$EDIT Main_dialog}
+{ ==============================================================================
+--------- BUILDING THE MAIN DIALOG  --------------------------------------------
+================================================================================ }
+
+procedure MainDialog_update(n:integer); 
+var amplifier : string ;
+begin { Main dialog, fot the choice of the protocol, the start/stop and saving of the acquisition}     
+  if acquisition.IsRunning then acquisition.stop; 
+  MainDialog.updatevar;
+  TDBrecord('PG0.global').Gain1_int:=gain1_int;
+  TDBrecord('PG0.global').Gain2_int:=gain2_int;
+  TDBrecord('PG0.global').clamp_int := clamp_int; 
+  case n of
+    101: begin 
+              case protocol_choice of
+                       1 : InitTFdialog; 
+                       2 : InitMassivedialog;
+                       //3 :                 
+              end; 
+         end;
+    //111 : SetGain1; //Init_AcqChannels;
+    //112 : SetGain2; // Init_AcqChannels;
+    200 : if SAVING then acquisition.startandsave else acquisition.start;
+    201 : acquisition.stop ;
+    301 : comments := '';
+    281 : RTneuron.Execute(dll_load);
+    282 : RTneuron.Restart;
+  end;
+  gain1:=TDBrecord('PG0.global').Gain1;
+  gain2:=TDBrecord('PG0.global').Gain2;    
+  clamp_int:=TDBrecord('PG0.global').clamp_int ;      
+  MainDialog.update;
+end;    
+
+
+procedure Init_Main_Dialog; {we call this procedure when we load the main program, (else values are 0 -> dangerous for division, e.g. freq) }
+var amplifier : string ;
+begin
+DB.create;
+dll_load := TDBrecord('PG0.global').loadnrnpath ;
+dll_load := 'nrn_load_dll("'+dll_load+'nrnmech.dll")';
+PathOfTheDay := TDBrecord('PG0.global').PathOfTheDay ; // data path
+amplifier := TDBrecord('PG0.global').amplifier ;
+protocol_choice := 0;
+//------------
+   with MainDialog do
+   begin
+   create;
+   OnEvent := MainDialog_update;
+   
+   if amplifier='nrn_simulation' then 
+     begin 
+             getCommandA(' restart NEURON ',0,282);
+             getCommandA(' load NEURON mech ',0,281);
+             //getCommandA(' load NEURON model ',0,280); 
+     end;
+   setText(' ================================= ');
+   setText(' ---------------< Protocol Selection >----------------- ');
+   setText('');
+   getStringList('  PROTOCOL  ',ProtoNames,'0|1|2|3',protocol_choice,101);  { Onevent flag ->199}
+   setText(' ================================= ');
+   setText('');
+   if amplifier='multiclamp' then 
+     begin 
+        setText(' ==<| GAIN  |>== ');
+        getStringListA('Primary Output  ','1 | 2 | 5 | 10 | 20 | 50 | 100 | 200 | 500 | 1000 | 2000',Gain1_int,111);
+        getStringListA('Secondary Output ','1 | 2 | 5 | 10 | 20 | 50 | 100',Gain2_int,112);
+        setText('');
+     end;
+   getBoolean(' saving ? ',SAVING);
+   getCommandA(' => Start ...           ',0,200);
+   getCommandA(' Stop the Acquisition ',0,201);
+   setText('');
+   getMemo(' Comments ',comments,15,4,1,300);
+   getCommandA(' reset comments ',0,301);
+   Caption:='Main Dialog';
+  end;
+Maindialog.show;
+end;
+
+
+{$EDIT init_from_file}
+{-------------------------------------------------------------------------------
+-------------------- initialisation from file ----------------------------------
+-------------------------------------------------------------------------------}
+
+
+var 
+    already_initiated : boolean ; // to know if we need to reinitialize the TDBrecord
+    global, Exp_params : TDBrecord ;
+
+procedure global_init;
+var PathOfTheDay : string ;
+begin
+
+RTneuron.resetParams;
+
+global.create;
+DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
+/// ---- CASE ON LAPTOP
+global.amplifier:='nrn_simulation'; // choice of the amplifier
+PathOfTheDay := 'Z:\home\yann\experiments\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ;
+global.loadnrnPath := 'Z:/home/yann/experiments/myelphy/nrn_files/' ;
+/// ---- CASE ON MULTICLAMP
+{global.amplifier:='multiclamp';
+PathOfTheDay := 'D:\yann\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ; 
+global.loadnrnPath := 'D:/yann/myelphy/nrn_files/' ; }
+if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);
+global.PathOfTheDay := PathOfTheDay ;
+global.f_acq:=10; // in kHz
+global.gain1:=1; // gain of the first channel
+global.int_gain1:=1; // integer coding for this gain
+global.gain2:=1; // gain of the second channel
+global.int_gain2:=1; //
+global.clamp_int := 1; // integer that code for 1:IC, 2: VC
+global.cont_choice := True; // if True -> continus mode, else episode
+global.stim := False;  // if True acquisition.Fstimulate := True
+global.main_protocol:='';
+global.protocol:='transfer_functions';
+global.saving := False ;
+global.Rs := 0;
+global.Rm := 0;
+global.Cm :=0;
+global.episode_duration := 0 ;
+global.max_EP_num :=0 ;
+global.acquisitionISI:=0. ; 
+global.FadvanceON := False ;
+Exp_Params.create;
+already_initiated :=True;
+InsertPage(1,'fake');DeleteAllPages('fake');InsertPage(1,'default');DeleteAllPages('default');
+Color := cl_gray ;
+end;
+
+program Launch_from_file
+global_init ;
+SetProtocolNames;
+init_windows;
+Init_Main_Dialog;
+initTFparameters;
+init_massivetf_const;
+
+program set_to_zero
+Rtneuron.DacChan[0].HoldingValue:=0;
+Rtneuron.DacChan[0].UseHoldingValue:=True;    
+
+program Launch_from_Tmacro
+SetProtocolNames;
+init_windows;
+Init_Main_Dialog;

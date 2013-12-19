@@ -1,0 +1,65 @@
+const 
+   sample_path = 'Z:\home\yann\experiments\DATA\sample.txt';
+
+var cursor : Tcursor;
+    dialog : Tdialog ;
+    x1, x2 : real;
+    i : integer ;
+  
+procedure save_as_txt;
+var st : string ;  ch, j, i1, i2 : integer ;
+begin
+  openText(1,sample_path,false);
+  st := '';  // X abcisse (time) !
+  i1 := v1.InvConvX(cursor.position[1]); 
+  i2 := v1.InvConvX(cursor.position[2]); 
+  st := '';  // X abcisse (time) !
+  for j:=i1 to i2 do 
+  begin
+     st := Rstr(v1.ConvX(j),1, 6) ;
+     for ch:=1 to channelCount do 
+      begin
+        st := st+Chr(9)+Rstr(v[ch].Yvalue[j],1,6);
+      end;  
+      writelnText(1,st);
+  end; 
+  closeText(1);
+end;  
+
+procedure extract_and_save(n:integer);
+begin
+    dialog.updatevar;
+    case n of 
+       999 : save_as_txt;
+       99 : begin cursor.position[1]:=x1; cursor.position[2]:= x2; end;
+    end;
+    //dialog.update;
+end;
+
+procedure sstart;
+begin
+   cursor.create ; cursor.DoubleCursor:=True ; cursor.style:=cs_X ;
+   cursor.InstallSource(v1); 
+   cursor.visible:=True ;
+   x1 := v1.Xstart ; 
+   cursor.position[1]:=x1 ; 
+   x2 := v1.Xstart+10 ; 
+   cursor.position[2]:=x2;
+   with dialog do
+   begin
+      create;
+      OnEvent := extract_and_save;
+      dialog.setText('');
+      dialog.setText('< Extract Sample from the Trace >');
+      dialog.setText('');
+      dialog.getRealA(' x1 ',x1,3,1,99);
+      dialog.getRealA(' x2 ',x2,3,1,99);
+      dialog.setText('');
+      dialog.getCommandA('  Extract and Save ',0,999);
+      show;
+   end;
+end;
+
+
+program init
+sstart;

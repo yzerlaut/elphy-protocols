@@ -1853,16 +1853,16 @@ RTneuron.resetParams;
 global.create;
 DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
 /// ---- CASE ON LAPTOP
-{
+
 global.amplifier:='nrn_simulation'; // choice of the amplifier
 PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ;
 global.loadnrnPath := 'Z:/home/yann/work/elphy_code/nrn_files/' ;
-}
+{
 /// ---- CASE ON MULTICLAMP
 global.amplifier:='multiclamp';
 PathOfTheDay := 'D:\yann\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ; 
 global.loadnrnPath := 'D:/yann/elphy_code/nrn_files/' ; 
-
+}
 if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);
 global.PathOfTheDay := PathOfTheDay ;
 global.f_acq:=10; // in kHz

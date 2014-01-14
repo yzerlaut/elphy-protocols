@@ -106,8 +106,9 @@ begin {-- we set all the variables of the acquisition class, then we create
    RTneuron.FadvanceON:=True; { in dynamic clamp -> NEURON calculus }  
    RTneuron.execute('create soma');
    RTneuron.execute('insert pas');
-   RTneuron.execute('L=diam=79.8'); RTneuron.Execute('g_pas = 5e-5');
-   RTneuron.execute('insert hh');
+   RTneuron.execute('L=diam=79.8');
+   RTneuron.Execute('g_pas = 5e-5');
+   RTneuron.execute('insert hh_hippoc');
    
    RTneuron.Execute('objref stim');
    RTneuron.Execute('soma stim = new Exp2Syn_eiNtwk(.5)');
@@ -707,8 +708,8 @@ global.create;
 DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
 /// ---- CASE ON LAPTOP
 global.amplifier:='nrn_simulation'; // choice of the amplifier
-PathOfTheDay := 'Z:\home\yann\experiments\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ;
-global.loadnrnPath := 'Z:/home/yann/experiments/myelphy/nrn_files/' ;
+PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ;
+global.loadnrnPath := 'Z:/home/yann/work/elphy_code/nrn_files/' ;
 /// ---- CASE ON MULTICLAMP
 {global.amplifier:='multiclamp';
 PathOfTheDay := 'D:\yann\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ; 

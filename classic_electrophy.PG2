@@ -1070,6 +1070,7 @@ var
   min_amp_sin, max_amp_sin, freq_start, freq_end : real;  freq_step_num, global_freq_index : integer ; // for multiple sin
   freq_vec, amp_freq_vec : Tvector; t0_trial : real;
   continu_flag : boolean;
+  end_detect : Tdetector ;
 
 procedure Build_sin(seq:longint;var vec:Tvector); {Build a sinewave into vec }
 begin
@@ -1104,18 +1105,39 @@ begin {when we modify the dialog, we adjust the stimulation params}
 end;
 
 
-procedure multiplesin_processcont;
+procedure check_for_stop_acq(n:integer);
 begin
-    if (v1.Xend-t0_trial)>4./freq_sin then acquisition.stop;
-    if not continu_flag then acquisition.stop;
+    if (continu_flag=False) or ((v1.Xend-t0_trial)>(4./freq_sin)) then acquisition.stop;
 end;
 
-
-processcont
+procedure initialize_a_single_exp;
 begin
-    multiplesin_processcont;
+    if (global_freq_index<freq_step_num) and (continu_flag=True) then
+    begin
+      global_freq_index :=global_freq_index+1;
+      freq_sin := freq_vec[global_freq_index];
+      amp_sin := amp_freq_vec[global_freq_index];
+      singlesin_dialog.update; // to see the values of the amp and frequencies                                      
+
+     RTneuron.execute('finitialize()'); // reinitializing NEURON
+     stimulator.Channels[1].BuildEp := Build_Sin ; 
+     stimulator.initVectors;
+     t0_trial := v1.Xend ;
+     // then Tdetector settings
+     end_detect.create;
+     end_detect.AddEvent(check_for_stop_acq, 0.);
+     end_detect.InitTimer(v1,  2, 0.5); // 2s delay, then every 500 ms
+     end;
 end;
 
+procedure multiplesin_endprocess;
+begin
+   initialize_a_single_exp;
+   acquisition.InstallProcess(my_initprocess0, nil, nil, multiplesin_endprocess);
+   if continu_flag then begin if SAVING then acquisition.startandsave(True) else acquisition.start;  end;
+end;
+
+{
 procedure multiplesin_endprocess;
 begin
     if global_freq_index<freq_step_num then
@@ -1129,15 +1151,11 @@ begin
      stimulator.Channels[1].BuildEp := Build_Sin ; 
      stimulator.initVectors;
      t0_trial := v1.Xend ;
-     //acquisition.InstallProcess(my_initprocess0, nil, multiplesin_processcont, multiplesin_endprocess);
+     acquisition.InstallProcess(my_initprocess0, nil, nil, multiplesin_endprocess);
     end;
     if continu_flag then begin if SAVING then acquisition.startandsave(True) else acquisition.start;  end;
 end;
-
-endprocess
-begin
-    multiplesin_endprocess;
-end;
+}
 
 procedure Shuffle_2Vector(var vec1, vec2:Tvector);   // identically shuffles 2 vectors...
 var ii,i1,i2:integer; temp1, temp2:real;
@@ -1182,7 +1200,7 @@ begin
      InitializeChannels; // we can initialize the channels
      stimulator.Channels[1].BuildEp := Build_Sin ; 
      stimulator.initVectors;
-     //acquisition.InstallProcess(my_initprocess0, nil, multiplesin_processcont, multiplesin_endprocess);
+     acquisition.InstallProcess(my_initprocess0, nil, nil, multiplesin_endprocess);
 end;
          
          
@@ -1782,8 +1800,8 @@ global.create;
 DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
 /// ---- CASE ON LAPTOP
 global.amplifier:='nrn_simulation'; // choice of the amplifier
-PathOfTheDay := 'Z:\home\yann\experiments\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ;
-global.loadnrnPath := 'Z:/home/yann/experiments/myelphy/nrn_files/' ;
+PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ;
+global.loadnrnPath := 'Z:/home/yann/work/elphy_code/nrn_files/' ;
 /// ---- CASE ON MULTICLAMP
 {global.amplifier:='multiclamp';
 PathOfTheDay := 'D:\yann\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ; 

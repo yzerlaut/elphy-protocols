@@ -1107,7 +1107,7 @@ end;
 
 procedure check_for_stop_acq(n:integer);
 begin
-    if (continu_flag=False) or ((v1.Xend-t0_trial)>(4./freq_sin)) then acquisition.stop;
+    if (continu_flag=False) or ((v1.Xend-t0_trial)>2.) then acquisition.stop;
 end;
 
 procedure initialize_a_single_exp;
@@ -1125,8 +1125,8 @@ begin
      t0_trial := v1.Xend ;
      // then Tdetector settings
      end_detect.create;
+     end_detect.InitTimer(v1, 0.1); // 2s delay, then every 500 ms
      end_detect.AddEvent(check_for_stop_acq, 0.);
-     end_detect.InitTimer(v1,  2, 0.5); // 2s delay, then every 500 ms
      end;
 end;
 
@@ -1137,25 +1137,6 @@ begin
    if continu_flag then begin if SAVING then acquisition.startandsave(True) else acquisition.start;  end;
 end;
 
-{
-procedure multiplesin_endprocess;
-begin
-    if global_freq_index<freq_step_num then
-    begin
-      global_freq_index :=global_freq_index+1;
-      freq_sin := freq_vec[global_freq_index];
-      amp_sin := amp_freq_vec[global_freq_index];
-      singlesin_dialog.update; // to see the values of the amp and frequencies                                      
-
-     RTneuron.execute('finitialize()'); // reinitializing NEURON
-     stimulator.Channels[1].BuildEp := Build_Sin ; 
-     stimulator.initVectors;
-     t0_trial := v1.Xend ;
-     acquisition.InstallProcess(my_initprocess0, nil, nil, multiplesin_endprocess);
-    end;
-    if continu_flag then begin if SAVING then acquisition.startandsave(True) else acquisition.start;  end;
-end;
-}
 
 procedure Shuffle_2Vector(var vec1, vec2:Tvector);   // identically shuffles 2 vectors...
 var ii,i1,i2:integer; temp1, temp2:real;
@@ -1198,8 +1179,7 @@ begin
      TDBrecord('PG0.Exp_params').max_amp_freq:=max_amp_sin;
      {then we initialize the stimulation}
      InitializeChannels; // we can initialize the channels
-     stimulator.Channels[1].BuildEp := Build_Sin ; 
-     stimulator.initVectors;
+     initialize_a_single_exp;
      acquisition.InstallProcess(my_initprocess0, nil, nil, multiplesin_endprocess);
 end;
          

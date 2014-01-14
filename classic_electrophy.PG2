@@ -1071,6 +1071,11 @@ var
   freq_vec, amp_freq_vec : Tvector; t0_trial : real;
   continu_flag : boolean;
   end_detect : Tdetector ;
+  chirp_amp, chirp_freq_start, chirp_freq_end, chirp_duration : real;
+
+//=================================================
+// ------- SINGLE SINUSOIDS PROTOCOL
+//=================================================
 
 procedure Build_sin(seq:longint;var vec:Tvector); {Build a sinewave into vec }
 begin
@@ -1104,10 +1109,69 @@ begin {when we modify the dialog, we adjust the stimulation params}
    end;
 end;
 
+//=================================================
+// ------- CHIRP PROTOCOL
+//=================================================
+
+procedure Build_chirp(seq:longint;var vec:Tvector);
+var ii:integer ; freq : real ;
+begin
+  for ii:=1 to vec.Iend do
+  begin
+      freq := chirp_freq_start+ii*ii/vec.Iend/vec.Iend*(chirp_freq_end-chirp_freq_start) ;   // freq prop. to t^2
+      vec[ii] := chirp_amp*Sin(2.*PI*freq/1000.*vec.ConvX(ii));  // ms -> s
+  end;
+end;
+
+procedure prepare_chirp;
+var bf, ii : integer; freq : real ;
+begin
+         {we write all the relevant global informations}
+         amplifier := TDBrecord('PG0.global').amplifier ;
+         TDBrecord('PG0.global').cont_choice := False ; 
+         TDBrecord('PG0.global').episode_duration :=  chirp_duration ;
+         TDBrecord('PG0.global').max_EP_num := 1 ; // 1 episodes !!
+         TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.global').acquisitionISI:= 0.2 ;  // small break between the stims
+         if amplifier='nrn_simulation' then TDBrecord('PG0.global').FadvanceON := True else TDBrecord('PG0.global').FadvanceON := False;
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='chirp_stimulation';
+         TDBrecord('PG0.Exp_Params').chirp_amplitude:=amp_sin;
+         TDBrecord('PG0.Exp_params').chirp_frequency_start:=chirp_freq_start;
+         TDBrecord('PG0.Exp_Params').chirp_frequency_end:=chirp_freq_end;
+         {then we initialize the stimulation}
+         InitializeChannels; // we can initialize the channels
+         //stimulator.Channels[1].BuildEp := Build_Chirp ; 
+         // alternative to build ep
+         stimulator.CurrentBuffer:=0;
+         bf := Round(chirp_duration*TDBrecord('PG0.global').f_acq) ; // buffer size
+         stimulator.BufferSize:=bf;
+         stimulator.initVectors;
+         for ii:=1 to stimulator.vector[1].Iend do
+         begin
+             freq := chirp_freq_start+ii*ii/stimulator.vector[1].Iend/stimulator.vector[1].Iend*(chirp_freq_end-chirp_freq_start) ;
+             stimulator.vector[1][ii] := chirp_amp*Sin(2.*PI*freq/1000.*stimulator.vector[1].ConvX(ii));  // ms -> s
+         end;
+         acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
+end;
+         
+         
+procedure Chirp_Event(n:integer); 
+begin {when we modify the dialog, we adjust the stimulation params}
+   chirp_dialog.updatevar;
+   case n of 
+   201 : prepare_chirp;
+   end;
+end;
+
+//=================================================
+// ------- MULTIPLE SINUSOIDS PROTOCOL
+//=================================================
+
 
 procedure check_for_stop_acq(n:integer);
 begin
-    if (continu_flag=False) or ((v1.Xend-t0_trial)>2.) then acquisition.stop;
+    if (continu_flag=False) or ((v1[n]-t0_trial)>2.) then acquisition.stop;
 end;
 
 procedure initialize_a_single_exp;
@@ -1118,6 +1182,7 @@ begin
       freq_sin := freq_vec[global_freq_index];
       amp_sin := amp_freq_vec[global_freq_index];
       singlesin_dialog.update; // to see the values of the amp and frequencies                                      
+      multiplesin_dialog.update; // to see the valueof the frequency index                                      
 
      RTneuron.execute('finitialize()'); // reinitializing NEURON
      stimulator.Channels[1].BuildEp := Build_Sin ; 
@@ -1125,8 +1190,8 @@ begin
      t0_trial := v1.Xend ;
      // then Tdetector settings
      end_detect.create;
-     end_detect.InitTimer(v1, 0.1); // 2s delay, then every 500 ms
      end_detect.AddEvent(check_for_stop_acq, 0.);
+     end_detect.InitTimer(Datafile0.v1, 2., 0.1); // 2s delay, then every 500 ms
      end;
 end;
 
@@ -1193,6 +1258,10 @@ begin {when we modify the dialog, we adjust the stimulation params}
    multiplesin_dialog.update;
 end;
 
+//=================================================
+// ------- THEN DIALOG
+//=================================================
+
 procedure Init_SinDialog;
 begin
     DestroyAllWindows(1);
@@ -1204,6 +1273,7 @@ begin
     amp_sin := 40 ;  freq_sin := 10 ;  phase_sin := 0 ; // for single sin
     freq_start := 0.1 ;  freq_end := 200 ; freq_step_num := 10 ; // for multiple sin
     min_amp_sin := 40 ; max_amp_sin := 40 ;
+    chirp_freq_start := 0.1 ;  chirp_freq_end := 200 ; chirp_amp := 40 ; chirp_duration := 10000 ; // for multiple sin
     
    with singlesin_dialog do
    begin
@@ -1219,9 +1289,12 @@ begin
    with chirp_dialog do
    begin
       create;
-      //OnEvent:
+      OnEvent:=Chirp_event;
       setText(' ==<| Chirp Stimulation |> ');
-      getRealA('Amplitude (pA or mV)',amp_sin,10,3,200);
+      getRealA('Amplitude (pA or mV)',chirp_amp,10,3,200);
+      getRealA('frequency start (Hz)',chirp_freq_start,10,3,200);
+      getRealA('frequency end (Hz)',chirp_freq_end,10,3,200);
+      getRealA('duration (ms)',chirp_duration,10,3,200);
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
    end;
    AddDialog(1, 4, chirp_dialog);
@@ -1238,6 +1311,7 @@ begin
       getRealA(' max amplitude at high freq (pA or mV)',max_amp_sin,10,3,200);
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
       getBooleanA('continu ?', continu_flag, 200);
+      getIntegerA('Index of the current step',global_freq_index,10,200);
    end;
    AddDialog(1, 5, multiplesin_dialog);
 end;
@@ -1779,13 +1853,16 @@ RTneuron.resetParams;
 global.create;
 DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
 /// ---- CASE ON LAPTOP
+{
 global.amplifier:='nrn_simulation'; // choice of the amplifier
 PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ;
 global.loadnrnPath := 'Z:/home/yann/work/elphy_code/nrn_files/' ;
+}
 /// ---- CASE ON MULTICLAMP
-{global.amplifier:='multiclamp';
+global.amplifier:='multiclamp';
 PathOfTheDay := 'D:\yann\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ; 
-global.loadnrnPath := 'D:/yann/myelphy/nrn_files/' ; }
+global.loadnrnPath := 'D:/yann/elphy_code/nrn_files/' ; 
+
 if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);
 global.PathOfTheDay := PathOfTheDay ;
 global.f_acq:=10; // in kHz

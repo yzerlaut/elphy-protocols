@@ -5,7 +5,7 @@
 
 Const
    ProtocolCount = 10 ; 
-   CONTINUOUS_TIMER = 0.5 ; 
+   CONTINUOUS_TIMER = 0.1 ; 
 
 var  { ========= COMMON VARIABLES ============ }
    protocol_choice : integer; 
@@ -196,7 +196,6 @@ begin {-- we set all the variables of the acquisition class, then we create
    {we delete previous graphical display}
    ClearObjects(1,1);
    ClearObjects(1,2);
-   ClearObjects(1,3);
 
    { see the documentation, for the details of the acquisition and RTneuron functions }
    RTneuron.ResetParams;
@@ -1169,11 +1168,12 @@ end;
 //=================================================
 
 
+var current_stop_value : real ;
+
 procedure check_for_stop_acq(n:integer);
 begin
-    detector.update(v1.Iend);
     if not continu_flag then acquisition.stop;
-    if v1.Xend>10 then acquisition.stop ;
+    if (v1.Xend-t0_trial)>current_stop_value then acquisition.stop ;
 end;
 
 procedure initialize_a_single_exp;
@@ -1183,8 +1183,10 @@ begin
       global_freq_index :=global_freq_index+1;
       freq_sin := freq_vec[global_freq_index];
       amp_sin := amp_freq_vec[global_freq_index];
-      //singlesin_dialog.update; // to see the values of the amp and frequencies                                      
+      singlesin_dialog.update; // to see the values of the amp and frequencies                                      
       multiplesin_dialog.update; // to see the valueof the frequency index                                      
+      current_stop_value := 10./freq_sin ;
+     if current_stop_value<2 then current_stop_value:=2;
 
      RTneuron.execute('finitialize()'); // reinitializing NEURON
      stimulator.Channels[1].BuildEp := Build_Sin ; 
@@ -1197,14 +1199,13 @@ end;
 procedure multiplesin_endprocess;
 begin
    set_dac_to_zero;
-   detector.update(v1.Iend);
    t0_trial := v1.Xend ;
+   detector.update(v1.Iend);
    initialize_a_single_exp;
-   //acquisition.InstallProcess(my_initprocess0, nil, nil, multiplesin_endprocess);
    if (global_freq_index<freq_step_num) and (continu_flag=True) then
    begin
-      if SAVING then acquisition.startandsave(True) else acquisition.start; 
-   end;
+      if SAVING then acquisition.startandsave(True) else acquisition.start;  
+   end;                                                                      
 end;
 
 
@@ -1223,9 +1224,6 @@ end;
 procedure prepare_multiplesin;
 var ii : integer ; exponent : real;
 begin
-     t0_trial :=0;
-     global_freq_index:=0;
-     //SAVING := True ; // else the t0_trial thing does not zork
      freq_vec.create(t_double, 0, freq_step_num);
      amp_freq_vec.create(t_double, 0, freq_step_num);
      for ii:=0 to freq_step_num do
@@ -1237,9 +1235,10 @@ begin
      end;
      Shuffle_2Vector(freq_vec, amp_freq_vec); // then we shuffle the order of frequencies
      
+     t0_trial :=0;
+     SAVING := True ; 
      global_freq_index := 0 ; // we start the sequence of stimulation
      continu_flag := True;
-     maindialog.update;
 
      {we write all the relevant global informations}
      amplifier := TDBrecord('PG0.global').amplifier ;
@@ -1834,7 +1833,7 @@ protocol_choice := 0;
    getBoolean(' saving ? ',SAVING);
    getCommandA(' => Start ...           ',0,200);
    getCommandA(' Stop the Acquisition ',0,201);
-   getBooleanA('continu ? (closed-loop)', continu_flag, 200);
+   getBoolean('continu ? (close loop!)', continu_flag);
    setText('');
    getMemo(' Comments ',comments,15,4,1,300);
    getCommandA(' reset comments ',0,301);

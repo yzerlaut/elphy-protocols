@@ -101,6 +101,7 @@ ProcessCont  // common to all continuous processes
 begin
 detector.update(v1.Iend);
 end;
+
 {$EDIT channels_settings} 
 { Acquisition + Stimulation + Gain settings }
 
@@ -147,7 +148,7 @@ begin {-- we set all the variables of the acquisition class, then we create
 
     RTneuron.execute('create soma') ;
     RTneuron.execute('soma insert pas');
-    RTneuron.execute('soma insert hh');
+    RTneuron.execute('soma insert hh_hippoc');
     RTneuron.execute('objref stim');
    
     if Clamp_int=1 then { IF CURRENT-CLAMP }

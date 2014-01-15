@@ -195,11 +195,11 @@ var
 
 procedure initTFparameters;
 begin
-   freq_ge :=1; freq_gi :=1; Nexc := 4000; Ninh := 500;
-   qe:=1.8;  { nS }  
+   freq_ge :=1; freq_gi :=4; Nexc := 2000; Ninh := 500;
+   qe:=0.6;  { nS }  
    tau1E:=8; {ms}
    tau2E:=0.4; {ms}
-   qi:= 1.1;  { uS }  tau1I:=10; {ms} tau2I:=0.1; {ms}
+   qi:= 1.1;  { uS }  tau1I:=5; {ms} tau2I:=0.1; {ms}
    Ee:= 0; Ei:= -80; SEED :=1 ;
 end;
 
@@ -456,12 +456,9 @@ begin
    RTneuron.execute('soma nsI = new NetStim(.5)');                       
    RTneuron.execute('ncI = new NetCon(nsI, stim)');
    // parameters of the synapses
-   
-   
    RTneuron.execute('stim.tau1E = '+Rstr(tau1E)); RTneuron.execute('stim.tau2E = '+Rstr(tau2E));
    RTneuron.execute('stim.tau1I = '+Rstr(tau1I)); RTneuron.execute('stim.tau2I = '+Rstr(tau2I));
    RTneuron.execute('stim.Ee = '+Rstr(Ee)); RTneuron.execute('stim.Ei = '+Rstr(Ei));
-    
 end;
 
 

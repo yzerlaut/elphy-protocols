@@ -429,20 +429,22 @@ begin
 end;
 
 procedure Init_single_exp(f_exc, f_inh:real; SEED:integer);
+var fe_tot, fi_tot :  real;
 begin         
    // configuring the excitatory presynaptic events
    RTneuron.execute('nsE.start = 0'); RTneuron.execute('nsE.number = 1e30');
    RTneuron.execute('nsE.noise = 1'); RTneuron.execute('nsE.seed('+Rstr(SEED)+')');
-   if f_exc*Nexc<>0 then RTneuron.execute('nsE.interval = 1000/'+Rstr(f_exc*Nexc)) else RTneuron.execute('nsE.interval = 1e30');
+   fe_tot := f_exc*Nexc; 
+   if fe_tot<>0 then RTneuron.execute('nsE.interval = 1000/'+Rstr(fe_tot)) else RTneuron.execute('nsE.interval = 1e30');
    RTneuron.execute('ncE.weight = 0.001*'+Rstr(Qe));
    RTneuron.execute('ncE.delay = 0');
    // configuring the inhibitory presynaptic events
    RTneuron.execute('nsI.start = 0'); RTneuron.execute('nsI.number = 1e30');
    RTneuron.execute('nsI.noise = 1'); RTneuron.execute('nsI.seed('+Rstr(SEED+1)+')');
-   if f_inh*Ninh<>0 then RTneuron.execute('nsI.interval = 1000/'+Rstr(f_inh*Ninh)) else RTneuron.execute('nsI.interval = 1e30');
+   fi_tot := f_inh*Ninh;
+   if fi_tot<>0 then RTneuron.execute('nsI.interval = 1000/'+Rstr(fi_tot)) else RTneuron.execute('nsI.interval = 1e30');
    RTneuron.execute('ncI.weight = -0.001*'+Rstr(Qi));
    RTneuron.execute('ncI.delay = 0');
-   
    RTneuron.execute('finitialize()');
 end;
 
@@ -459,6 +461,8 @@ begin
    RTneuron.execute('stim.tau1E = '+Rstr(tau1E)); RTneuron.execute('stim.tau2E = '+Rstr(tau2E));
    RTneuron.execute('stim.tau1I = '+Rstr(tau1I)); RTneuron.execute('stim.tau2I = '+Rstr(tau2I));
    RTneuron.execute('stim.Ee = '+Rstr(Ee)); RTneuron.execute('stim.Ei = '+Rstr(Ei));
+   // then
+   continu_flag :=True ;
 end;
 
 
@@ -468,8 +472,8 @@ end;
 procedure massive_processCont; // procedure appelle environ tous les 40ms
 begin
 THdetect.Update(v1.Iend); // code en dur, similaire a calculsum
-if not continu_flag or (v1.Xend-t0_trial>5) or jump_to_next then acquisition.stop ;
-if rest_flag and (v1.Xend-t0_trial>2) then acquisition.stop ;
+if not continu_flag or (v1.Xend-t0_trial>10) or jump_to_next then acquisition.stop ;
+if rest_flag and (v1.Xend-t0_trial>1) then acquisition.stop ;
 end;
 
 ProcessCont
@@ -478,20 +482,6 @@ if protocol_choice=1 then tf_processcont;
 if protocol_choice=2 then massive_processcont;
 end;
 
-
-procedure massive_EndProcess2; 
-begin // we set the stimulation variable in NEURON to 0 !
-      global_step := global_step+1 ;
-      freq_ge := vec_fe_full[global_step] ; freq_gi := vec_fi_full[global_step] ;
-      Init_single_exp(freq_ge,freq_gi,SEED);
-      recorded_fe.addtolist(freq_ge);recorded_fe.SaveAsObject(current_string+'_fe') ;
-      recorded_fi.addtolist(freq_gi);recorded_fi.SaveAsObject(current_string+'_fi') ;
-      recorded_t.addtolist(v1.Xend-t0_trial);recorded_t.SaveAsObject(current_string+'_t') ;
-      t0_trial := v1.Xend ; 
-      TFdialog.update;TFdialog.updatevar; 
-      RTneuron.execute('print g_pas');   
-      acquisition.startandsave(true);
-end;
 
 procedure massive_EndProcess; 
 begin // we set the stimulation variable in NEURON to 0 !

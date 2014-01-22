@@ -10,4 +10,4 @@ if test "" = "yes" ; then
 else
 	NRNIV="${NRNBIN}nrniv"
 fi
-"${NRNIV}" -dll "/home/yann/experiments/myelphy/nrn_files/x86_64/.libs/libnrnmech.so" "$@"
+"${NRNIV}" -dll "/home/yann/work/elphy_code/nrn_files/x86_64/.libs/libnrnmech.so" "$@"

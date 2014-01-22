@@ -1,1 +1,0 @@
-../Exp2Syn_eiNtwk.mod

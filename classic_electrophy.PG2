@@ -363,6 +363,7 @@ end;
 
 procedure passive_recording_init;
 begin
+init_windows;
 TDBrecord('PG0.global').cont_choice:=True;
 TDBrecord('PG0.global').stim:=False;
 InitializeChannels;

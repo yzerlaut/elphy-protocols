@@ -151,7 +151,7 @@ static void nrn_alloc(_prop)
  _mechtype = nrn_get_mechtype(_mechanism[1]);
   hoc_register_dparam_size(_mechtype, 2);
  	hoc_register_var(hoc_scdoub, hoc_vdoub, hoc_intfunc);
- 	ivoc_help("help ?1 myIClamp /home/yann/experiments/myelphy/nrn_files/x86_64/myIClamp.mod\n");
+ 	ivoc_help("help ?1 myIClamp /home/yann/work/elphy_code/nrn_files/x86_64/myIClamp.mod\n");
  hoc_register_limits(_mechtype, _hoc_parm_limits);
  hoc_register_units(_mechtype, _hoc_parm_units);
  }

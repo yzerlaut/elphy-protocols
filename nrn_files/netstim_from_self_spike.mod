@@ -1,54 +1,68 @@
 COMMENT
 modified by yann zerlaut (UNIC lab, destexhe team 2014) from
-: $Id: netstim.mod 2212 2008-09-08 14:32:26Z hines $
+: $Id: netstim.mod 1305 2006-04-10 21:14:26Z hines $
+and from the APcount.mod file (it's a mix of them)
+
 basically the "interval" variable of Netstim becomes dependent on the
 output firing of the post-synaptic neuron
 Each "spike_number_for_update" spikes we update "interval"
 thanks to the firing rate calculated from this number of spikes
-We remove the "noise" variable as we only want it equal to 1
+
+The calculus of interval is performed within the "check()" function
 ---
 The thing is that we need to start to sample the output firing rate 
 frequency before we start to send presynaptic events
 ENDCOMMENT
 
 NEURON	{ 
-    ARTIFICIAL_CELL NetStim2
-    RANGE number, start
-    RANGE noise, thresh, spike_number_for_update, nspike_last_freq
-    RANGE t_last_freq
-    THREADSAFE : only true if every instance has its own distinct Random
-    POINTER donotuse
+  POINT_PROCESS NetStim_from_self_spike
+  RANGE interval, number, start, synapses_number
+  RANGE noise, interval_increment
+  RANGE n, thresh, time, firing
+  RANGE spike_number_for_update, nspike_last_freq
+  POINTER donotuse
+}
+
+UNITS {
+    (mV) = (millivolt)
 }
 
 PARAMETER {
+    interval	= 1e4 (ms) <1e-9,1e9>: time between spikes (msec)
     number	= 10 <0,1e9>	: number of spikes (independent of noise)
     start		= 50 (ms)	: start of first spike
     noise		= 0 <0,1>	: amount of randomness (0.0 - 1.0)
-    thresh = -30 (mV)
-    spike_number_for_update = 5 : by default, 5 spikes to have an update
+    n
+    thresh = -20 (mV)
+    time (ms)
+    synapses_number = 1 : number of synapses of the population
+    spike_number_for_update = 3 : by default, 5 spikes to have an update
 }
 
 ASSIGNED {
+    v (mV)
+    firing
+    space
     event (ms)
     on
     ispike
     donotuse
-    interval (ms)
     nspike_last_freq : number of spikes until last freq update
-    n : total number of spikes
-    t_last_freq (ms) : time of the last freq update
+    interval_increment
 }
 
 PROCEDURE seed(x) {
-	set_seed(x)
+    set_seed(x)
 }
 
+
 INITIAL {
-    interval =  0.01 (ms) : initialized at low value
-    t_last_freq = 0
-    nspike_last_freq = 0
     n = 0
-    on = 0 : off
+    nspike_last_freq = 0
+    firing = 0
+    check()
+    interval_increment = 0
+    on = -1 : tenatively off
     ispike = 0
     if (noise < 0) {
 	noise = 0
@@ -56,30 +70,55 @@ INITIAL {
     if (noise > 1) {
 	noise = 1
     }
-    : at start, we initialize the presynaptic generator
-    net_send(start, 3)  : so sending flag 3
-    : but at t=0 we start the firing rate sampler
-    net_send(0, 5)  : so sending flag 5, where WATCH v is
+    if (start >= 0 && number > 0) {
+	net_send(start, 3)
+    }
 }	
 
-PROCEDURE init_sequence(t(ms)) {
-	if (number > 0) {
-		on = 1
-		event = 0
-		ispike = 0
+BREAKPOINT {
+    SOLVE check METHOD after_cvode
+}
+
+
+PROCEDURE check() {
+    
+    if (v >= thresh && !firing) {
+	firing = 1
+	n = n+1
+	interval_increment = interval_increment+t-time
+	if (n-nspike_last_freq>=spike_number_for_update) {
+	    interval = interval_increment/spike_number_for_update
+	    nspike_last_freq = n
+	    interval_increment = 0
 	}
+	time = t
+    }  : /* END OF SPIKING CONDITION */
+
+    if (firing && v < thresh && t > time) {
+	firing = 0
+    }
+}
+
+
+PROCEDURE init_sequence(t(ms)) {
+    if (number > 0) {
+	on = 1
+	event = 0
+	ispike = 0
+    }
 }
 
 FUNCTION invl(mean (ms)) (ms) {
-	if (mean <= 0.) {
-		mean = .01 (ms) : I would worry if it were 0.
-	}
-	if (noise == 0) {
-		invl = mean
-	}else{
-		invl = (1. - noise)*mean + noise*mean*erand()
-	}
+    if (mean <= 0.) {
+	mean = .01 (ms) : I would worry if it were 0.
+    }
+    if (noise == 0) {
+	invl = mean
+    }else{
+	invl = (1. - noise)*mean + noise*mean*erand()
+    }
 }
+
 VERBATIM
 double nrn_random_pick(void* r);
 void* nrn_random_arg(int argpos);
@@ -95,10 +134,6 @@ VERBATIM
 		*/
 		_lerand = nrn_random_pick(_p_donotuse);
 	}else{
-		/* only can be used in main thread */
-		if (_nt != nrn_threads) {
-hoc_execerror("multithread random in NetStim"," only via hoc Random");
-		}
 ENDVERBATIM
 		: the old standby. Cannot use if reproducible parallel sim
 		: independent of nhost or which host this instance is on
@@ -125,7 +160,7 @@ ENDVERBATIM
 
 PROCEDURE next_invl() {
 	if (number > 0) {
-		event = invl(interval)
+		event = invl(interval/synapses_number) : WE ADD SYNAPSES NUMBER
 	}
 	if (ispike >= number) {
 		on = 0
@@ -140,14 +175,15 @@ NET_RECEIVE (w) {
 			: randomize the first spike so on average it occurs at
 			: noise*interval (most likely interval is always 0)
 			next_invl()
-			event = event - interval*(1. - noise)
+			: WE ADD synapses number TO STANDARD NETSTIM
+			event = event - interval/synapses_number*(1. - noise)
 			net_send(event, 1)
 		}else if (w < 0) { : turn off spiking definitively
 			on = 0
 		}
 	}
 	if (flag == 3) { : from INITIAL
-		if (on == 1) { : but ignore if turned off by external event
+		if (on == -1) { : but ignore if turned off by external event
 			init_sequence(t)
 			net_send(0, 1)
 		}
@@ -159,18 +195,6 @@ NET_RECEIVE (w) {
 		if (on == 1) {
 			net_send(event, 1)
 		}
-	}
-	if (flag == 4) { : triggered by neuron spike
-	    n = n + 1 : we count the spike
-	    if (n-nspike_last_freq>spike_number_for_update) {
-		: then frequency update
-		interval = (t-t_last_freq)/spike_number_for_update
-		t_last_freq = t
-		nspike_last_freq = n
-	    }
-	}
-	if (flag == 5) { : from INITIAL
-	    WATCH (v > thresh) 4 : we watch the v and send 4 at each spike
 	}
 }
 

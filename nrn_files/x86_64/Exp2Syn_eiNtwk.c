@@ -38,12 +38,12 @@ extern double hoc_Exp();
 #define i _p[6]
 #define ge _p[7]
 #define gi _p[8]
-#define stop_flag _p[9]
-#define Ae _p[10]
-#define Be _p[11]
-#define Ai _p[12]
-#define Bi _p[13]
-#define Ipico _p[14]
+#define Ipico _p[9]
+#define stop_flag _p[10]
+#define Ae _p[11]
+#define Be _p[12]
+#define Ai _p[13]
+#define Bi _p[14]
 #define factorE _p[15]
 #define factorI _p[16]
 #define DAe _p[17]
@@ -161,6 +161,7 @@ static int _ode_count(), _ode_map(), _ode_spec(), _ode_matsol();
  "i",
  "ge",
  "gi",
+ "Ipico",
  "stop_flag",
  0,
  "Ae",
@@ -223,7 +224,7 @@ static void nrn_alloc(_prop)
  pnt_receive[_mechtype] = _net_receive;
  pnt_receive_size[_mechtype] = 1;
  	hoc_register_var(hoc_scdoub, hoc_vdoub, hoc_intfunc);
- 	ivoc_help("help ?1 Exp2Syn_eiNtwk /home/yann/experiments/myelphy/nrn_files/x86_64/Exp2Syn_eiNtwk.mod\n");
+ 	ivoc_help("help ?1 Exp2Syn_eiNtwk /home/yann/work/elphy_code/nrn_files/x86_64/Exp2Syn_eiNtwk.mod\n");
  hoc_register_limits(_mechtype, _hoc_parm_limits);
  hoc_register_units(_mechtype, _hoc_parm_units);
  }

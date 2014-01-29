@@ -170,6 +170,8 @@ begin {-- we set all the variables of the acquisition class, then we create
        addObject(1,1,v1);
        addObject(1,2,v2);
     end; { we will call this function each time we modify a gain }
+
+    if continu then begin detector.create; detector.InitTimer(v1, CONTINUOUS_TIMER); end;  // period between analysis to adjust !!
 end;
 
 
@@ -245,14 +247,16 @@ end;
 ================================================================================ }
 
 procedure Init_StimChannels_DEMO; { initializa the stimulator object, see doc}
-var Continu, fadvanceon :boolean;Clamp_int:integer;
+var Continu, fadvanceon :boolean;Clamp_int:integer; acquisitionISI : real;
 begin { We link the Elphy stimulation to the NEURON variable, then the NEURON variable to the analogous command }
                                            
    Clamp_int:=TDBrecord('PG0.global').clamp_int;
+   acquisitionISI := TDBrecord('PG0.global').acquisitionISI ;  
    stimulator.ChannelCount:=1;
    stimulator.setByProg:=true; { mais on met le build ep plus loin }
    stimulator.Channels[1].ChannelType:=TO_Neuron;
    fadvanceon := True ; // to make NEURON calculate or not !
+   //if not Continu then acquisition.ISI := acquisitionISI;
   
    if Clamp_int=1 then { IF CURRENT CLAMP }
    begin
@@ -1112,7 +1116,6 @@ var
   min_amp_sin, max_amp_sin, freq_start, freq_end : real;  freq_step_num, global_freq_index : integer ; // for multiple sin
   freq_vec, amp_freq_vec : Tvector; t0_trial : real;
   continu_flag : boolean;
-  end_detect : Tdetector ;
   chirp_amp, chirp_freq_start, chirp_freq_end, chirp_duration : real;
 
 //=================================================
@@ -1224,7 +1227,8 @@ begin
      RTneuron.execute('finitialize()'); // reinitializing NEURON
      stimulator.Channels[1].BuildEp := Build_Sin ; 
      stimulator.initVectors;
-     // then Tdetector settings
+     // then Tdetector settings, we redo it for security !
+     detector.create; detector.InitTimer(v1, CONTINUOUS_TIMER);
      detector.AddEvent(check_for_stop_acq, 0.);
      end;
 end;
@@ -1516,6 +1520,14 @@ end;
 
 procedure Init_Pulses;
 begin
+  // initialize windows 
+  DestroyAllWindows(1);
+  Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
+  Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
+  Definewindow(1, 0, Round(PageHeight*2/3), PageWidth, PageHeight);
+  DIvideWindow(1,3,4,1);
+  color:=cl_gray;
+
    amp_sp := 50.0; del_sp:=100.0; dur_sp:=800.0;
    amp1_dp := 50.0; amp2_dp := -50.0; del_dp:=100.0; dur1_dp:=400.0; dur2_dp:=400.0; 
    amp1_tp := 50.0; amp2_tp := -50.0; amp3_tp := 50.0; 
@@ -1639,10 +1651,19 @@ end;
 
 procedure Init_FancyRamp;
 begin
+  // initialize windows 
+  DestroyAllWindows(1);
+  Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
+  Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
+  Definewindow(1, 0, Round(PageHeight*2/3), PageWidth, PageHeight);
+  DIvideWindow(1,3,4,1);
+  color:=cl_gray;
+
+
    del_fr := 100 ; dur1_fr := 200 ; dur2_fr := 200 ; dur3_fr := 200 ; dur4_fr := 200;
    amp1_fr := 200 ; amp2_fr := -100 ; amp3_fr := -200 ; amp4_fr := 100;
    ramp1_fr := -100 ; ramp2_fr := 200 ; ramp3_fr := 300 ; ramp4_fr := 200;
-   isi_fr := 200 ; 
+   isi_fr := 0.2 ; 
   
    with fancyramp_dialog1 do
    begin
@@ -1693,7 +1714,7 @@ begin
       getRealA('Ramp Raise (pA or mV)',ramp4_fr,10,3,200);
       getRealA('Ramp Duration (ms)',dur4_fr,10,3,200);
       setText('');
-      getRealA('ISI (ms)',isi_fr,10,3,200);
+      getRealA('ISI (s)',isi_fr,10,3,200);
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
       OnEvent:=FancyRamp_Init; 
    end;
@@ -1706,9 +1727,10 @@ end;
 --------- BUILDING THE STOCHASTIC STIMULATION PROCEDURES AND DIALOGS ---------------
 ================================================================================ }
 
+//// ----- WHITE NOISE
 
 var 
-  wn_mean, wn_std, ou_mean, ou_std, ou_time : real ;
+  wn_mean, wn_std : real ;
   whitenoise_dialog, ou_dialog : Tdialog ;
 
 
@@ -1749,6 +1771,81 @@ begin {when we modify the dialog, we adjust the stimulation params}
          stimulator.initVectors;
          end;
    end;
+end;
+
+//// ----- ORNSTEIN UHLENBECK NOISE
+
+var ou_mean, ou_var, ou_tau : real ;
+
+procedure Build_OU(seq:longint;var vec:Tvector); {Build a ramp into vec }
+var whitenoise : Tvector ;  ii:integer; DT, A, diffcoeff, tau_s : real ;
+begin
+    tau_s := ou_tau/1000. ; // tau in s because continuous mode !
+    Build_WhiteNoise(seq, whitenoise); // we need white noise
+    diffcoeff := 2.*ou_var*ou_var/tau_s  ;
+    A := SQRT(diffcoeff*tau_s/2.*(1-EXP(-2*DT/tau_s)));
+    vec[vec.Istart]:=ou_mean;
+    for ii:=vec.Istart to vec.Iend-1 do
+    begin
+        vec[ii+1] := ou_mean +(vec[ii]-ou_mean)*EXP(-DT/tau_s)+A*whitenoise[ii];    
+    end;
+end;
+
+procedure OU_Event(n:integer); 
+begin {when we modify the dialog, we adjust the stimulation params}
+   ou_dialog.updatevar;
+   case n of 
+   201 : begin
+         {we write all the relevant global informations}
+         TDBrecord('PG0.global').cont_choice := True ;
+         TDBrecord('PG0.global').max_EP_num :=0 ;
+         TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='ou_noise';
+         TDBrecord('PG0.Exp_Params').ou_mean:=ou_mean;
+         TDBrecord('PG0.Exp_params').ou_var:=ou_var;
+         TDBrecord('PG0.Exp_params').ou_tau:=ou_tau;
+         {then we initialize the stimulation}
+         stimulator.Channels[1].BuildEp := Build_OU ; 
+         stimulator.initVectors;
+         end;
+   end;
+end;
+
+procedure Init_Pulses;
+begin
+  // initialize windows 
+  DestroyAllWindows(1);
+  Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
+  Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
+  Definewindow(1, 0, Round(PageHeight*2/3), PageWidth, PageHeight);
+  DIvideWindow(1,3,3,1);
+  color:=cl_gray;
+
+  wn_mean := 50 ; wn_std :=20 ;
+  ou_mean := 50 ; ou_var:=20 ; ou_tau :=10 ;
+ 
+   with wn_dialog do
+   begin
+      create;
+      OnEvent:=WN_Init; 
+      setText(' ==<| White Noise Stimulation |> ');
+      getRealA('mean (pA or mV)',wn_mean,10,3,200);
+      getRealA('st. deviation (pA or mV)',wn_std,10,3,200);
+      getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
+   end;
+   AddDialog(1, 4, singlepulse_dialog);
+   with ou_dialog do
+   begin
+      create;
+      OnEvent:=OU_Init; 
+      setText(' ==<|Ornstein Uhlenbeck Stimulation |> ');
+      getRealA('mean (pA or mV)',ou_mean,10,3,200);
+      getRealA('st. deviation (pA or mV)',ou_std,10,3,200);
+      getRealA('temp. correl. (ms)',ou_std,10,3,200);
+      getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
+   end;
+   AddDialog(1, 4, singlepulse_dialog);
 end;
 
 {$EDIT main_dialog}
@@ -1896,16 +1993,16 @@ RTneuron.resetParams;
 global.create;
 DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
 /// ---- CASE ON LAPTOP
-{
+
 global.amplifier:='nrn_simulation'; // choice of the amplifier
 PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ;
 global.loadnrnPath := 'Z:/home/yann/work/elphy_code/nrn_files/' ;
-}
+{
 /// ---- CASE ON MULTICLAMP
 global.amplifier:='multiclamp';
 PathOfTheDay := 'D:\yann\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ; 
 global.loadnrnPath := 'D:/yann/elphy_code/nrn_files/' ; 
-
+}
 if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);
 global.PathOfTheDay := PathOfTheDay ;
 global.f_acq:=10; // in kHz

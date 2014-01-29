@@ -13,7 +13,6 @@ modl_reg(){
     fprintf(stderr," myIClamp.mod");
     fprintf(stderr," myVClamp.mod");
     fprintf(stderr," netstim_from_self_spike.mod");
-    fprintf(stderr," syn_population_stim.mod");
     fprintf(stderr, "\n");
   }
   _Exp2Syn_eiNtwk_reg();
@@ -23,5 +22,4 @@ modl_reg(){
   _myIClamp_reg();
   _myVClamp_reg();
   _netstim_from_self_spike_reg();
-  _syn_population_stim_reg();
 }

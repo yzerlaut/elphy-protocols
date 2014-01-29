@@ -5,7 +5,7 @@
 
 Const
    ProtocolCount = 10 ; 
-   CONTINUOUS_TIMER = 0.1 ; 
+   CONTINUOUS_TIMER = 0.5 ; 
 
 var  { ========= COMMON VARIABLES ============ }
    protocol_choice : integer; 
@@ -193,7 +193,6 @@ begin {-- we set all the variables of the acquisition class, then we create
    max_ep_num := TDBrecord('PG0.global').max_EP_num ;
    f_acq := TDBrecord('PG0.global').f_acq ;
    epdur := TDBrecord('PG0.global').episode_duration;
-   acquisitionISI := TDBrecord('PG0.global').acquisitionISI ;  
    {we delete previous graphical display}
    ClearObjects(1,1);
    ClearObjects(1,2);
@@ -237,7 +236,7 @@ begin {-- we set all the variables of the acquisition class, then we create
     addObject(1,1,v1);
     addObject(1,2,v2);
     // then in case of continuous mode we create the detector
-    if continu then begin detector.create; detector.InitTimer(v1, CONTINUOUS_TIMER, 0); end;  // period between analysis to adjust !!
+    if continu then begin detector.create; detector.InitTimer(v1, CONTINUOUS_TIMER); end;  // period between analysis to adjust !!
     
 end;
 
@@ -267,18 +266,20 @@ end;
 
 
 procedure Init_StimChannels; { crucial function as well }
-var Continu, fadvanceON :boolean;Clamp_int:integer;
+var Continu, fadvanceON :boolean;Clamp_int:integer; acquisitionISI : real;
 begin { We link the Elphy stimulation to the NEURON variable, then the NEURON variable to the analogous command }
 
    Continu:=TDBrecord('PG0.global').cont_choice;
    Clamp_int:=TDBrecord('PG0.global').clamp_int;
+   acquisitionISI := TDBrecord('PG0.global').acquisitionISI ;  
+   
    stimulator.ChannelCount:=1;
    stimulator.setByProg:=true; { mais on met le build ep plus loin }
    {stimulation on neuron}
    stimulator.Channels[1].ChannelType:=TO_Neuron;
    acquisition.Channels[3].ChannelType:= TI_Neuron; { we also set up here the visualisation of the command }
    acquisition.Channels[3].DownSamplingFactor:=1;
-   
+   if not Continu then acquisition.ISI := acquisitionISI;
    fadvanceon := TDBrecord('PG0.global').FadvanceON ; // to make NEURON calculate or not !
   
   if Clamp_int=1 then { IF CURRENT CLAMP }
@@ -363,7 +364,9 @@ end;
 
 procedure passive_recording_init;
 begin
-init_windows;
+DestroyAllWindows(1);
+Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
+Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
 TDBrecord('PG0.global').cont_choice:=True;
 TDBrecord('PG0.global').stim:=False;
 InitializeChannels;
@@ -419,7 +422,7 @@ begin
          TDBrecord('PG0.global').episode_duration :=  2*del_seal+dur_seal ;
          TDBrecord('PG0.global').max_EP_num :=0 ;
          TDBrecord('PG0.global').stim := True ;
-         TDBrecord('PG0.global').acquisitionISI:=500 ;  // small beak between the stims
+         TDBrecord('PG0.global').acquisitionISI:=0.5 ;  // small beak between the stims
          if amplifier='nrn_simulation' then TDBrecord('PG0.global').FadvanceON := True else TDBrecord('PG0.global').FadvanceON := False;
          TDBrecord('PG0.Exp_Params').clear;
          TDBrecord('PG0.Exp_Params').exp_type:='seal_test';
@@ -678,22 +681,30 @@ end;
 
 procedure VCMembTest_Init; {executed only when ze choose the protocol }
 begin
-   VCMT_amp:=-50; VCMT_t1:=20; VCMT_t2:=40; VCMT_t3:=60; VCMT_t4:=80;  // values charlotte
-   VCMT_interStim := 50 ;
+  // initialize windows 
+  DestroyAllWindows(1);
+  Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
+  Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
+  Definewindow(1, 0, Round(PageHeight*2/3), PageWidth, PageHeight);
+  DIvideWindow(1,3,3,1);
+  color:=cl_gray;
+
+   VCMT_amp:=-5; VCMT_t1:=20; VCMT_t2:=40; VCMT_t3:=60; VCMT_t4:=80;  // values charlotte
+   VCMT_interStim := 0.25 ;
    TDBrecord('PG0.global').clamp_int := 2 ;
    {then we display the channels}
    addObject(1,1,v1);  addObject(1,2,v2);   addObject(1,2,v3);
 
    rs_vec.create(t_single,0,-1) ; tmem_vec.create(t_single,0,-1) ; { we initialize the vector of the rs values }
    rs_graph.create(tmem_vec,rs_vec,0,0); rs_graph.Mode := DM_LINE_DIAMOND ; {graph initialisation }
-   addobject(1,4,rs_graph);
+   //addobject(1,3,rs_graph);
 
    lVer.create('',0,cl_black,0); lHor.create('',0,cl_black,0);
    addObject(1,1,lVer); addObject(1,1,lHor);
 
    VCMT_memo.create(''); VCMT_memo.font.name:='Times New Roman'; VCMT_memo.font.size:=11;
    VCMT_memo.font.color:=rgb(0,0,0);  VCMT_memo.font.style:=fs_bold;
-   addObject(1,6,VCMT_memo);
+   addObject(1,4,VCMT_memo);
 
    mt_dialog.create ;
    mt_dialog.getRealA(' Pulse size (mV)',VCMT_amp,3,1,99);
@@ -846,17 +857,24 @@ end;
 
 procedure ICMembTest_Init; {executed only when ze choose the protocol }
 begin
+  DestroyAllWindows(1);
+  Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
+  Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
+  Definewindow(1, 0, Round(PageHeight*2/3), PageWidth, PageHeight);
+  DIvideWindow(1,3,3,1);
+  color:=cl_gray;
+
    ICMT_amp:=200; ICMT_t1:=100; ICMT_t2:=300; ICMT_interStim:=0.2 ; // params
    {then we display the channels}
    addObject(1,1,v1);  addObject(1,2,v2);   addObject(1,2,v3);   
    
    rm_vec.create(t_single,0,-1) ; tmem_vec.create(t_single,0,-1) ; { we initialize the vector of the rs values }
    rm_graph.create(tmem_vec,rm_vec,0,0); rm_graph.Mode := DM_LINE_DIAMOND ; {graph initialisation }
-   addobject(1,4,rm_graph);
+   addobject(1,3,rm_graph);
 
    ICMT_memo.create(''); ICMT_memo.font.name:='Times New Roman'; ICMT_memo.font.size:=11;
    ICMT_memo.font.color:=rgb(0,0,0);  ICMT_memo.font.style:=fs_bold;
-   addObject(1,6,ICMT_memo);
+   addObject(1,4,ICMT_memo);
 
    ICMT_amp := ICMT_amp;
    ICMT_dialog.create ;
@@ -942,7 +960,14 @@ end;
 
 procedure PerforingMonitor_Init; {executed only when ze choose the protocol }
 begin
-   if VCMT_amp=0 then begin VCMT_amp:=-5; VCMT_t1:=20; VCMT_t2:=40; VCMT_t3:=60; VCMT_t4:=80; end;  // in case not initialized
+  DestroyAllWindows(1);
+  Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
+  Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
+  Definewindow(1, 0, Round(PageHeight*2/3), PageWidth, PageHeight);
+  DIvideWindow(1,3,4,1);
+  color:=cl_gray;
+
+   if VCMT_amp=0 then begin VCMT_amp:=-5; VCMT_t1:=20; VCMT_t2:=40; VCMT_t3:=60; VCMT_t4:=80; VCMT_interStim:=0.5; end;  // in case not initialized
    {then we display the channels}
    addObject(1,1,v1);  addObject(1,2,v2);   addObject(1,2,v3);
 
@@ -1047,6 +1072,13 @@ end;
 
 procedure IVcurve_Init;
 begin
+  DestroyAllWindows(1);
+  Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
+  Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
+  Definewindow(1, 0, Round(PageHeight*2/3), PageWidth, PageHeight);
+  DIvideWindow(1,3,3,1);
+  color:=cl_gray;
+
    v_start := -20; v_step :=10 ;  int_repet:=0 ; max_step := 10 ;
    interstim_iv := 1 ; del_iv := 40 ; dur_iv := 120 ;
    with iv_dialog do
@@ -1170,12 +1202,12 @@ end;
 //=================================================
 
 
-var current_stop_value : real ;
+var current_stop_value : integer ;
 
 procedure check_for_stop_acq(n:integer);
 begin
     if not continu_flag then acquisition.stop;
-    if (v1.Xend-t0_trial)>current_stop_value then acquisition.stop ;
+    if n>current_stop_value then acquisition.stop ;
 end;
 
 procedure initialize_a_single_exp;
@@ -1187,8 +1219,7 @@ begin
       amp_sin := amp_freq_vec[global_freq_index];
       singlesin_dialog.update; // to see the values of the amp and frequencies                                      
       multiplesin_dialog.update; // to see the valueof the frequency index                                      
-      current_stop_value := 10./freq_sin ;
-     if current_stop_value<2 then current_stop_value:=2;
+      current_stop_value := Round((2+10./freq_sin)/CONTINUOUS_TIMER);
 
      RTneuron.execute('finitialize()'); // reinitializing NEURON
      stimulator.Channels[1].BuildEp := Build_Sin ; 
@@ -1201,7 +1232,6 @@ end;
 procedure multiplesin_endprocess;
 begin
    set_dac_to_zero;
-   t0_trial := v1.Xend ;
    detector.update(v1.Iend);
    initialize_a_single_exp;
    if (global_freq_index<freq_step_num) and (continu_flag=True) then
@@ -1295,6 +1325,8 @@ begin
       getRealA('frequency (Hertz)',freq_sin,10,3,200);
       getRealA('phase shift (Rd)',phase_sin,10,3,200);
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
+      setText('');
+      setText('(watch here to see multiple_sin variations)');
    end;
    AddDialog(1, 3, singlesin_dialog);
    with chirp_dialog do
@@ -1782,9 +1814,9 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
                        
               end;
          end;
-    //102 : t_channels_setting.ExecuteCommand('Init_AcqChannels'); 
-    //111 : begin t_channels_setting.ExecuteCommand('SetGain1');  t_channels_setting.ExecuteCommand('Init_AcqChannels'); end;
-    //112 : begin t_channels_setting.ExecuteCommand('SetGain2');  t_channels_setting.ExecuteCommand('Init_AcqChannels'); end;
+    102 : InitializeChannels; 
+    111 : begin SetGain1; InitializeChannels;  end;
+    112 : begin SetGain2; InitializeChannels;  end;
     200 : launch_exp;
     201 : acquisition.stop ;
     301 : comments := '';

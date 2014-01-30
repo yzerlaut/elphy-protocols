@@ -88,11 +88,12 @@ begin
 end;
 
 procedure my_initprocess0;
-var Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; PathOfTheDay, sep : string ; {variables to fetch the date and time }
+var Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; PathOfTheDay, sep, protocol  : string ; {variables to fetch the date and time }
 begin
   PathOfTheDay := TDBrecord('PG0.global').PathOfTheDay ;
+  protocol := TDBrecord('PG0.Exp_params').exp_type ;
   DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
-  acquisition.genericfilename := PathOfTheDay+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)+  '_'+Protocolname[protocol_choice] ;
+  acquisition.genericfilename := PathOfTheDay+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)+  '_'+protocol ;
   FillDBinfo(DB); 
   if acquisition.saving then acquisition.writeDBfileinfo(DB);
 end;
@@ -1226,11 +1227,11 @@ begin
       amp_sin := amp_freq_vec[global_freq_index];
       singlesin_dialog.update; // to see the values of the amp and frequencies                                      
       multiplesin_dialog.update; // to see the valueof the frequency index                                      
-      current_stop_value := Round((2+10./freq_sin)/CONTINUOUS_TIMER);
+      current_stop_value := Round((4+5./freq_sin)/CONTINUOUS_TIMER); // 5s min, +5periods in case of long period
 
        exp_freq_vec.addtolist(freq_sin); // for recording
        exp_amp_vec.addtolist(amp_sin);
-       exp_time_vec.addtolist(freq_sin);
+       exp_time_vec.addtolist(v1.Xend);
        
      RTneuron.execute('finitialize()'); // reinitializing NEURON
      stimulator.Channels[1].BuildEp := Build_Sin ; 
@@ -1251,9 +1252,9 @@ begin
       if SAVING then acquisition.startandsave(True) else acquisition.start;  
    end
    else begin // we need to save the vectors
-      exp_freq_vec.SaveAsObject(string_for_saving+'_freq');
-      exp_time_vec.SaveAsObject(string_for_saving+'_time');
-      exp_amp_vec.SaveAsObject(string_for_saving+'_amp');
+      exp_freq_vec.SaveAsObject(acquisition.genericfilename+'_freq');
+      exp_time_vec.SaveAsObject(acquisition.genericfilename+'_time');
+      exp_amp_vec.SaveAsObject(acquisition.genericfilename+'_amp');
    end;
 end;
 
@@ -1275,7 +1276,10 @@ begin
    exp_time_vec.create(t_double, 0, -1);
    exp_amp_vec.create(t_double, 0, -1);
    string_for_saving := TDBrecord('PG0.global').PathOfTheDay+'multiple_sin';
-   acquisition.start;
+   InitializeChannels; // we can initialize the channels
+   initialize_a_single_exp;
+   acquisition.InstallProcess(my_initprocess0, nil, nil, multiplesin_endprocess);
+  if SAVING then acquisition.startandsave else acquisition.start;
 end; { launch_multiple_sim }
 
   
@@ -1309,9 +1313,6 @@ begin
      TDBrecord('PG0.Exp_Params').min_amp_freq:=min_amp_sin;
      TDBrecord('PG0.Exp_params').max_amp_freq:=max_amp_sin;
      {then we initialize the stimulation}
-     InitializeChannels; // we can initialize the channels
-     initialize_a_single_exp;
-     acquisition.InstallProcess(my_initprocess0, nil, nil, multiplesin_endprocess);
 end;
          
          
@@ -1320,6 +1321,7 @@ begin {when we modify the dialog, we adjust the stimulation params}
    multiplesin_dialog.updatevar;
    case n of 
    201 : prepare_multiplesin;
+   301 : launch_multiple_sim;
    end;
    multiplesin_dialog.update;
    maindialog.update;
@@ -1379,6 +1381,7 @@ begin
       getRealA(' min amplitude at low freq (pA or mV)',min_amp_sin,10,3,200);
       getRealA(' max amplitude at high freq (pA or mV)',max_amp_sin,10,3,200);
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
+      getCommandA(' START ',0,301); { OnEvent flag -> 301 }
       getIntegerA('Index of the current step',global_freq_index,10,200);
    end;
    AddDialog(1, 5, multiplesin_dialog);
@@ -1629,7 +1632,7 @@ begin { we fill of 0, except between the t0+delay and t0+delay+duration }
    if (del_fr<tt) and (tt<dur1_fr+del_fr) then vec[ii]:=amp1_fr+(tt-del_fr)*ramp1_fr/dur1_fr;
    if (del_fr+dur1_fr<tt) and (tt<del_fr+dur1_fr+dur2_fr) then vec[ii]:=amp2_fr+(tt-dur1_fr-del_fr)*ramp2_fr/dur2_fr;
    if (del_fr+dur1_fr+dur2_fr<tt) and (tt<del_fr+dur1_fr+dur2_fr+dur3_fr) then vec[ii]:=amp3_fr+(tt-dur2_fr-dur1_fr-del_fr)*ramp3_fr/dur3_fr;
-   if (del_fr+dur1_fr+dur2_fr+dur3_fr<tt) and (tt<del_fr+dur1_fr+dur2_fr+dur3_fr+dur4_fr) then 
+   if (del_fr+dur1_fr+dur2_fr+dur3_fr<=tt) and (tt<del_fr+dur1_fr+dur2_fr+dur3_fr+dur4_fr) then 
          vec[ii]:=amp4_fr+(tt-dur3_fr-dur2_fr-dur1_fr-del_fr)*ramp4_fr/dur4_fr;
    end;
 end;
@@ -1802,12 +1805,26 @@ end;
 var ou_mean, ou_var, ou_tau : real ;
 
 procedure Build_OU(seq:longint;var vec:Tvector); {Build a ramp into vec }
-var whitenoise : Tvector ; ii, jj:integer; DT, A, diffcoeff, tau_s : real ;
+var whitenoise : Tvector ; ii, jj:integer; u1, u2, x, y,  DT, A, diffcoeff, tau_s : real ;
 begin
-    whitenoise.create;
-    whitenoise.clone(vec);
+   // we generate white noise of 0 mean !
+   whitenoise.create;
+   whitenoise.copyobject(vec, False);
+   ii:=whitenoise.Istart ;
+   while ii<vec.Iend do
+   begin
+      u1 :=Random ;
+      u2 :=Random ;
+      if (u1>0) and (u2>0) then 
+      begin
+         x:= SQRT(-2*LN(u1))*COS(2*PI*u2);
+         y:= SQRT(-2*LN(u1))*SIN(2*PI*u2);
+         whitenoise[ii]:=x;
+         if ii<whitenoise.Iend then whitenoise[ii+1]:=y;
+         ii:=ii+2;
+      end;
+   end;
     tau_s := ou_tau/1000. ; // tau in s because continuous mode !
-    Build_WhiteNoise(seq, whitenoise); // we need white noise
     diffcoeff := 2.*ou_var*ou_var/tau_s  ;
     DT:= vec.ConvX(vec.Istart+1)-vec.ConvX(vec.Istart); // time step in s
     A := SQRT(diffcoeff*tau_s/2.*(1-EXP(-2*DT/tau_s)));
@@ -2023,16 +2040,16 @@ RTneuron.resetParams;
 global.create;
 DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
 /// ---- CASE ON LAPTOP
-
-global.amplifier:='nrn_simulation'; // choice of the amplifier
-PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ;
-global.loadnrnPath := 'Z:/home/yann/work/elphy_code/nrn_files/' ;
 {
+global.amplifier:='nrn_simulation'; // choice of the amplifier
+PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
+global.loadnrnPath := 'Z:/home/yann/work/elphy_code/nrn_files/' ;
+}
 /// ---- CASE ON MULTICLAMP
 global.amplifier:='multiclamp';
-PathOfTheDay := 'D:\yann\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ; 
+PathOfTheDay := 'D:\yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
 global.loadnrnPath := 'D:/yann/elphy_code/nrn_files/' ; 
-}
+
 if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);
 global.PathOfTheDay := PathOfTheDay ;
 global.f_acq:=10; // in kHz

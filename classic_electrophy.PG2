@@ -1208,6 +1208,8 @@ end;
 
 
 var current_stop_value : integer ;
+var exp_freq_vec, exp_time_vec, exp_amp_vec : Tvector; // for saving freq and time
+   var string_for_saving :  string;
 
 procedure check_for_stop_acq(n:integer);
 begin
@@ -1226,6 +1228,10 @@ begin
       multiplesin_dialog.update; // to see the valueof the frequency index                                      
       current_stop_value := Round((2+10./freq_sin)/CONTINUOUS_TIMER);
 
+       exp_freq_vec.addtolist(freq_sin); // for recording
+       exp_amp_vec.addtolist(amp_sin);
+       exp_time_vec.addtolist(freq_sin);
+       
      RTneuron.execute('finitialize()'); // reinitializing NEURON
      stimulator.Channels[1].BuildEp := Build_Sin ; 
      stimulator.initVectors;
@@ -1243,7 +1249,12 @@ begin
    if (global_freq_index<freq_step_num) and (continu_flag=True) then
    begin
       if SAVING then acquisition.startandsave(True) else acquisition.start;  
-   end;                                                                      
+   end
+   else begin // we need to save the vectors
+      exp_freq_vec.SaveAsObject(string_for_saving+'_freq');
+      exp_time_vec.SaveAsObject(string_for_saving+'_time');
+      exp_amp_vec.SaveAsObject(string_for_saving+'_amp');
+   end;
 end;
 
 
@@ -1258,7 +1269,16 @@ begin
     end;
 end;
 
+procedure launch_multiple_sim; // also handle the case of the interrupted experiment
+begin
+   exp_freq_vec.create(t_double, 0, -1);
+   exp_time_vec.create(t_double, 0, -1);
+   exp_amp_vec.create(t_double, 0, -1);
+   string_for_saving := TDBrecord('PG0.global').PathOfTheDay+'multiple_sin';
+   acquisition.start;
+end; { launch_multiple_sim }
 
+  
 procedure prepare_multiplesin;
 var ii : integer ; exponent : real;
 begin

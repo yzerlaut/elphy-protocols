@@ -1,0 +1,123 @@
+var cursor : Tcursor;
+    dialog : Tdialog ;  memo : Tmemo ;
+    x1, x2 : real;
+    ii : integer ;  prefix : string ;
+    imped_vec, freq_vec, amp_vec, time_vec : Tvector ;
+    t_start, t_stop : real ;  lver_start,lver_stop  : Tlinever ;
+    current_freq, current_amp : real ;
+    fit : Tcurvefitting;
+
+
+procedure load_objects;
+var ii:integer; last_t : real ; 
+begin
+   memo.create ;splitstring(dataName,'_',memo) ; {datapath}
+   prefix := datapath+memo.lines[1]+'_'+memo.lines[2]+'_'+memo.lines[3]+'_';
+   time_vec.create; time_vec.loadObject(prefix+'MULTIPLE_SIN_time');
+   time_vec.addtolist(v1.Xend); {need to add the last point}
+   freq_vec.create; freq_vec.loadObject(prefix+'MULTIPLE_SIN_freq');
+   amp_vec.create ; amp_vec.loadObject(prefix+'MULTIPLE_SIN_amp');
+   if saveFileDialog(prefix,'txt') then openText(1,prefix,false)
+   else MessageBox('analysis will not be saved');
+   ii:=time_vec.Istart;
+
+   fit.create('');
+   fit.Text:='RES=a1*sin(a2*x+a3)';
+   fit.initialize:=true;
+   fit.reset;  fit.setYdata(v1);  fit.MaxIt:=30;
+   fit.cpx:=1;  fit.cpy:=1;  fit.matchVector(v1);  fit.color:=cl_blue;
+   addObject(1,1,fit);
+end; { load_objects }
+
+
+procedure zoom_on_exp(ii:integer);
+var jj : integer ;
+begin
+   if time_vec[ii]<time_vec[ii+1] then
+   begin t_start := time_vec[ii] ; t_stop := time_vec[ii+1]; end 
+   else begin t_start := time_vec[ii+1] ; t_stop := time_vec[ii]; end;
+   v1.SetWorld(t_start-1,v1.Mini(t_start-1,t_stop+1),t_stop+1,v1.Maxi(t_start-1,t_stop+1));
+   v2.SetWorld(t_start-1,v2.Mini(t_start-1,t_stop+1),t_stop+1,v2.Maxi(t_start-1,t_stop+1));
+   lver_start.x := t_start ; lver_stop.x := t_stop;
+   cursor.position[1]:= t_start+1 ; cursor.position[2]:=t_stop-1 ;
+   current_freq:= freq_vec[ii];
+   current_amp:= amp_vec[ii];
+   dialog.update;
+end;
+
+procedure make_fit;
+begin
+   { fit.reset; }
+   { fit.setWorld(cursor.position[1],v1.Ymin,cursor.position[2],v1.Ymax); }
+   fit.XstartFit:=cursor.position[1];
+   fit.XendFit:=cursor.position[2];
+   fit.Execute;
+   fit.Refresh;
+end;
+
+procedure DialogUpdate(n:integer);
+begin
+   dialog.updatevar;
+   case n of
+     { 100: init_analysis; }
+     99	 : begin ii:=ii-1; if ii>=time_vec.Istart then zoom_on_exp(ii) ; end;
+     101 : begin ii:=ii+1;
+	      if ii<time_vec.Iend-1 then zoom_on_exp(ii) else begin closeText(1); MessageBox('Over !'); end;
+	   end;
+     102: make_fit;
+     { 103: write_on_file; }
+     { 104 : closetext(1) ; }
+   end;	 
+   dialog.update;
+end;
+
+procedure analysis_windows;
+begin
+   DeleteAllPages('default');
+   insertpage(1,'multiple_sin_analysis');
+   DefineWindow(1,0,0,PageWidth,Round(PageHeight/2.2));
+   DefineWindow(1,0,Round(PageHeight/2.2),PageWidth,PageHeight);
+   DivideWindow(1,2,1,2);
+   Page:=1;
+   color:=cl_gray;
+   addObject(1,1,v1); v1.title:='V_intra(t)'; v1.color := CL_black ;
+   addObject(1,2,v2); v2.title:='I_th(t)'; v2.color := CL_green ; 
+   addObject(1,2,v3); v5.title:='I_real(t)';  v5.color := CL_Olive ; 
+   v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1;
+   v1.cpy:=1 ; v2.cpy := 2 ; v3.cpy:=2 ; 
+   lVer_start.create('',0,cl_green,0); lver_start.width:=3; addObject(1,1,lVer_start);
+   lVer_stop.create('',0,cl_green,0); lver_stop.width:=3; addObject(1,1,lVer_stop);
+   cursor.create ; cursor.DoubleCursor:=True ; cursor.InstallSource(v1);
+   cursor.style:=cs_X ; cursor.visible:=True ; cursor.color:=cl_red;
+   cursor.position[1]:= v1.Xstart ; cursor.position[2]:=v1.Xend ; 
+end; { tf_analysis_windows }
+
+procedure analysis_dialog;
+begin
+   dialog.create;
+   dialog.OnEvent:= DialogUpdate;
+   dialog.getRealA('t_start (s)',t_start,10,3,200);
+   dialog.getRealA('t_stop (s)',t_stop,10,3,200);
+   dialog.getIntegerA('episode number',ii,6,200);
+   dialog.getCommandA(' previous step ',0,99); { OnEvent flag -> 201 }
+   dialog.getCommandA(' next step ',0,101); { OnEvent flag -> 201 }
+   dialog.getCommandA(' write results ',0,103); { OnEvent flag -> 201 }
+   dialog.settext(''); { OnEvent flag -> 201 }
+   dialog.getCommandA(' close file ',0,104); { OnEvent flag -> 201 }
+   dialog.settext(''); { OnEvent flag -> 201 }
+   dialog.getRealA('current freq. (Hz)',current_freq,10,3,200);
+   dialog.getRealA('current amp. (pA)',current_amp,10,3,200);
+   dialog.settext(''); { OnEvent flag -> 201 }
+   dialog.getCommandA(' Make Fit ',0,102); { OnEvent flag -> 201 }
+   dialog.Caption:='Multiple Sin. Analysis';
+   dialog.winleft:=0;dialog.wintop:=0;
+   dialog.show;
+end; { tf_analysis_windows }
+
+
+program Launch
+analysis_windows;
+{ init_graph; }
+analysis_dialog;
+{ init_analysis; }
+load_objects;

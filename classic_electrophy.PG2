@@ -97,6 +97,7 @@ begin
   if acquisition.saving then acquisition.writeDBfileinfo(DB);
 end;
 
+
 ProcessCont  // common to all continuous processes
 begin
 detector.update(v1.Iend);
@@ -124,6 +125,7 @@ begin {-- we set all the variables of the acquisition class, then we create
    {we load the informations from the global TDBrecord }
    Clamp_int:=TDBrecord('PG0.global').clamp_int;
    stim:=TDBrecord('PG0.global').stim;
+   Continu:=TDBrecord('PG0.global').cont_choice;
    {we delete previous graphical display}
    ClearObjects(1,1);
    ClearObjects(1,2);
@@ -1731,11 +1733,11 @@ end;
 
 var 
   wn_mean, wn_std : real ;
-  whitenoise_dialog, ou_dialog : Tdialog ;
+  wn_dialog, ou_dialog : Tdialog ;
 
 
 procedure Build_WhiteNoise(seq:longint;var vec:Tvector); {Build a ramp into vec }
-var ii:integer; x : real ; y :real ; u1 :real ; u2 : real ;
+var ii:integer; x, y, u1, u2 : real ;
 begin
    ii:=vec.Istart ;
    while ii<vec.Iend do
@@ -1753,9 +1755,9 @@ begin
    end;
 end;
 
-procedure WhiteNoise_Event(n:integer); 
+procedure WN_Event(n:integer); 
 begin {when we modify the dialog, we adjust the stimulation params}
-   whitenoise_dialog.updatevar;
+   wn_dialog.updatevar;
    case n of 
    201 : begin
          {we write all the relevant global informations}
@@ -1767,8 +1769,10 @@ begin {when we modify the dialog, we adjust the stimulation params}
          TDBrecord('PG0.Exp_Params').wn_mean:=wn_mean;
          TDBrecord('PG0.Exp_params').wn_std:=wn_std;
          {then we initialize the stimulation}
+         InitializeChannels; // finally, we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_WhiteNOise ; 
          stimulator.initVectors;
+         acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
          end;
    end;
 end;
@@ -1778,18 +1782,22 @@ end;
 var ou_mean, ou_var, ou_tau : real ;
 
 procedure Build_OU(seq:longint;var vec:Tvector); {Build a ramp into vec }
-var whitenoise : Tvector ;  ii:integer; DT, A, diffcoeff, tau_s : real ;
+var whitenoise : Tvector ; ii, jj:integer; DT, A, diffcoeff, tau_s : real ;
 begin
+    whitenoise.create;
+    whitenoise.clone(vec);
     tau_s := ou_tau/1000. ; // tau in s because continuous mode !
     Build_WhiteNoise(seq, whitenoise); // we need white noise
     diffcoeff := 2.*ou_var*ou_var/tau_s  ;
+    DT:= vec.ConvX(vec.Istart+1)-vec.ConvX(vec.Istart); // time step in s
     A := SQRT(diffcoeff*tau_s/2.*(1-EXP(-2*DT/tau_s)));
     vec[vec.Istart]:=ou_mean;
-    for ii:=vec.Istart to vec.Iend-1 do
+    for jj:=vec.Istart to vec.Iend-1 do
     begin
-        vec[ii+1] := ou_mean +(vec[ii]-ou_mean)*EXP(-DT/tau_s)+A*whitenoise[ii];    
+        vec[jj+1] := ou_mean +(vec[jj]-ou_mean)*EXP(-DT/tau_s)+A*whitenoise[jj];    
     end;
 end;
+
 
 procedure OU_Event(n:integer); 
 begin {when we modify the dialog, we adjust the stimulation params}
@@ -1806,13 +1814,15 @@ begin {when we modify the dialog, we adjust the stimulation params}
          TDBrecord('PG0.Exp_params').ou_var:=ou_var;
          TDBrecord('PG0.Exp_params').ou_tau:=ou_tau;
          {then we initialize the stimulation}
+         InitializeChannels; // finally, we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_OU ; 
          stimulator.initVectors;
+         acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
          end;
    end;
 end;
 
-procedure Init_Pulses;
+procedure Init_Stochastic;
 begin
   // initialize windows 
   DestroyAllWindows(1);
@@ -1828,24 +1838,24 @@ begin
    with wn_dialog do
    begin
       create;
-      OnEvent:=WN_Init; 
+      OnEvent:=WN_Event; 
       setText(' ==<| White Noise Stimulation |> ');
       getRealA('mean (pA or mV)',wn_mean,10,3,200);
       getRealA('st. deviation (pA or mV)',wn_std,10,3,200);
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
    end;
-   AddDialog(1, 4, singlepulse_dialog);
+   AddDialog(1, 4, wn_dialog);
    with ou_dialog do
    begin
       create;
-      OnEvent:=OU_Init; 
+      OnEvent:=OU_Event; 
       setText(' ==<|Ornstein Uhlenbeck Stimulation |> ');
       getRealA('mean (pA or mV)',ou_mean,10,3,200);
-      getRealA('st. deviation (pA or mV)',ou_std,10,3,200);
-      getRealA('temp. correl. (ms)',ou_std,10,3,200);
+      getRealA('st. deviation (pA or mV)',ou_var,10,3,200);
+      getRealA('temp. correl. (ms)',ou_tau,10,3,200);
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
    end;
-   AddDialog(1, 4, singlepulse_dialog);
+   AddDialog(1, 5, ou_dialog);
 end;
 
 {$EDIT main_dialog}
@@ -1906,7 +1916,7 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
                        6 : IVcurve_Init;
                        7 : Init_SinDialog;
                        8 : Init_Pulses;
-                       // 9 : 
+                       9 : Init_Stochastic;
                        10 : Init_FancyRamp;
                        
               end;

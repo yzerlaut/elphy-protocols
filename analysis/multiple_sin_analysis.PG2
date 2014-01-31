@@ -11,7 +11,7 @@ var cursor : Tcursor;
 procedure load_objects;
 var ii:integer; last_t : real ; 
 begin
-   memo.create ;splitstring(dataName,'_',memo) ; {datapath}
+   memo.create;splitstring(dataName,'_',memo) ; {datapath}
    prefix := datapath+memo.lines[1]+'_'+memo.lines[2]+'_'+memo.lines[3]+'_';
    time_vec.create; time_vec.loadObject(prefix+'MULTIPLE_SIN_time');
    time_vec.addtolist(v1.Xend); {need to add the last point}
@@ -43,14 +43,17 @@ begin
    current_freq:= freq_vec[ii];
    current_amp:= amp_vec[ii];
    dialog.update;
+   fit.clear; 
 end;
 
 procedure make_fit;
 begin
-   { fit.reset; }
+   fit.create;
+   fit.setYdata(v1);  fit.MaxIt:=30;
    { fit.setWorld(cursor.position[1],v1.Ymin,cursor.position[2],v1.Ymax); }
    fit.XstartFit:=cursor.position[1];
    fit.XendFit:=cursor.position[2];
+   fit.param['a2']:=2*PI*current_freq;
    fit.Execute;
    fit.Refresh;
 end;

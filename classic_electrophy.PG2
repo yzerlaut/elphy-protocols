@@ -90,19 +90,23 @@ end;
 procedure save_metadata_as_txt;
 var jj:integer; st, st2:string;
 begin
-   openText(1,acquisition.genericFilename+'.txt',false);
+   openText(1,acquisition.genericFilename+'.json',false);
+   writelnText(1,'{');
   for jj:=1 to TDBrecord('PG0.global').count do
   begin  
     st:= TDBrecord('PG0.global').Names[jj] ;
-    st2:=TDBrecord('PG0.global').ImplicitValue[st] ;
-    writelnText(1,st+Chr(9)+st2);
+    st2:=TDBrecord('PG0.global').Valstring[jj] ;
+    writelnText(1,'"'+st+'":"'+st2+'",');
   end;                                                                      
   for jj:=1 to TDBrecord('PG0.Exp_params').count do
   begin  
     st:= TDBrecord('PG0.Exp_params').Names[jj] ;
-    st2:=TDBrecord('PG0.Exp_params').ImplicitValue[st] ;
-    writelnText(1,st+Chr(9)+st2);
-  end;                                                                      
+    st2:=TDBrecord('PG0.Exp_params').Valstring[jj];
+    writelnText(1,'"'+st+'":"'+st2+'",');
+  end;        
+  writelnText(1,'"lastline":"no_value"');
+  writelnText(1,'}');
+  closeText(1);                                                              
 end;
 
 procedure my_initprocess0;
@@ -115,8 +119,8 @@ begin
   FillDBinfo(DB); 
   if acquisition.saving then
      begin
-	acquisition.writeDBfileinfo(DB);
-	save_metadata_as_txt;
+	    acquisition.writeDBfileinfo(DB);
+	    save_metadata_as_txt;
      end;
 end;
 
@@ -1237,6 +1241,7 @@ procedure check_for_stop_acq(n:integer);
 begin
     if not continu_flag then acquisition.stop;
     if n>current_stop_value then acquisition.stop ;
+
 end;
 
 procedure initialize_a_single_exp;
@@ -1252,7 +1257,6 @@ begin
 
        exp_freq_vec.addtolist(freq_sin); // for recording
        exp_amp_vec.addtolist(amp_sin);
-       exp_time_vec.addtolist(v1.Xend);
        
      RTneuron.execute('finitialize()'); // reinitializing NEURON
      stimulator.Channels[1].BuildEp := Build_Sin ; 
@@ -1266,10 +1270,12 @@ end;
 procedure multiplesin_endprocess;
 begin
    set_dac_to_zero;
+   exp_time_vec.addtolist(v1.Xend);
    detector.update(v1.Iend);
    initialize_a_single_exp;
    if (global_freq_index<freq_step_num) and (continu_flag=True) then
    begin
+      acquisition.InstallProcess(nil, nil, nil, multiplesin_endprocess); // need to make disapear the myinitprocess0
       if SAVING then acquisition.startandsave(True) else acquisition.start;  
    end
    else begin // we need to save the vectors
@@ -1295,10 +1301,11 @@ procedure launch_multiple_sim; // also handle the case of the interrupted experi
 begin
    exp_freq_vec.create(t_double, 0, -1);
    exp_time_vec.create(t_double, 0, -1);
+   exp_time_vec.addtolist(0);
    exp_amp_vec.create(t_double, 0, -1);
    string_for_saving := TDBrecord('PG0.global').PathOfTheDay+'multiple_sin';
    InitializeChannels; // we can initialize the channels
-   initialize_a_single_exp;
+   initialize_a_single_exp;   
    acquisition.InstallProcess(my_initprocess0, nil, nil, multiplesin_endprocess);
   if SAVING then acquisition.startandsave else acquisition.start;
 end; { launch_multiple_sim }

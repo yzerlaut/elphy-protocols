@@ -2,7 +2,7 @@ var cursor : Tcursor;
     dialog : Tdialog ;  memo : Tmemo ;
     x1, x2 : real;
     ii : integer ;  prefix : string ;
-    imped_vec, freq_vec, amp_vec, time_vec : Tvector ;
+    imped_vec, actual_freq, freq_vec, amp_vec, time_vec : Tvector ;
     t_start, t_stop : real ;  lver_start,lver_stop  : Tlinever ;
     current_freq, current_amp : real ;
     fit : Tcurvefitting;
@@ -17,10 +17,8 @@ begin
    time_vec.addtolist(v1.Xend); {need to add the last point}
    freq_vec.create; freq_vec.loadObject(prefix+'MULTIPLE_SIN_freq');
    amp_vec.create ; amp_vec.loadObject(prefix+'MULTIPLE_SIN_amp');
-   if saveFileDialog(prefix,'txt') then openText(1,prefix,false)
-   else MessageBox('analysis will not be saved');
-   ii:=time_vec.Istart;
-
+   ii:=0;
+   imped_vec.create(t_double, 0, -1); actual_freq.create(t_double, 0, -1);
    fit.create('');
    fit.Text:='RES=a1*sin(a2*x+a3)';
    fit.initialize:=true;
@@ -48,7 +46,6 @@ end;
 
 procedure make_fit;
 begin
-   fit.create;
    fit.setYdata(v1);  fit.MaxIt:=30;
    { fit.setWorld(cursor.position[1],v1.Ymin,cursor.position[2],v1.Ymax); }
    fit.XstartFit:=cursor.position[1];
@@ -57,6 +54,20 @@ begin
    fit.Execute;
    fit.Refresh;
 end;
+
+procedure write_on_file;
+var st : string ;  ii : integer ;
+begin
+  openText(1,prefix+'MULTIPLE_SIN_analysed.txt',false);
+  writelnText(1,'## impedance in mV/pA');
+  if Imped_vec.Iend<>freq_vec.Iend then MessageBox('problem in the analysis, vector size not compatible');
+  for ii:=1 to Imped_vec.Iend do 
+  begin
+     st := Rstr(Imped_vec[ii],1, 6)+Chr(9)+Rstr(freq_vec[ii],1, 6) ;
+     writelnText(1,st);
+  end; 
+  closeText(1);
+end;  
 
 procedure DialogUpdate(n:integer);
 begin
@@ -68,8 +79,11 @@ begin
 	      if ii<time_vec.Iend-1 then zoom_on_exp(ii) else begin closeText(1); MessageBox('Over !'); end;
 	   end;
      102: make_fit;
-     { 103: write_on_file; }
-     { 104 : closetext(1) ; }
+     103 : begin imped_vec.AddToList(fit.param['a1']/current_amp); ii:=ii+1;
+	          if ii<time_vec.Iend-1 then zoom_on_exp(ii)
+           else MessageBox('Over !');
+	   end;
+     104: write_on_file;
    end;	 
    dialog.update;
 end;
@@ -112,6 +126,9 @@ begin
    dialog.getRealA('current amp. (pA)',current_amp,10,3,200);
    dialog.settext(''); { OnEvent flag -> 201 }
    dialog.getCommandA(' Make Fit ',0,102); { OnEvent flag -> 201 }
+   dialog.getCommandA(' Append qnd Jump to next ',0,103); { OnEvent flag -> 201 }
+   dialog.settext(''); { OnEvent flag -> 201 }
+   dialog.getCommandA(' Write to File ',0,104); { OnEvent flag -> 201 }
    dialog.Caption:='Multiple Sin. Analysis';
    dialog.winleft:=0;dialog.wintop:=0;
    dialog.show;
@@ -120,7 +137,5 @@ end; { tf_analysis_windows }
 
 program Launch
 analysis_windows;
-{ init_graph; }
 analysis_dialog;
-{ init_analysis; }
 load_objects;

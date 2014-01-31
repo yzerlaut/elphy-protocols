@@ -1272,13 +1272,14 @@ begin
    set_dac_to_zero;
    exp_time_vec.addtolist(v1.Xend);
    detector.update(v1.Iend);
-   initialize_a_single_exp;
    if (global_freq_index<freq_step_num) and (continu_flag=True) then
    begin
+      initialize_a_single_exp;
       acquisition.InstallProcess(nil, nil, nil, multiplesin_endprocess); // need to make disapear the myinitprocess0
       if SAVING then acquisition.startandsave(True) else acquisition.start;  
    end
    else begin // we need to save the vectors
+      continu_flag:=False;
       exp_freq_vec.SaveAsObject(acquisition.genericfilename+'_freq');
       exp_time_vec.SaveAsObject(acquisition.genericfilename+'_time');
       exp_amp_vec.SaveAsObject(acquisition.genericfilename+'_amp');
@@ -1291,7 +1292,7 @@ var ii,i1,i2:integer; temp1, temp2:real;
 begin
     for ii:=0 to 10*vec1.Iend do 
     begin
-        i1:= Random(vec1.Iend); i2:= Random(vec1.Iend);
+        i1:= 1+Random(vec1.Iend-1); i2:= 1+Random(vec1.Iend-1);
         temp1:= vec1[i1]; vec1[i1]:=vec1[i2]; vec1[i2]:=temp1;
         temp2:= vec2[i1]; vec2[i1]:=vec2[i2]; vec2[i2]:=temp2;
     end;
@@ -1314,13 +1315,13 @@ end; { launch_multiple_sim }
 procedure prepare_multiplesin;
 var ii : integer ; exponent : real;
 begin
-     freq_vec.create(t_double, 0, freq_step_num);
-     amp_freq_vec.create(t_double, 0, freq_step_num);
-     for ii:=0 to freq_step_num do
+     freq_vec.create(t_double, 1, freq_step_num);
+     amp_freq_vec.create(t_double, 1, freq_step_num);
+     for ii:=1 to freq_step_num do
      begin
-          exponent := LN(freq_start)+ii/freq_step_num*(LN(freq_end)-LN(freq_start)) ;
+          exponent := LN(freq_start)+(ii-1)/(freq_step_num-1)*(LN(freq_end)-LN(freq_start)) ;
           freq_vec[ii] := Exp(exponent) ;
-          exponent := LN(min_amp_sin)+ii/freq_step_num*(LN(max_amp_sin)-LN(min_amp_sin)) ;
+          exponent := LN(min_amp_sin)+(ii-1)/(freq_step_num-1)*(LN(max_amp_sin)-LN(min_amp_sin)) ;
           amp_freq_vec[ii] := Exp(exponent) ;
      end;
      Shuffle_2Vector(freq_vec, amp_freq_vec); // then we shuffle the order of frequencies

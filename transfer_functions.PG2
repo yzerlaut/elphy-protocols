@@ -175,6 +175,11 @@ begin
 end;
 
 
+ProcessCont      // common for all processes !!
+begin
+THdetect.Update(v1.Iend); // code en dur, similaire a calculsum
+end;
+
 
 
 {$EDIT balanced_shotnoise_exp} 
@@ -222,11 +227,6 @@ begin
    THdetect.addevent(At_threshold_event,0);
 end;
 
-
-procedure tf_processCont; // procedure appelle environ tous les 40msr
-begin
-THdetect.Update(v1.Iend); // code en dur, similaire a calculsum
-end;
 
 procedure tf_EndProcess; 
 begin // we set the stimulation variable in NEURON to 0 !

@@ -14,7 +14,6 @@ begin
    memo.create;splitstring(dataName,'_',memo) ; {datapath}
    prefix := datapath+memo.lines[1]+'_'+memo.lines[2]+'_'+memo.lines[3]+'_';
    time_vec.create; time_vec.loadObject(prefix+'MULTIPLE_SIN_time');
-   time_vec.addtolist(v1.Xend); {need to add the last point}
    freq_vec.create; freq_vec.loadObject(prefix+'MULTIPLE_SIN_freq');
    amp_vec.create ; amp_vec.loadObject(prefix+'MULTIPLE_SIN_amp');
    ii:=0;
@@ -29,15 +28,16 @@ end; { load_objects }
 
 
 procedure zoom_on_exp(ii:integer);
-var jj : integer ;
+var jj : integer ;  switch : real ;
 begin
+   switch := 0.5 ; // time that we discard before and after the recording
    if time_vec[ii]<time_vec[ii+1] then
    begin t_start := time_vec[ii] ; t_stop := time_vec[ii+1]; end 
    else begin t_start := time_vec[ii+1] ; t_stop := time_vec[ii]; end;
-   v1.SetWorld(t_start-1,v1.Mini(t_start-1,t_stop+1),t_stop+1,v1.Maxi(t_start-1,t_stop+1));
-   v2.SetWorld(t_start-1,v2.Mini(t_start-1,t_stop+1),t_stop+1,v2.Maxi(t_start-1,t_stop+1));
+   v1.SetWorld(t_start-switch,v1.Mini(t_start-switch,t_stop+switch),t_stop+switch,v1.Maxi(t_start-switch,t_stop+switch));
+   v2.SetWorld(t_start-switch,v2.Mini(t_start-switch,t_stop+switch),t_stop+switch,v2.Maxi(t_start-switch,t_stop+switch));
    lver_start.x := t_start ; lver_stop.x := t_stop;
-   cursor.position[1]:= t_start+1 ; cursor.position[2]:=t_stop-1 ;
+   cursor.position[1]:= t_start+switch ; cursor.position[2]:=t_stop-switch ;
    current_freq:= freq_vec[ii];
    current_amp:= amp_vec[ii];
    dialog.update;
@@ -60,10 +60,10 @@ var st : string ;  ii : integer ;
 begin
   openText(1,prefix+'MULTIPLE_SIN_analysed.txt',false);
   writelnText(1,'## impedance in mV/pA');
-  if Imped_vec.Iend<>freq_vec.Iend then MessageBox('problem in the analysis, vector size not compatible');
-  for ii:=1 to Imped_vec.Iend do 
+  if Imped_vec.Iend<>actual_freq.Iend then MessageBox('problem in the analysis, vector size not compatible');
+  for ii:=Imped_vec.Istart to Imped_vec.Iend do 
   begin
-     st := Rstr(Imped_vec[ii],1, 6)+Chr(9)+Rstr(freq_vec[ii],1, 6) ;
+     st := Rstr(actual_freq[ii])+Chr(9)+Rstr(Imped_vec[ii]) ;
      writelnText(1,st);
   end; 
   closeText(1);
@@ -79,10 +79,13 @@ begin
 	      if ii<time_vec.Iend-1 then zoom_on_exp(ii) else begin closeText(1); MessageBox('Over !'); end;
 	   end;
      102: make_fit;
-     103 : begin imped_vec.AddToList(fit.param['a1']/current_amp); ii:=ii+1;
+     103 : begin 
+            imped_vec.AddToList(ABS(fit.param['a1']/current_amp));
+            actual_freq.AddToList(current_freq);
+            ii:=ii+1;
 	          if ii<time_vec.Iend-1 then zoom_on_exp(ii)
-           else MessageBox('Over !');
-	   end;
+            else MessageBox('Over !');
+	         end;
      104: write_on_file;
    end;	 
    dialog.update;
@@ -135,7 +138,26 @@ begin
 end; { tf_analysis_windows }
 
 
-program Launch
+procedure full_analysis;
+begin
+    load_Objects;
+    for ii:=time_vec.Istart to time_vec.Iend-1 do
+    begin
+         zoom_on_exp(ii);
+         make_fit;
+         imped_vec.AddToList(ABS(fit.param['a1']/current_amp));
+         actual_freq.AddToList(current_freq);       
+    end;
+    write_on_file;
+end;
+
+program Manual_Analysis
 analysis_windows;
 analysis_dialog;
 load_objects;
+zoom_on_exp(ii);
+
+program Automated_analysis
+analysis_windows;
+analysis_dialog;
+full_analysis;

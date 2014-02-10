@@ -4,7 +4,10 @@
 ========================================================================}
 
 Const
-   ProtocolCount = 3 ;  
+   ProtocolCount = 3 ; 
+   CONTINUOUS_TIMER = 0.5 ; {timer for Tdetect update}
+   
+   
 
 var  { ========= COMMON VARIABLES ============ }
    protocol_choice : integer; 
@@ -16,6 +19,7 @@ var  { ========= COMMON VARIABLES ============ }
    Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; {variables to fetch the date and time }
    gain1,gain2 : real; gain1_int,gain2_int,clamp_int:integer;cont_choice:boolean;  
    dll_load : string ;
+   detector, time_detector : Tdetector ;
 
 
 { ============================================================================
@@ -67,7 +71,7 @@ begin
   for jj:=1 to TDBrecord('PG0.Exp_params').count do
   begin  
     st:= TDBrecord('PG0.Exp_params').Names[jj] ;
-    DB.AddField(st,jj+1);
+    //DB.AddField(st,jj+1);
     DB.ImplicitValue[st]:=TDBrecord('PG0.Exp_params').ImplicitValue[st] ;
   end;                                                                      
   DB.protocol:=ProtocolName[protocol_choice];
@@ -76,6 +80,42 @@ begin
   DB.Hour := Hour ; DB.Minute := Minute ; DB.SEcond := Second ;    
 end;
 
+procedure save_metadata_as_txt;
+var jj:integer; st, st2:string;
+begin
+   openText(1,acquisition.genericFilename+'.json',false);
+   writelnText(1,'{');
+  for jj:=1 to TDBrecord('PG0.global').count do
+  begin  
+    st:= TDBrecord('PG0.global').Names[jj] ;
+    st2:=TDBrecord('PG0.global').Valstring[jj] ;
+    writelnText(1,'"'+st+'":"'+st2+'",');
+  end;                                                                      
+  for jj:=1 to TDBrecord('PG0.Exp_params').count do
+  begin  
+    st:= TDBrecord('PG0.Exp_params').Names[jj] ;
+    st2:=TDBrecord('PG0.Exp_params').Valstring[jj];
+    writelnText(1,'"'+st+'":"'+st2+'",');
+  end;        
+  writelnText(1,'"lastline":"no_value"');
+  writelnText(1,'}');
+  closeText(1);                                                              
+end;
+
+procedure my_initprocess0;
+var Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; PathOfTheDay, sep, protocol  : string ; {variables to fetch the date and time }
+begin
+  PathOfTheDay := TDBrecord('PG0.global').PathOfTheDay ;
+  protocol := TDBrecord('PG0.Exp_params').exp_type ;
+  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
+  acquisition.genericfilename := PathOfTheDay+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)+  '_'+protocol ;
+  FillDBinfo(DB); 
+  if acquisition.saving then
+     begin
+	    acquisition.writeDBfileinfo(DB);
+	    save_metadata_as_txt;
+     end;
+end;
 
 {$EDIT channels_settings} 
 { Acquisition + Stimulation + Gain settings }
@@ -87,7 +127,7 @@ end;
 
 
 
-procedure Set_DCsim_Channels;
+procedure Set_DC_Channels_DEMO;
 var 
    i :integer;
 begin {-- we set all the variables of the acquisition class, then we create 
@@ -130,7 +170,7 @@ begin {-- we set all the variables of the acquisition class, then we create
    v2.color := CL_Olive ; v3.color := CL_Blue ; v4.color := CL_Red ; 
 end;
 
-procedure Set_DCchannels;
+procedure Set_DC_channels;
 var 
    gain1, gain2, epdur, f_acq, acquisitionISI :real;
    Continu, stim :boolean;
@@ -143,7 +183,7 @@ begin {-- we set all the variables of the acquisition class, then we create
 
    {we delete previous graphical display}
    ClearObjects(1,1); ClearObjects(1,2);
-
+   
    acquisition.Fcontinuous:=true;
    acquisition.Fstimulate := False ; {we DON'T stimulate in Elphy!!}
    gain1 := TDBrecord('PG0.global').gain1 ;
@@ -156,8 +196,16 @@ begin {-- we set all the variables of the acquisition class, then we create
      acquisition.Channels[i].ChannelType := TI_Neuron;
      acquisition.Channels[i].DownSamplingFactor:=1;
    end;
+   RTneuron.AdcChan[0].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[0].NrnSymbolName:='Vm';    // primary     
+   RTneuron.AdcChan[1].setScale(0,32767,0,20000.0/gain2); RTneuron.AdcChan[1].NrnSymbolName:='Iinj'; // secondary 
+   RTneuron.DacChan[0].NrnSymbolName:='stim.Ipico'; RTneuron.DacChan[0].setScale(0,32767,0,4000.0); // command -> I clamp
+   
+   acquisition.Channels[1].NrnSymbolName:='cell.soma.v(.5)'; acquisition.Channels[1].unitY:='mV' ;
+   acquisition.Channels[2].NrnSymbolName:='Iinj'; acquisition.Channels[2].unitY:='pA' ;
    acquisition.Channels[1].unitY:='mV'; addObject(1,1,v1); v1.title:='V_intra(t)';
-   acquisition.Channels[1].NrnSymbolName:='cell.soma.v(.5)';
+   // For real data, 2-> real current, 5 -> theoretical current
+   acquisition.Channels[5].unitY:='pA'; addObject(1,2,v5); v5.title:='Ith(t)';
+   acquisition.Channels[5].NrnSymbolName:='stim.Ipico';
    acquisition.Channels[3].unitY:='uS'; addObject(1,3,v3);  v3.title:='Ge(t)';
    acquisition.Channels[3].NrnSymbolName:='cell.syn.ge';
    acquisition.Channels[4].unitY:='uS'; addObject(1,4,v4); v4.title:='Gi(t)';
@@ -166,21 +214,66 @@ begin {-- we set all the variables of the acquisition class, then we create
    v1.cpy:=1 ; v2.cpy := 2 ; v3.cpy:=3 ;  v4.cpy:=4 ; {we set the coupling value -> to couple to future analysis} 
 end;
 
+{ =========================================================================
+------------------- GAIN settings ----------------------------------------
+===========================================================================  }
+
+procedure SetGain1;
+var Gain1_int:integer;
+begin
+    gain1_int:=TDBrecord('PG0.global').Gain1_int;
+    case Gain1_int of
+    1: TDBrecord('PG0.global').Gain1 := 1.0; 2: TDBrecord('PG0.global').Gain1 := 2.0;
+    3: TDBrecord('PG0.global').Gain1 := 5.0; 4: TDBrecord('PG0.global').Gain1 := 10.0;
+    5: TDBrecord('PG0.global').Gain1 := 20.0; 6: TDBrecord('PG0.global').Gain1 := 50.0;
+    7: TDBrecord('PG0.global').Gain1 := 100.0; 8: TDBrecord('PG0.global').Gain1 := 200.0;
+    9: TDBrecord('PG0.global').Gain1 := 500.0; 10: TDBrecord('PG0.global').Gain1 := 1000.0;
+    11: TDBrecord('PG0.global').Gain1 := 2000.0;
+    end;
+end;   {SetGain1}
+
+procedure SetGain2;
+var Gain2_int:integer;
+begin
+    gain2_int:=TDBrecord('PG0.global').Gain2_int;
+    case Gain2_int of
+    1: TDBrecord('PG0.global').Gain2 := 1.0;   2: TDBrecord('PG0.global').Gain2 := 2.0; 
+    3: TDBrecord('PG0.global').Gain2 := 5.0;  4: TDBrecord('PG0.global').Gain2 := 10.0;
+    5: TDBrecord('PG0.global').Gain2 := 20.0;   6: TDBrecord('PG0.global').Gain2 := 50.0; 
+    7: TDBrecord('PG0.global').Gain2 := 100.0;
+    end;
+end;   {SetGain2}
+
 
 procedure InitializeChannels;
 var amplifier : string ;
 begin
          amplifier := TDBrecord('PG0.global').amplifier ;
-         if amplifier='nrn_simulation' then Set_DCsim_Channels else Set_DCchannels;
+         if amplifier='nrn_simulation' then Set_DC_channels_DEMO;
+         if amplifier='multiclamp' then Set_DC_channels;
+         time_detector.create ; detector.create ;   // needs to be created
 end;
 
 
-ProcessCont      // common for all processes !!
+procedure set_dac_to_zero;
 begin
-THdetect.Update(v1.Iend); // code en dur, similaire a calculsum
+Rtneuron.DacChan[0].HoldingValue:=0;
+Rtneuron.DacChan[0].UseHoldingValue:=True;    
+Rtneuron.DacChan[1].HoldingValue:=0;
+Rtneuron.DacChan[1].UseHoldingValue:=True;  
+with stimulator do
+  begin
+    stimulator.setValue(0,0,0,0);   
+    stimulator.setValue(0,0,1,0);   
+    stimulator.setValue(0,1,0,0);  
+end; 
 end;
 
-
+ProcessCont  { COMMON to all continuous processes }
+begin
+time_detector.update(v1.Iend);
+detector.update(v1.Iend);
+end;
 
 {$EDIT balanced_shotnoise_exp} 
 { ==============================================================================
@@ -190,9 +283,10 @@ end;
 
 var
    TFdialog : Tdialog;
-   THdetect : Tdetector;
    spiketimes : Tvector ;
    stop_flag : boolean ;
+   max_spikes_number : integer ;
+
 { *** Balanced Conductance Shotnoise Stim *** }
 var
    freq_ge, freq_gi, qe, qi, tau1E, tau2E, tau1I, tau2I, Ee, Ei	: real; { excitatory time constant}
@@ -200,18 +294,29 @@ var
 
 procedure initTFparameters;
 begin
-   freq_ge :=1; freq_gi :=4; Nexc := 2000; Ninh := 500;
+   freq_ge :=1.6; freq_gi :=4; Nexc := 2000; Ninh := 500;
    qe:=0.6;  { nS }  
    tau1E:=8; {ms}
    tau2E:=0.4; {ms}
    qi:= 1.1;  { uS }  tau1I:=5; {ms} tau2I:=0.1; {ms}
    Ee:= 0; Ei:= -80; SEED :=1 ;
+   max_spikes_number :=30;
+end;
+
+procedure write_shotnoise_params;
+begin
+    TDBrecord('PG0.Exp_params').tau1E:=tau1E ; TDBrecord('PG0.Exp_params').tau2E:=tau2E ;
+    TDBrecord('PG0.Exp_params').Ee:=Ee ; TDBrecord('PG0.Exp_params').Qe:=Qe ;
+    TDBrecord('PG0.Exp_params').f_exc:=freq_ge ; TDBrecord('PG0.Exp_params').seed_exc:=SEED ;
+    TDBrecord('PG0.Exp_params').tau1I:=tau1I ; TDBrecord('PG0.Exp_params').tau2I:=tau2I ;
+    TDBrecord('PG0.Exp_params').Ei:=Ei ; TDBrecord('PG0.Exp_params').Qi:=Qi ;
+    TDBrecord('PG0.Exp_params').f_inh:=freq_gi ; TDBrecord('PG0.Exp_params').seed_inh:=SEED+1 ;
 end;
 
 procedure At_threshold_event(n:integer);
 begin
     Statuslinetxt('Spike Number at t: '+Istr(spiketimes.Iend));
-    if n>30 then begin acquisition.stop ; end;
+    if n>max_spikes_number then begin acquisition.stop ; end;
 end; 
 
 procedure tf_InitProcess; {executer avec acquisition.start, mais apres tout, ici tous les objets ont ete initialises, donc on peut les utiliser}
@@ -222,15 +327,15 @@ begin
    threshold := -30.0 ; // threshold at : ... mV 
    refrac := 0.003 ; // at least ... s between two events
    yinit := -80.0 ;
-   THdetect.create;
-   THdetect.InitCrossings(v1,spiketimes,TRUE,FALSE,threshold,threshold,refrac,yinit,FALSE);
-   THdetect.addevent(At_threshold_event,0);
+   detector.create;
+   detector.InitCrossings(v1,spiketimes,TRUE,FALSE,threshold,threshold,refrac,yinit,FALSE);
+   detector.addevent(At_threshold_event,0);
 end;
 
 
 procedure tf_EndProcess; 
 begin // we set the stimulation variable in NEURON to 0 !
-      THdetect.Update(v1.Iend);  
+      detector.Update(v1.Iend);  
       RTneuron.DacChan[0].HoldingValue:=0;
       RTneuron.DacChan[0].UseHoldingValue:=True;  
 end;
@@ -240,7 +345,9 @@ begin
    // Elphy Params initialization
    InitializeChannels;
    RTneuron.FadvanceON:=True;
-   acquisition.InstallProcess(tf_InitProcess, tf_initprocess, tf_processcont, tf_endprocess);
+   TDBrecord('PG0.Exp_params').exp_type := 'balanced_shotnoise' ;
+   write_shotnoise_params;
+   acquisition.InstallProcess(my_initProcess0, tf_initprocess, nil, tf_endprocess);
 
    // NEURON initialization 
    RTneuron.execute('objref ncE, nsE, ncI, nsI');
@@ -295,6 +402,8 @@ begin
       setText(' |  __---   Transfer Function Experiments   ---__  | ');
       setText('Conductance Shotnoise from a balanced Network');
       setText('______________________________________');
+      getIntegerA('MAX spikes number',max_spikes_number,6,200);
+      setText('');
       getIntegerA('SEED (int)',SEED,6,200);
       setText('o==> EXCITATION');
       getIntegerA('Nexc (# exc synapses)',Nexc,6,200);
@@ -325,20 +434,21 @@ end;
 
 var vec_fe_full,vec_fi_full : Tvector ;
 var global_step : integer ;  continu_flag : boolean ;
-var fe_min0,fe_max0,fe_min1,fe_max1,fi_min,fi_max, t0_trial, t0_full :real;
+var fe_min0,fe_max0,fe_min1,fe_max1,fi_min,fi_max, t0_trial, t0_full, max_authorized_time :real;
 var current_string : string ; grid_seed : integer ; 
 var recorded_fe,recorded_fi,recorded_t : Tvector ;
 var rest_flag,jump_to_next:boolean ; // flag pour alterner de la stimulation et des periods de repos...
 
-
 procedure init_massivetf_const;
-begin
+begin                      
    vec_fe_full.create(t_single,0,-1); vec_fi_full.create(t_single,0,-1);
    fe_min0 := 0.1 ; fe_max0 := 10; fe_min1 := 5 ; fe_max1 := 20;
    fi_min := 0.1 ; fi_max := 15;  jump_to_next:=False ;
+   max_authorized_time := 20 ; // in s
    recorded_fe.create(t_single,0,-1);
    recorded_fi.create(t_single,0,-1);
    recorded_t.create(t_single,0,-1);
+   TDBrecord('PG0.Exp_params').exp_type := 'massive_TF' ;
 end;
 
 
@@ -428,23 +538,18 @@ begin
    end;                              
 end;
 
+
 procedure Init_single_exp(f_exc, f_inh:real; SEED:integer);
 var fe_tot, fi_tot :  real;
 begin         
    // configuring the excitatory presynaptic events
-   RTneuron.execute('nsE.start = 0'); RTneuron.execute('nsE.number = 1e30');
-   RTneuron.execute('nsE.noise = 1'); RTneuron.execute('nsE.seed('+Rstr(SEED)+')');
+   RTneuron.execute('nsE.seed('+Rstr(SEED)+')');
    fe_tot := f_exc*Nexc; 
    if fe_tot<>0 then RTneuron.execute('nsE.interval = 1000/'+Rstr(fe_tot)) else RTneuron.execute('nsE.interval = 1e30');
-   RTneuron.execute('ncE.weight = 0.001*'+Rstr(Qe));
-   RTneuron.execute('ncE.delay = 0');
    // configuring the inhibitory presynaptic events
-   RTneuron.execute('nsI.start = 0'); RTneuron.execute('nsI.number = 1e30');
-   RTneuron.execute('nsI.noise = 1'); RTneuron.execute('nsI.seed('+Rstr(SEED+1)+')');
+   RTneuron.execute('nsI.seed('+Rstr(SEED+1)+')');
    fi_tot := f_inh*Ninh;
    if fi_tot<>0 then RTneuron.execute('nsI.interval = 1000/'+Rstr(fi_tot)) else RTneuron.execute('nsI.interval = 1e30');
-   RTneuron.execute('ncI.weight = -0.001*'+Rstr(Qi));
-   RTneuron.execute('ncI.delay = 0');
    RTneuron.execute('finitialize()');
 end;
 
@@ -454,9 +559,17 @@ begin
    // NEURON initialization, need to initialize it only once...      
    RTneuron.execute('objref ncE, nsE, ncI, nsI');
    RTneuron.execute('soma nsE = new NetStim(.5)');
+   RTneuron.execute('nsE.start = 0'); RTneuron.execute('nsE.number = 1e30');
+   RTneuron.execute('nsE.noise = 1'); // frequency and seed comes later !
    RTneuron.execute('ncE = new NetCon(nsE, stim)');
-   RTneuron.execute('soma nsI = new NetStim(.5)');                       
+   RTneuron.execute('ncE.weight = 0.001*'+Rstr(Qe));
+   RTneuron.execute('ncE.delay = 0');
+   RTneuron.execute('soma nsI = new NetStim(.5)');
+   RTneuron.execute('nsI.start = 0'); RTneuron.execute('nsI.number = 1e30');
+   RTneuron.execute('nsI.noise = 1');                        
    RTneuron.execute('ncI = new NetCon(nsI, stim)');
+   RTneuron.execute('ncI.weight = -0.001*'+Rstr(Qi));
+   RTneuron.execute('ncI.delay = 0');
    // parameters of the synapses
    RTneuron.execute('stim.tau1E = '+Rstr(tau1E)); RTneuron.execute('stim.tau2E = '+Rstr(tau2E));
    RTneuron.execute('stim.tau1I = '+Rstr(tau1I)); RTneuron.execute('stim.tau2I = '+Rstr(tau2I));
@@ -469,68 +582,87 @@ end;
 // ===================== Process functions ================== //
 
 
-procedure massive_processCont; // procedure appelle environ tous les 40ms
+procedure check_for_stop_acq(n:integer);
 begin
-THdetect.Update(v1.Iend); // code en dur, similaire a calculsum
-if not continu_flag or (v1.Xend-t0_trial>10) or jump_to_next then acquisition.stop ;
-if rest_flag and (v1.Xend-t0_trial>1) then acquisition.stop ;
+    //acquisition.stop; 
+    
+    if not continu_flag then acquisition.stop;
+    if n>Round(max_authorized_time/CONTINUOUS_TIMER) then acquisition.stop ; // if bigger than 20s, we stop !
+    if rest_flag and (n>1) then acquisition.stop ; // if REST then only one second of exp
+    
 end;
 
-ProcessCont
+procedure massive_InitProcess; {executer avec acquisition.start, mais apres tout, ici tous les objets ont ete initialises, donc on peut les utiliser}
+var 
+threshold : real ;refrac : real ; yinit : real;
 begin
-if protocol_choice=1 then tf_processcont;
-if protocol_choice=2 then massive_processcont;
+   spiketimes.create(t_single,0,-1);
+   threshold := -30.0 ; // threshold at : ... mV 
+   refrac := 0.003 ; // at least ... s between two events
+   yinit := -80.0 ;
+   detector.create; // this one is foe the spikes
+   detector.InitCrossings(v1,spiketimes,TRUE,FALSE,threshold,threshold,refrac,yinit,FALSE);
+   detector.addevent(At_threshold_event,0);
+   time_detector.create;
+   time_detector.InitTimer(v1, CONTINUOUS_TIMER);
+   time_detector.AddEvent(check_for_stop_acq, 0.);
+end;
+
+
+procedure write_freq_time_infos_as_txt;
+var st : string; i : integer;
+begin
+   openText(1,current_string+'_GRID.txt',false);
+   for i:=recorded_fe.Istart to recorded_fe.Iend do
+   begin
+       st := Rstr(recorded_t[i], 1, 6)+Chr(9)+Rstr(recorded_fe[i], 1, 6)+Chr(9)+Rstr(recorded_fi[i], 1, 6);
+       writelnText(1,st);   // the time is actually the end of the experiment !!
+   end; 
+   closeText(1);
 end;
 
 
 procedure massive_EndProcess; 
 begin // we set the stimulation variable in NEURON to 0 !
-    if jump_to_next then jump_to_next:=False ;
     if continu_flag=False then rest_flag:=False; // to be sure to cancel the stimulation
-    if rest_flag then  // we are not in pause so we progress in the scan..
+    if rest_flag and (global_step<vec_fe_full.Iend-1) then  // we are not in pause so we progress in the scan..
     begin 
-      global_step := global_step+1 ;
+      global_step := global_step+1 ;   
       freq_ge := vec_fe_full[global_step] ; freq_gi := vec_fi_full[global_step] ;
-      Init_single_exp(freq_ge,freq_gi,SEED);
-      recorded_fe.addtolist(freq_ge);recorded_fe.SaveAsObject(current_string+'_fe') ;
-      recorded_fi.addtolist(freq_gi);recorded_fi.SaveAsObject(current_string+'_fi') ;
-      recorded_t.addtolist(v1.Xend-t0_trial);recorded_t.SaveAsObject(current_string+'_t') ;
-      RTneuron.FadvanceON:=True;
       rest_flag:=False;
     end
-    else 
+    else                              
     begin 
-      Init_single_exp(0.,0.,SEED);
-      rest_flag :=True;
-      recorded_fe.addtolist(0);recorded_fe.SaveAsObject(current_string+'_fe') ;
-      recorded_fi.addtolist(0);recorded_fi.SaveAsObject(current_string+'_fi') ;
-      recorded_t.addtolist(v1.Xend-t0_trial);recorded_t.SaveAsObject(current_string+'_t') ;
+      freq_ge := 0 ; freq_gi := 0 ;
+      Init_single_exp(freq_ge,freq_gi,SEED);
+      rest_flag:=True;
     end;
-    t0_trial := v1.Xend ; 
+    // then we reinit everything
+    Init_single_exp(freq_ge,freq_gi,SEED);
+    acquisition.InstallProcess(nil, massive_initprocess, nil, massive_endprocess);
+    recorded_fe.addtolist(freq_ge);recorded_fe.SaveAsObject(current_string+'_fe') ;
+    recorded_fi.addtolist(freq_gi);recorded_fi.SaveAsObject(current_string+'_fi') ;
+    recorded_t.addtolist(v1.Xend);recorded_t.SaveAsObject(current_string+'_t') ;
+    RTneuron.FadvanceON:=True;
+ 
+    t0_trial := v1.Xend ;     // t0 setting
     TFdialog.update;TFdialog.updatevar;    
-    if continu_flag then acquisition.startandsave(true);
+    if continu_flag then acquisition.startandsave(true) // we restart
+    else write_freq_time_infos_as_txt; // we write the txt file !
 end;
 
-Initprocess
-begin
-   tf_initprocess;
-end;
-
-EndProcess
-begin
-   if protocol_choice = 2 then massive_endprocess;
-end;
 
 procedure Run_MassiveTF;
-begin
-   // Elphy Params initialization
-   //acquisition.InstallProcess(nil, tf_initprocess, massive_processcont, massive_endprocess);
-   
+begin 
    DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time} 
    current_string := PathOfTheDay+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second);     
    continu_flag := True ;
    freq_ge := vec_fe_full[global_step] ; freq_gi := vec_fi_full[global_step] ;
    Init_single_exp(freq_ge,freq_gi,SEED);
+   // Elphy Params initialization
+   acquisition.InstallProcess(my_initProcess0, massive_initprocess, nil, massive_endprocess); // initprocess0 for the first exp
+
+   write_shotnoise_params; // writing parameters
    recorded_fe.addtolist(freq_ge);recorded_fe.SaveAsObject(current_string+'_fe') ;
    recorded_fi.addtolist(freq_gi);recorded_fi.SaveAsObject(current_string+'_fi') ;      
    recorded_t.addtolist(0);recorded_t.SaveAsObject(current_string+'_t') ;              
@@ -577,6 +709,9 @@ begin
       getRealA(' current fi',freq_gi,10,3,200);
       getboolean('Continue Running (stop asap...)',continu_flag);
       getboolean('jump to the next one',jump_to_next);
+      setText('');
+      getIntegerA('MAX spikes number',max_spikes_number,6,200);
+      getRealA('max_authorized_time)',max_authorized_time,10,3,200);
       Caption:='Massive-TF';
       Show;
    end;

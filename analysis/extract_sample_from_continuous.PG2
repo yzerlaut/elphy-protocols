@@ -1,5 +1,5 @@
 const 
-   sample_path = 'Z:\home\yann\experiments\DATA\sample.txt';
+   sample_path = 'Z:\home\yann\Documents\sample.txt';
 
 var cursor : Tcursor;
     dialog : Tdialog ;
@@ -7,9 +7,10 @@ var cursor : Tcursor;
     i : integer ;
   
 procedure save_as_txt;
-var st : string ;  ch, j, i1, i2 : integer ;
+var st, pp : string ;  ch, j, i1, i2 : integer ;
 begin
-  openText(1,sample_path,false);
+  pp := sample_path;
+  if saveFileDialog(pp,'.txt') then openText(1,pp,false) else MessageBox('sample wont be saved');
   st := '';  // X abcisse (time) !
   i1 := v1.InvConvX(cursor.position[1]); 
   i2 := v1.InvConvX(cursor.position[2]); 
@@ -17,7 +18,7 @@ begin
   for j:=i1 to i2 do 
   begin
      st := Rstr(v1.ConvX(j),1, 6) ;
-     for ch:=1 to channelCount do 
+     for ch:=1 to acquisition.channelCount do 
       begin
         st := st+Chr(9)+Rstr(v[ch].Yvalue[j],1,6);
       end;  

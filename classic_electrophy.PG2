@@ -39,6 +39,7 @@ begin
   ProtocolName[8]:= 'Pulses_Stim'; 
   ProtocolName[9]:= 'Stochastic_Stim'; 
   ProtocolName[10]:= 'fancy_Ramps-Pulses'; 
+  ProtocolName[11]:= 'F-I curve'; 
   ProtoNames:=ProtocolName[1];
   for i:=2 to ProtocolCount do ProtoNames:=ProtoNames+'|'+ProtocolName[i];
 end;    
@@ -382,20 +383,25 @@ end;
  
 procedure set_dac_to_zero;
 begin
-stimulator.Channels[1].BuildEp := Build_Set0 ; {no other way to set the output to 0 ??}
-TDBrecord('PG0.global').max_EP_num :=1;
-stimulator.initVectors;
-acquisition.start;
 Rtneuron.DacChan[0].HoldingValue:=0;
 Rtneuron.DacChan[0].UseHoldingValue:=True;    
 Rtneuron.DacChan[1].HoldingValue:=0;
-Rtneuron.DacChan[1].UseHoldingValue:=True;  
+Rtneuron.DacChan[1].UseHoldingValue:=True; 
 with stimulator do
   begin
     stimulator.setValue(0,0,0,0);
     stimulator.setValue(0,0,1,0);
     stimulator.setValue(0,1,0,0);
 end;
+if acquisition.Fcontinuous=True then  //no other way to set the output to 0 ??
+begin
+acquisition.Fcontinuous :=False;
+acquisition.MaxEpCount :=1;
+stimulator.Channels[1].BuildEp := Build_Set0 ; 
+TDBrecord('PG0.global').max_EP_num :=1;
+stimulator.initVectors;
+acquisition.start;
+end;    
 end;
 
 ProcessCont  { COMMON to all continuous processes }
@@ -410,6 +416,7 @@ Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
 Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
 TDBrecord('PG0.global').cont_choice:=True;
 TDBrecord('PG0.global').stim:=False;
+TDBrecord('PG0.Exp_params').exp_type :='passive-recording' ;
 InitializeChannels;
 acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
 end;
@@ -1027,6 +1034,7 @@ begin
 
    mt_dialog.create ;
    mt_dialog.getRealA(' Pulse size (mV)',VCMT_amp,3,1,99);
+   mt_dialog.getRealA('inter-Stim-interval (s)',VCMT_interStim,3,1,99);
    mt_dialog.setText('');
    mt_dialog.setText('(params taken from the VC Membrane Test)');
    mt_dialog.setText('     (to be changed there)  ');
@@ -1277,7 +1285,6 @@ end;
 
 procedure multiplesin_endprocess;
 begin
-   set_dac_to_zero;
    exp_time_vec.addtolist(v1.Xend);
    detector.update(v1.Iend);
    if (global_freq_index<freq_step_num) and (continu_flag=True) then
@@ -1524,14 +1531,14 @@ begin {when we modify the dialog, we adjust the stimulation params}
          TDBrecord('PG0.global').max_EP_num :=0 ;
          TDBrecord('PG0.global').stim := True ;
          TDBrecord('PG0.Exp_Params').clear;
-         {TDBrecord('PG0.Exp_Params').exp_type:='triple_pulse';
+         TDBrecord('PG0.Exp_Params').exp_type:='triple_pulse';
          TDBrecord('PG0.Exp_Params').pulse_amplitude1:=amp1_tp;
          TDBrecord('PG0.Exp_Params').pulse_amplitude2:=amp2_tp;
          TDBrecord('PG0.Exp_Params').pulse_amplitude3:=amp3_tp;
          TDBrecord('PG0.Exp_params').start_at:=del_tp;
          TDBrecord('PG0.Exp_Params').pulse_duration1:=dur1_tp;
          TDBrecord('PG0.Exp_Params').pulse_duration2:=dur2_tp;
-         TDBrecord('PG0.Exp_Params').pulse_duration3:=dur3_tp;   }
+         TDBrecord('PG0.Exp_Params').pulse_duration3:=dur3_tp;   
          {then we initialize the stimulation}
          InitializeChannels; // finally, we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_TriplePulse ; 
@@ -1590,7 +1597,7 @@ begin
   DIvideWindow(1,3,4,1);
   color:=cl_gray;
 
-   amp_sp := 50.0; del_sp:=100.0; dur_sp:=800.0;
+   amp_sp := 50.0; del_sp:=400.0; dur_sp:=800.0;
    amp1_dp := 50.0; amp2_dp := -50.0; del_dp:=100.0; dur1_dp:=400.0; dur2_dp:=400.0; 
    amp1_tp := 50.0; amp2_tp := -50.0; amp3_tp := 50.0; 
    del_tp  := 50.0; dur1_tp:= 200.0; dur2_tp:= 400.0; dur3_tp:= 200.0; 
@@ -1947,12 +1954,12 @@ end;
 
 { ---------the protocol ----------------------}
 
-var amp1_fi, amp2_fi, del_fi, dur_fi :real; nsteps_fi : integer ; FIcurve_dialog:Tdialog;
+var amp1_fi, amp2_fi, del_fi, dur_fi, interstim_fi :real; subnsteps_fi, nsteps_fi : integer ; FIcurve_dialog:Tdialog;
 
 procedure Build_FIcurve(seq:longint;var vec:Tvector);  {pulse procedure called at each buildep}
 var amp : real; n : integer ;
 begin { we fill of 0, except between the t0+delay and t0+delay+duration }
-  n := Round(seq/10.);
+  n := Floor((seq-1)/subnsteps_fi);
   amp := amp1_fi + (amp2_fi-amp1_fi)*n/(nsteps_fi-1); 
   vec.fill(0); vec.fill1(amp,del_fi+vec.Istart,del_fi+dur_fi+vec.Istart);
 end;
@@ -1967,8 +1974,9 @@ begin {when we modify the dialog, we adjust the stimulation params}
          {we write all the relevant global informations}
          TDBrecord('PG0.global').cont_choice := False ; 
          TDBrecord('PG0.global').episode_duration :=  2*del_fi+dur_fi ;
-         TDBrecord('PG0.global').max_EP_num := 10*nsteps_fi ;
+         TDBrecord('PG0.global').max_EP_num := subnsteps_fi*nsteps_fi ;
          TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.global').acquisitionISI:= interstim_fi ;  // small beak between the stims
          TDBrecord('PG0.Exp_Params').clear;
          TDBrecord('PG0.Exp_Params').exp_type:='FI-Curve';
          TDBrecord('PG0.Exp_Params').pulse_amplitude1:=amp1_fi;
@@ -1988,6 +1996,10 @@ end;
 
 procedure Init_FIcurve;
 begin
+  amp1_fi := 30; amp2_fi := 50; 
+  del_fi:=400.0; dur_fi:=800.0;
+  nsteps_fi := 10; subnsteps_fi:=10; interstim_fi :=0.1 ;
+  
   // initialize windows 
   DestroyAllWindows(1);
   Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
@@ -2004,11 +2016,14 @@ begin
       setText(' ==<| F-I Curve protocol |> ');
       getRealA('Amplitude 1 (pA or mV)',amp1_fi,10,3,200);
       getRealA('Amplitude 2 (pA or mV)',amp2_fi,10,3,200);
+      getIntegerA('Number of Steps',nsteps_fi,10,200);
+      getIntegerA('Steps # per level',subnsteps_fi,10,200);
       getRealA('Onset/Delay (ms)',del_fi,10,3,200);
       getRealA('Duration (ms)',dur_fi,10,3,200);
+      getRealA('interstim (s)',interstim_fi,10,3,200);
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
    end;
-   AddDialog(1, 3, FIcurve_dialog);
+   AddDialog(1, 5, FIcurve_dialog);
 end;
 
 
@@ -2115,7 +2130,7 @@ protocol_choice := 0;
    setText(' ================================= ');
    setText(' ---------------< Protocol Selection >----------------- ');
    setText('');
-   getStringList('  PROTOCOL  ',ProtoNames,'0|1|2|3|4|5|6|7|8|9|10',protocol_choice,101);  { Onevent flag ->199}
+   getStringList('  PROTOCOL  ',ProtoNames,'0|1|2|3|4|5|6|7|8|9|10|11',protocol_choice,101);  { Onevent flag ->199}
    setText(' ================================= ');
    getStringList(' IC / VC  ','  Iclamp  |  Vclamp ','1|2',clamp_int,102);  { Onevent flag ->199}
    setText('');

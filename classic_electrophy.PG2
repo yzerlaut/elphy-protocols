@@ -2072,6 +2072,7 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
                        8 : Init_Pulses;
                        9 : Init_Stochastic;
                        10 : Init_FancyRamp;
+                       11 : Init_FIcurve;
                        
               end;
          end;

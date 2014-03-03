@@ -4,7 +4,7 @@
 ========================================================================}
 
 Const
-   ProtocolCount = 10 ; 
+   ProtocolCount = 11 ; 
    CONTINUOUS_TIMER = 0.5 ; 
 
 var  { ========= COMMON VARIABLES ============ }
@@ -361,32 +361,41 @@ end;   {SetGain2}
 procedure InitializeChannels;
 var amplifier : string ;
 begin
-         amplifier := TDBrecord('PG0.global').amplifier ;
-         if amplifier='nrn_simulation' then
-         begin
-             Init_AcqChannels_DEMO;
-             if acquisition.Fstimulate then Init_StimChannels_DEMO;
-         end;
-         if amplifier='multiclamp' then
-         begin
-            Init_AcqChannels;
-            if acquisition.Fstimulate then Init_StimChannels;
-         end;
+  amplifier := TDBrecord('PG0.global').amplifier ;
+  if amplifier='nrn_simulation' then
+  begin
+    Init_AcqChannels_DEMO;
+    if acquisition.Fstimulate then Init_StimChannels_DEMO;
+  end;
+  if amplifier='multiclamp' then
+  begin
+    Init_AcqChannels;
+    if acquisition.Fstimulate then Init_StimChannels;
+  end;
 end;
 
 
+procedure Build_Set0(seq:longint;var vec:Tvector); 
+begin  
+vec.fill(0); 
+end;
+ 
 procedure set_dac_to_zero;
 begin
+stimulator.Channels[1].BuildEp := Build_Set0 ; {no other way to set the output to 0 ??}
+TDBrecord('PG0.global').max_EP_num :=1;
+stimulator.initVectors;
+acquisition.start;
 Rtneuron.DacChan[0].HoldingValue:=0;
 Rtneuron.DacChan[0].UseHoldingValue:=True;    
 Rtneuron.DacChan[1].HoldingValue:=0;
 Rtneuron.DacChan[1].UseHoldingValue:=True;  
 with stimulator do
   begin
-    stimulator.setValue(0,0,0,0);   
-    stimulator.setValue(0,0,1,0);   
-    stimulator.setValue(0,1,0,0);  
-end; 
+    stimulator.setValue(0,0,0,0);
+    stimulator.setValue(0,0,1,0);
+    stimulator.setValue(0,1,0,0);
+end;
 end;
 
 ProcessCont  { COMMON to all continuous processes }
@@ -404,6 +413,8 @@ TDBrecord('PG0.global').stim:=False;
 InitializeChannels;
 acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
 end;
+
+
 {$EDIT seal_test}
 { ==============================================================================
 --------------- BUILDING THE SEAL TEST PROCEDURE AND DIALOG --------------------
@@ -624,7 +635,7 @@ procedure RsCm(var vec_arg:Tvector;var rm,rs,cm,rs2:real;cursor : Boolean);
     integral_capa := integral_response  - integral_resist ;
     {then we can deduce all the parameters :}
     if integral_capa<>0 then rs:=tau*VCMT_amp/integral_capa*1000.0 else RS:=1E6;   { ms*mV / ms*pA *1000 -> Mohm } 
-    if DI<>0 then Rm:=VCMT_amp/DI*1000 else Rm:=1E6;  { mV/pA*1000 -> Mohm  }
+    if DI<>0 then Rm:=VCMT_amp/DI*1000-Rs else Rm:=1E6;  { mV/pA*1000 -> Mohm  }
     Cm:=tau*(Rs+Rm)/(Rm*Rs)*1000; {ms/Mohm*1000-> pF }
     
     lHor.y:=Iend;
@@ -1435,7 +1446,7 @@ begin {when we modify the dialog, we adjust the stimulation params}
          {we write all the relevant global informations}
          TDBrecord('PG0.global').cont_choice := False ; 
          TDBrecord('PG0.global').episode_duration :=  2*del_sp+dur_sp ;
-         //TDBrecord('PG0.global').max_EP_num :=0 ;
+         TDBrecord('PG0.global').max_EP_num :=0 ;
          TDBrecord('PG0.global').stim := True ;
          TDBrecord('PG0.Exp_Params').clear;
          TDBrecord('PG0.Exp_Params').exp_type:='single_pulse';
@@ -1510,7 +1521,7 @@ begin {when we modify the dialog, we adjust the stimulation params}
          {we write all the relevant global informations}
          TDBrecord('PG0.global').cont_choice := False ; 
          TDBrecord('PG0.global').episode_duration := 2*del_tp+dur1_tp+dur2_tp+dur3_tp ;
-         //TDBrecord('PG0.global').max_EP_num :=0 ;
+         TDBrecord('PG0.global').max_EP_num :=0 ;
          TDBrecord('PG0.global').stim := True ;
          TDBrecord('PG0.Exp_Params').clear;
          {TDBrecord('PG0.Exp_Params').exp_type:='triple_pulse';
@@ -1927,6 +1938,79 @@ begin
    end;
    AddDialog(1, 5, ou_dialog);
 end;
+
+{$EDIT F-I_curve}
+{ ==============================================================================
+--------- BUILDING THE F-I CURVE PROCEDURES AND DIALOGS ---------------
+================================================================================ }
+
+
+{ ---------the protocol ----------------------}
+
+var amp1_fi, amp2_fi, del_fi, dur_fi :real; nsteps_fi : integer ; FIcurve_dialog:Tdialog;
+
+procedure Build_FIcurve(seq:longint;var vec:Tvector);  {pulse procedure called at each buildep}
+var amp : real; n : integer ;
+begin { we fill of 0, except between the t0+delay and t0+delay+duration }
+  n := Round(seq/10.);
+  amp := amp1_fi + (amp2_fi-amp1_fi)*n/(nsteps_fi-1); 
+  vec.fill(0); vec.fill1(amp,del_fi+vec.Istart,del_fi+dur_fi+vec.Istart);
+end;
+
+
+
+procedure FIcurve_Init(n:integer); 
+begin {when we modify the dialog, we adjust the stimulation params}
+   FIcurve_dialog.updatevar;
+   case n of 
+   201 : begin
+         {we write all the relevant global informations}
+         TDBrecord('PG0.global').cont_choice := False ; 
+         TDBrecord('PG0.global').episode_duration :=  2*del_fi+dur_fi ;
+         TDBrecord('PG0.global').max_EP_num := 10*nsteps_fi ;
+         TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='FI-Curve';
+         TDBrecord('PG0.Exp_Params').pulse_amplitude1:=amp1_fi;
+         TDBrecord('PG0.Exp_Params').pulse_amplitude2:=amp2_fi;
+         TDBrecord('PG0.Exp_Params').nsteps:=nsteps_fi;
+         TDBrecord('PG0.Exp_params').start_at:=del_fi;
+         TDBrecord('PG0.Exp_Params').pulse_duration:=dur_fi;
+         {then we initialize the stimulation}
+         InitializeChannels; // finally, we can initialize the channels
+         stimulator.Channels[1].BuildEp := Build_FIcurve ; 
+         stimulator.initVectors;
+         acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
+         end;
+   end;
+end;
+
+
+procedure Init_FIcurve;
+begin
+  // initialize windows 
+  DestroyAllWindows(1);
+  Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
+  Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
+  Definewindow(1, 0, Round(PageHeight*2/3), PageWidth, PageHeight);
+  DIvideWindow(1,3,4,1);
+  color:=cl_gray;
+
+   
+   with FIcurve_dialog do
+   begin
+      create;
+      OnEvent:=FIcurve_Init; 
+      setText(' ==<| F-I Curve protocol |> ');
+      getRealA('Amplitude 1 (pA or mV)',amp1_fi,10,3,200);
+      getRealA('Amplitude 2 (pA or mV)',amp2_fi,10,3,200);
+      getRealA('Onset/Delay (ms)',del_fi,10,3,200);
+      getRealA('Duration (ms)',dur_fi,10,3,200);
+      getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
+   end;
+   AddDialog(1, 3, FIcurve_dialog);
+end;
+
 
 {$EDIT main_dialog}
 { ==============================================================================

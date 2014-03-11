@@ -1981,7 +1981,8 @@ begin {when we modify the dialog, we adjust the stimulation params}
          TDBrecord('PG0.Exp_Params').exp_type:='FI-Curve';
          TDBrecord('PG0.Exp_Params').pulse_amplitude1:=amp1_fi;
          TDBrecord('PG0.Exp_Params').pulse_amplitude2:=amp2_fi;
-         TDBrecord('PG0.Exp_Params').nsteps:=nsteps_fi;
+         TDBrecord('PG0.Exp_Params').nsteps_level:=nsteps_fi;   
+         TDBrecord('PG0.Exp_Params').nsteps_per_level:=subnsteps_fi;
          TDBrecord('PG0.Exp_params').start_at:=del_fi;
          TDBrecord('PG0.Exp_Params').pulse_duration:=dur_fi;
          {then we initialize the stimulation}

@@ -14,7 +14,7 @@ var  { ========= COMMON VARIABLES ============ }
    ProtocolName:array[1..protocolCount] of string; ProtoNames:string;
    DB:Tdbrecord ;  {for metadata information, storing comments, ... }
    Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; {variables to fetch the date and time }
-   gain1,gain2 : real; gain1_int,gain2_int,clamp_int:integer;cont_choice:boolean;  
+   gain1,gain2,gain3 : real; gain1_int,gain2_int, gain3_int,clamp_int:integer;cont_choice:boolean;  
    dll_load : string ;
    continu_flag : boolean ;
 
@@ -163,7 +163,7 @@ begin {-- we set all the variables of the acquisition class, then we create
     {the declaration for the axoclamp is independent of the clamp of the neuron}
     {then the declaration of the endogenous field electrodes channels}
     
-    RTneuron.AdcChan[2].setScale(0,32767,0,500.0); RTneuron.AdcChan[2].NrnSymbolName:='I_field'; // 10V/2kOhm is the max
+    RTneuron.AdcChan[2].setScale(0,32767,0,500.0/gain3); RTneuron.AdcChan[2].NrnSymbolName:='I_field'; // 10V/2kOhm is the max
     acquisition.Channels[3].NrnSymbolName:='I_field'; acquisition.Channels[3].unitY:='uA' ;
     {then graphical options}
     v1.cpx:=1 ; v2.cpx:=1 ; v1.cpy := 1 ; v2.cpy:= 2; v3.cpx:= 1; v3.cpy:= 3; {we set the coupling value -> to couple to future analysis}
@@ -345,7 +345,7 @@ begin
     2: TDBrecord('PG0.global').Gain3 := 1.0;
     3: TDBrecord('PG0.global').Gain1 := 10.0; 
     end;
-end;   {SetGain1}
+end;   {SetGain}
 
 procedure InitializeChannels;
 var amplifier : string ;
@@ -389,6 +389,7 @@ begin { we fill of 0, except between the t0+delay and t0+delay+duration }
 end;
 
 
+
 { ------------ Triple Pulses ----------------------}
 var 
    amp1_tp_EF, amp2_tp_EF, amp3_tp_EF, del_tp_EF, dur1_tp_EF, dur2_tp_EF, dur3_tp_EF :real; 
@@ -399,6 +400,19 @@ begin
    vec.fill1(amp2_tp_EF,del_tp_EF+dur1_tp_EF+vec.Istart,del_tp_EF+dur1_tp_EF+dur2_tp_EF+vec.Istart);
    vec.fill1(amp3_tp_EF,del_tp_EF+dur1_tp_EF+dur2_tp_EF+vec.Istart,del_tp_EF+dur1_tp_EF+dur2_tp_EF+dur3_tp_EF+vec.Istart);
 end;
+
+var
+   amp_sp_min, amp_sp_max : real ;
+   nsteps_sp, subnsteps_sp : integer ;
+   
+procedure Build_Varying_EFsteps(seq:longint;var vec:Tvector);  {pulse procedure called at each buildep}
+var amp : real; n : integer ;
+begin { we fill of 0, except between the t0+delay and t0+delay+duration }
+  n := Floor((seq-1)/subnsteps_sp);
+  amp := amp_sp_min + (amp_sp_max-amp_sp_min)*n/(nsteps_sp-1); 
+  vec.fill(0); vec.fill1(amp,del_sp_EF+vec.Istart,del_sp_EF+dur_sp_EF+vec.Istart);
+end;
+
 
 procedure Pulse_Efield_event(n:integer); 
 begin {when we modify the dialog, we adjust the stimulation params}
@@ -411,10 +425,31 @@ begin {when we modify the dialog, we adjust the stimulation params}
          TDBrecord('PG0.global').stim := True ;
          TDBrecord('PG0.global').Efield_stim := True ;
          TDBrecord('PG0.global').patch_stim := False ;
-         TDBrecord('PG0.global').acquisitionISI := 1 ; // long intestim to have the time to manually change the stim 
+         TDBrecord('PG0.global').acquisitionISI := 0.2 ; // long intestim to have the time to manually change the stim 
          TDBrecord('PG0.Exp_Params').clear;
          TDBrecord('PG0.Exp_Params').exp_type:='single_pulse_efield';
          TDBrecord('PG0.Exp_Params').pulse_amplitude:=amp_sp_EF;
+         TDBrecord('PG0.Exp_params').start_at:=del_sp_EF;
+         TDBrecord('PG0.Exp_Params').pulse_duration:=dur_sp_EF;
+	       {then we initialize the stimulation}
+	       InitializeChannels;
+	       stimulator.Channels[1].BuildEp := Build_SinglePulse_EF ; 
+       	 stimulator.initVectors;
+         end;
+   202 : begin {we write all the relevant global informations}
+         TDBrecord('PG0.global').cont_choice := False ; 
+         TDBrecord('PG0.global').episode_duration :=  2*del_sp_EF+dur_sp_EF ;
+         TDBrecord('PG0.global').max_EP_num :=0 ;
+         TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.global').Efield_stim := True ;
+         TDBrecord('PG0.global').patch_stim := False ;
+         TDBrecord('PG0.global').acquisitionISI := 0.4 ; // long intestim to have the time to manually change the stim 
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='varying_pulses_efield';
+         TDBrecord('PG0.Exp_Params').pulse_amplitude_min:=amp_sp_min;
+         TDBrecord('PG0.Exp_Params').pulse_amplitude_max:=amp_sp_max;
+         TDBrecord('PG0.Exp_Params').nsteps:=nsteps_sp;
+         TDBrecord('PG0.Exp_Params').subnsteps:=subnsteps_sp;
          TDBrecord('PG0.Exp_params').start_at:=del_sp_EF;
          TDBrecord('PG0.Exp_Params').pulse_duration:=dur_sp_EF;
 	       {then we initialize the stimulation}
@@ -432,7 +467,7 @@ begin
    amp_sp_EF := 5000.0; del_sp_EF:=100.0; dur_sp_EF:=800.0;
    amp1_tp_EF := 50.0; amp2_tp_EF := -50.0; amp3_tp_EF := 50.0; 
    del_tp_EF  := 50.0; dur1_tp_EF:= 200.0; dur2_tp_EF:= 400.0; dur3_tp_EF:= 200.0; 
-
+   amp_sp_min := 1; amp_sp_max := 2;
    pn:=1;
    with Stim_dialog do
    begin
@@ -453,7 +488,13 @@ begin
    getRealA('Duration 2 (ms)',dur1_tp_EF,10,3,200);
    getRealA('Duration 3 (ms)',dur1_tp_EF,10,3,200);
    getCommandA(' init() ',0,202); { OnEvent flag -> 201 }
-   end;
+   setText(' ==<| Varying Pulses Stimulation |> ');
+   setText(' (pulse set by single pulse) ');
+   getRealA('Amplitude min (pA)',amp_sp_min,10,3,200);
+   getRealA('Amplitude max (pA)',amp_sp_max,10,3,200);
+   getIntegerA('Number of Steps',nsteps_sp,10,200);
+   getIntegerA('Steps # per level',subnsteps_sp,10,200);
+   end;                                      
    Stim_dialog.show;
 end;
 
@@ -1222,6 +1263,7 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
          end;
     //111 : begin t_channels_setting.ExecuteCommand('SetGain1');  t_channels_setting.ExecuteCommand('Init_AcqChannels'); end;
     //112 : begin t_channels_setting.ExecuteCommand('SetGain2');  t_channels_setting.ExecuteCommand('Init_AcqChannels'); end;
+    //113 : begin t_channels_setting.ExecuteCommand('SetGain3');  t_channels_setting.ExecuteCommand('Init_AcqChannels'); end;
     200 : launch_exp;
     201 : acquisition.stop ;
     301 : comments := '';
@@ -1259,6 +1301,8 @@ PathOfTheDay := TDBrecord('PG0.global').PathOfTheDay ; // data path
 	setText(' ==<| GAIN  multiclamp|>== ');
 	getStringListA('Primary Output  ','1 | 2 | 5 | 10 | 20 | 50 | 100 | 200 | 500 | 1000 | 2000',Gain1_int,111);
 	getStringListA('Secondary Output ','1 | 2 | 5 | 10 | 20 | 50 | 100',Gain2_int,112);
+	setText(' ==<| GAIN  stim. unit|>== ');
+	getStringListA('Range (uA/mV) ','1 | 2 | 5 | 10 | 20 | 50 | 100 | 200 | 500 | 1000 | 2000',Gain3_int,113);
 	setText('');
      end;
    getBoolean(' saving ? ',SAVING);

@@ -61,14 +61,15 @@ procedure write_on_file;
 var st : string ;  ii : integer ;
 begin
   openText(1,prefix+'MULTIPLE_SIN_analysed.txt',false);
-  writelnText(1,'## impedance in mV/pA');
+  writelnText(1,'## impedance in 1000*mV/pA=MOhm');
   if Imped_vec.Iend<>actual_freq.Iend then MessageBox('problem in the analysis, vector size not compatible');
   for ii:=Imped_vec.Istart to Imped_vec.Iend do 
   begin
-     st := Rstr(actual_freq[ii])+Chr(9)+Rstr(Imped_vec[ii]) ;
+     st := Rstr(actual_freq[ii])+Chr(9)+Rstr(1000*Imped_vec[ii]) ;
      writelnText(1,st);
   end; 
   closeText(1);
+  MessageBox('analysed file saved');
 end;  
 
 procedure DialogUpdate(n:integer);

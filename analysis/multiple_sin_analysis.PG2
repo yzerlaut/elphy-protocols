@@ -19,9 +19,9 @@ begin
    ii:=0;
    imped_vec.create(t_double, 0, -1); actual_freq.create(t_double, 0, -1);
    fit.create('');
-   fit.Text:='RES=a1*sin(a2*x+a3)';
+   fit.Text:='RES=a1*sin(a2*x+a3)+a4';
    fit.initialize:=true;
-   fit.reset;  fit.setYdata(v1);  fit.MaxIt:=30;
+   fit.reset;  fit.setYdata(v1);  fit.MaxIt:=30;  fit.Maxdata:=10000;
    fit.cpx:=1;  fit.cpy:=1;  fit.matchVector(v1);  fit.color:=cl_blue;
    addObject(1,1,fit);
 end; { load_objects }
@@ -46,11 +46,13 @@ end;
 
 procedure make_fit;
 begin
-   fit.setYdata(v1);  fit.MaxIt:=30;
+   fit.setYdata(v1);  fit.MaxIt:=30;   
    { fit.setWorld(cursor.position[1],v1.Ymin,cursor.position[2],v1.Ymax); }
    fit.XstartFit:=cursor.position[1];
    fit.XendFit:=cursor.position[2];
-   fit.param['a2']:=2*PI*current_freq;
+   fit.param['a1']:=v1.maxiX(fit.XstartFit,fit.XendFit)-v1.miniX(fit.XstartFit,fit.XendFit);
+   fit.param['a2']:=2*PI*current_freq;  fit.Clamp['a2']:=True;
+   fit.param['a4']:=v1.mean(fit.XstartFit,fit.XendFit); fit.Clamp['a4']:=True;
    fit.Execute;
    fit.Refresh;
 end;

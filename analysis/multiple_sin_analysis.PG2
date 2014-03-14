@@ -93,8 +93,7 @@ end;
 
 procedure analysis_windows;
 begin
-   DeleteAllPages('default');
-   insertpage(1,'multiple_sin_analysis');
+   DestroyAllWindows(1);
    DefineWindow(1,0,0,PageWidth,Round(PageHeight/2.2));
    DefineWindow(1,0,Round(PageHeight/2.2),PageWidth,PageHeight);
    DivideWindow(1,2,1,2);

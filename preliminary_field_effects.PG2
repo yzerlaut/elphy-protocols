@@ -5,6 +5,7 @@
 
 Const
    ProtocolCount = 8 ; 
+   CONTINUOUS_TIMER = 0.5 ; 
 
 var  { ========= COMMON VARIABLES ============ }
    protocol_choice : integer; 
@@ -17,6 +18,7 @@ var  { ========= COMMON VARIABLES ============ }
    gain1,gain2,gain3 : real; gain1_int,gain2_int, gain3_int,clamp_int:integer;cont_choice:boolean;  
    dll_load : string ;
    continu_flag : boolean ;
+   detector : Tdetector; // detector use througout the protocols in cqse of continuous mode for online analysis
 
 
 { ============================================================================
@@ -137,13 +139,9 @@ begin {-- we set all the variables of the acquisition class, then we create
     acquisition.TriggerMode:= TM_internal; //TM_immediate;
     acquisition.Channels[1].ChannelType:= TI_Neuron; { here we set that we read the acquisition from NEURON }
     acquisition.Channels[2].ChannelType:= TI_Neuron;
-    acquisition.Channels[3].ChannelType:= TI_Neuron;
-    acquisition.Channels[4].ChannelType:= TI_Neuron; 
     
     acquisition.Channels[1].DownSamplingFactor:=1;
     acquisition.Channels[2].DownSamplingFactor:=1;
-    acquisition.Channels[3].DownSamplingFactor:=1;
-    acquisition.Channels[4].DownSamplingFactor:=1;
     
     if Clamp_int=1 then { IF CURRENT-CLAMP }
     begin { we link the analogous signal to the NEURON variables with the right gain }
@@ -162,13 +160,11 @@ begin {-- we set all the variables of the acquisition class, then we create
     
     {the declaration for the axoclamp is independent of the clamp of the neuron}
     {then the declaration of the endogenous field electrodes channels}
-    
-    RTneuron.AdcChan[2].setScale(0,32767,0,500.0/gain3); RTneuron.AdcChan[2].NrnSymbolName:='I_field'; // 10V/2kOhm is the max
-    acquisition.Channels[3].NrnSymbolName:='I_field'; acquisition.Channels[3].unitY:='uA' ;
+       
     {then graphical options}
-    v1.cpx:=1 ; v2.cpx:=1 ; v1.cpy := 1 ; v2.cpy:= 2; v3.cpx:= 1; v3.cpy:= 3; {we set the coupling value -> to couple to future analysis}
+    v1.cpx:=1 ; v2.cpx:=1 ; v1.cpy := 1 ; v2.cpy:= 2; {we set the coupling value -> to couple to future analysis}
     
-    addObject(1,1,v1);  addObject(1,2,v2);   addObject(1,3,v3);
+    addObject(1,1,v1);  addObject(1,2,v2);  
     
 end;
 
@@ -247,13 +243,18 @@ end;
 
 
 procedure Init_StimChannels; { crucial function as well }
-var Continu, fadvanceON, field_stim, patch_stim :boolean;Clamp_int:integer;
+var Continu, fadvanceON, field_stim, patch_stim :boolean;
+    Clamp_int:integer;
+    gain1, gain2, gain3 : real ;
 begin { We link the Elphy stimulation to the NEURON variable, then the NEURON variable to the analogous command }
 
    Continu:=TDBrecord('PG0.global').cont_choice;
    Clamp_int:=TDBrecord('PG0.global').clamp_int;
    patch_stim := TDBrecord('PG0.global').patch_stim;
    field_stim := TDBrecord('PG0.global').Efield_stim;
+   gain1 := TDBrecord('PG0.global').gain1 ;
+   gain2 := TDBrecord('PG0.global').gain2 ;
+   gain3 := TDBrecord('PG0.global').gain3 ;
    
    stimulator.setByProg:=true; { mais on met le build ep plus loin }
    
@@ -264,19 +265,29 @@ begin { We link the Elphy stimulation to the NEURON variable, then the NEURON va
        stimulator.Channels[1].ChannelType:=TO_Neuron;
        {electric field stimulation created by the current}
        stimulator.Channels[2].ChannelType:=TO_Neuron;
+
+   // then we plot it, the current stim with the current grqph qnd the extrqnl stim in its windoz
+   acquisition.Channels[3].ChannelType:= TI_Neuron; acquisition.Channels[3].DownSamplingFactor:=1;
+   acquisition.Channels[4].ChannelType:= TI_Neuron; acquisition.Channels[4].DownSamplingFactor:=1;
+
        if Clamp_int=1 then { IF CURRENT CLAMP }
        begin
           RTneuron.DacChan[0].NrnSymbolName:='Ith'; RTneuron.DacChan[0].setScale(0,32767,0,4000.0); // command -> I clamp
           stimulator.Channels[1].NrnSymbolName:='Ith';
-       end;
+         acquisition.Channels[3].NrnSymbolName:='I_field_th'; acquisition.Channels[3].unitY:='uA' ;
+        end;
        if Clamp_int=2 then { IF VOLTAGE CLAMP }
        begin
            RTneuron.DacChan[0].NrnSymbolName:='Vth'; RTneuron.DacChan[0].setScale(0,32767,0,200.0); // command -> V clamp
            stimulator.Channels[1].NrnSymbolName:='Vth';
        end;
        { then independently of the clamp type, the exletric stimmulation !}
-       RTneuron.DacChan[1].NrnSymbolName:='I_field_th'; RTneuron.DacChan[1].setScale(0,32767,0,100.0); // command -> I clamp
+       RTneuron.DacChan[1].NrnSymbolName:='I_field_th'; RTneuron.DacChan[1].setScale(0,32767,0,10.0*gain3); // command -> I clamp
        stimulator.Channels[2].NrnSymbolName:='I_field_th'; 
+   
+       v3.cpx:= 1; v3.cpy:= 3;  addObject(1,2,v3); // with the secondqry channel
+       acquisition.Channels[4].NrnSymbolName:='I_field_th'; acquisition.Channels[4].unitY:='uA' ;
+       v4.cpx:= 1; v4.cpy:= 3;  addObject(1,3,v4);
    end
    else  { ---------------------------- > only one stimulation}
    begin
@@ -299,8 +310,10 @@ begin { We link the Elphy stimulation to the NEURON variable, then the NEURON va
       else {field_stim}
       begin
       { then independently of the clamp type, the exletric stimmulation !}
-       RTneuron.DacChan[1].NrnSymbolName:='I_field_th'; RTneuron.DacChan[1].setScale(0,32767,0,10000.0); // command -> I clamp
+       RTneuron.DacChan[1].NrnSymbolName:='I_field_th'; RTneuron.DacChan[1].setScale(0,32767,0,10.0*gain3); // command -> I clamp
        stimulator.Channels[1].NrnSymbolName:='I_field_th'; 
+       acquisition.Channels[3].NrnSymbolName:='I_field_th'; acquisition.Channels[3].unitY:='uA' ;
+       v3.cpx:= 1; v3.cpy:= 3;  addObject(1,3,v3);
        end;   
    end;
    fadvanceon := TDBrecord('PG0.global').FadvanceON ; // to make NEURON calculate or not !
@@ -341,9 +354,10 @@ var Gain3_int:integer;
 begin
     gain3_int:=TDBrecord('PG0.global').Gain3_int;
     case Gain3_int of
-    1: TDBrecord('PG0.global').Gain3 := 0.1; 
-    2: TDBrecord('PG0.global').Gain3 := 1.0;
-    3: TDBrecord('PG0.global').Gain1 := 10.0; 
+    1: TDBrecord('PG0.global').Gain3 := 1; 
+    2: TDBrecord('PG0.global').Gain3 := 10;
+    3: TDBrecord('PG0.global').Gain3 := 100; 
+    4: TDBrecord('PG0.global').Gain3 := 1000; 
     end;
 end;   {SetGain}
 
@@ -372,6 +386,11 @@ with stimulator do
 end; 
 end;
 
+
+ProcessCont  { COMMON to all continuous processes }
+begin
+detector.update(v1.Iend);
+end;
 
 {$EDIT ef_pulses}
 { ==============================================================================
@@ -436,10 +455,10 @@ begin {when we modify the dialog, we adjust the stimulation params}
 	       stimulator.Channels[1].BuildEp := Build_SinglePulse_EF ; 
        	 stimulator.initVectors;
          end;
-   202 : begin {we write all the relevant global informations}
+   203 : begin {we write all the relevant global informations}
          TDBrecord('PG0.global').cont_choice := False ; 
          TDBrecord('PG0.global').episode_duration :=  2*del_sp_EF+dur_sp_EF ;
-         TDBrecord('PG0.global').max_EP_num :=0 ;
+         TDBrecord('PG0.global').max_EP_num :=subnsteps_sp*nsteps_sp;
          TDBrecord('PG0.global').stim := True ;
          TDBrecord('PG0.global').Efield_stim := True ;
          TDBrecord('PG0.global').patch_stim := False ;
@@ -454,7 +473,7 @@ begin {when we modify the dialog, we adjust the stimulation params}
          TDBrecord('PG0.Exp_Params').pulse_duration:=dur_sp_EF;
 	       {then we initialize the stimulation}
 	       InitializeChannels;
-	       stimulator.Channels[1].BuildEp := Build_SinglePulse_EF ; 
+	       stimulator.Channels[1].BuildEp := Build_Varying_EFsteps ; 
        	 stimulator.initVectors;
          end;
    end;
@@ -464,10 +483,10 @@ end;
 procedure Init_PulsesDialog_EF;
 var pn:integer;
 begin
-   amp_sp_EF := 5000.0; del_sp_EF:=100.0; dur_sp_EF:=800.0;
+   amp_sp_EF := 100.0; del_sp_EF:=1000.0; dur_sp_EF:=2000.0;
    amp1_tp_EF := 50.0; amp2_tp_EF := -50.0; amp3_tp_EF := 50.0; 
    del_tp_EF  := 50.0; dur1_tp_EF:= 200.0; dur2_tp_EF:= 400.0; dur3_tp_EF:= 200.0; 
-   amp_sp_min := 1; amp_sp_max := 2;
+   amp_sp_min := 1; amp_sp_max := 2;  nsteps_sp:=5; subnsteps_sp:=4;
    pn:=1;
    with Stim_dialog do
    begin
@@ -475,25 +494,26 @@ begin
    Caption := 'Efield stimulation';
    OnEvent := Pulse_Efield_event;
    setText(' ==<| Single Pulse Stimulation |> ');
-   getRealA('Amplitude (pA or mV)',amp_sp_EF,10,3,200);
+   getRealA('Amplitude (uA)',amp_sp_EF,10,3,200);
    getRealA('Onset/Delay (ms)',del_sp_EF,10,3,200);
    getRealA('Duration (ms)',dur_sp_EF,10,3,200);
    getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
    setText(' ==<| Triple Pulse Stimulation |> ');
    getRealA('Onset/Delay (ms)',del_tp_EF,10,3,200);
-   getRealA('Amplitude 1 (pA or mV)',amp1_tp_EF,10,3,200);
-   getRealA('Amplitude 2 (pA or mV)',amp1_tp_EF,10,3,200);
-   getRealA('Amplitude 3 (pA or mV)',amp1_tp_EF,10,3,200);
+   getRealA('Amplitude 1 (uA)',amp1_tp_EF,10,3,200);
+   getRealA('Amplitude 2 (uA)',amp1_tp_EF,10,3,200);
+   getRealA('Amplitude 3 (uA)',amp1_tp_EF,10,3,200);
    getRealA('Duration 1 (ms)',dur1_tp_EF,10,3,200);
    getRealA('Duration 2 (ms)',dur1_tp_EF,10,3,200);
    getRealA('Duration 3 (ms)',dur1_tp_EF,10,3,200);
    getCommandA(' init() ',0,202); { OnEvent flag -> 201 }
    setText(' ==<| Varying Pulses Stimulation |> ');
    setText(' (pulse set by single pulse) ');
-   getRealA('Amplitude min (pA)',amp_sp_min,10,3,200);
-   getRealA('Amplitude max (pA)',amp_sp_max,10,3,200);
+   getRealA('Amplitude min (uA)',amp_sp_min,10,3,200);
+   getRealA('Amplitude max (uA)',amp_sp_max,10,3,200);
    getIntegerA('Number of Steps',nsteps_sp,10,200);
    getIntegerA('Steps # per level',subnsteps_sp,10,200);
+   getCommandA(' init() ',0,203); { OnEvent flag -> 201 }
    end;                                      
    Stim_dialog.show;
 end;
@@ -502,18 +522,24 @@ end;
 
 {$EDIT ef_sin}
 { ==============================================================================
---------- BUILDING THE FILED SINUSOIDS STIMULATION PROCEDURES AND DIALOGS -------
+--------- BUILDING THE SINUSOIDS STIMULATION PROCEDURES AND DIALOGS -------------
 ================================================================================ }
+
 
 var 
   amp_sin, freq_sin, phase_sin : real ; // for single sin
-  freq_start, freq_end, freq_step : real ; // for multiple sin
-  vec_freq : Tvector ; freq_number : integer ;
-  
+  singlesin_dialog, multiplesin_dialog, chirp_dialog : Tdialog ;
+  min_amp_sin, max_amp_sin, freq_start, freq_end : real;  freq_step_num, global_freq_index : integer ; // for multiple sin
+  freq_vec, amp_freq_vec : Tvector; t0_trial : real;
+  chirp_amp, chirp_freq_start, chirp_freq_end, chirp_duration : real;
+
+//=================================================
+// ------- SINGLE SINUSOIDS PROTOCOL
+//=================================================
 
 procedure Build_sin(seq:longint;var vec:Tvector); {Build a sinewave into vec }
 begin
-vec.sinewave(amp_sin,1.0/freq_sin,phase_sin) ; // no need to remember the phase at the last moment, sinewave does it 
+vec.sinewave(amp_sin,1.0/freq_sin,phase_sin) ; 
 end;
 
 procedure prepare_singlesin;
@@ -529,125 +555,238 @@ begin
          TDBrecord('PG0.Exp_Params').phase_shift:=phase_sin;
          {then we initialize the stimulation}
          InitializeChannels; // we can initialize the channels
+     detector.create; detector.InitTimer(v1, CONTINUOUS_TIMER);
+
          stimulator.Channels[1].BuildEp := Build_Sin ; 
          stimulator.initVectors;
-         //acquisition.InstallProcess(nil, nil, nil, set_dac_to_zero);
 end;
-
-procedure Shuffle_Vector(var vec:Tvector);
-var ii,i1,i2:integer; temp:real;
-begin
-    for ii:=0 to 10*vec.Iend do 
-    begin
-        i1:= Random(vec.Iend); i2:= Random(vec.Iend);
-        temp:= vec[i1]; vec[i1]:=vec[i2]; vec[i2]:=temp;
-    end;
-end;
-
-
-procedure Build_multiplesin(seq:longint;var vec:Tvector); {Build a sinewave into vec }
-begin
-vec.sinewave(1., 1. , 1.)    ;
-//vec.sinewave(amp_flag,1.0/vec_freq[freq_ID],phase_sin) ; // no need to remember the phase at the last moment, sinewave does it 
-end;
-
-
-var t0_trial : real ;
-{
-procedure multiplesin_initprocess;
-begin
-   t0_trial:=v1.Xend;
-end;
-procedure multiplesin_processcont;
-begin
-  if continu_flag=False or (v1.Xend-t0_trial>5*vec_freq[freq_ID]) then acquisition.stop ;
-  if rest_flag and (v1.Xend-t0_trial>2) then acquisition.stop ;
-end;
-}
-
-var FREQ_ID : integer;
-
-procedure multiplesin_endprocess;
-begin
-      //freq_ID := freq_ID+1 ;
-      //amp_flag := amp_sin ;
-         InitializeChannels; // we can initialize the channels
-         stimulator.Channels[1].BuildEp := Build_MultipleSin ; 
-         stimulator.initVectors;
-         //acquisition.InstallProcess(nil, multiplesin_initprocess, multiplesin_processcont, multiplesin_endprocess);
-    t0_trial := v1.Xend ; 
-    if continu_flag then begin acquisition.startandsave(true); end;   
-end;
-  
-procedure prepare_multiplesin; // TO BE WRITTEN
-var ii : integer ;
-begin
-         // we create and suffle the vector of frequencies
-         vec_freq.create(t_single,0,-1);
-         freq_number := Round((freq_end-freq_start)/freq_step) ;
-         freq_ID := 0; // we re-initialize the frequency scan
-         Stim_dialog.update; t0_trial := 0; 
          
-         for ii:=0 to freq_number-1 do vec_freq.AddToList(freq_start+ii*freq_step);
-         Shuffle_Vector(vec_freq);   
-           
-         TDBrecord('PG0.global').cont_choice := True ; 
+         
+procedure SingleSin_Event(n:integer); 
+begin {when we modify the dialog, we adjust the stimulation params}
+   singlesin_dialog.updatevar;
+   case n of 
+   201 : prepare_singlesin;
+   end;
+end;
+
+//=================================================
+// ------- CHIRP PROTOCOL
+//=================================================
+
+procedure Build_chirp(seq:longint;var vec:Tvector);
+var ii:integer ; freq : real ;
+begin
+  for ii:=vec.Istart to vec.Iend do
+  begin
+      freq := chirp_freq_start+SQR(ii-vec.Istart)/SQR(vec.Iend-vec.Istart)*(chirp_freq_end-chirp_freq_start) ;   // freq prop. to t^2
+      vec[ii] := chirp_amp*Sin(2.*PI*freq/1000.*vec.ConvX(ii));  // ms -> s
+  end;
+end;
+
+procedure prepare_chirp;
+var bf, ii : integer; freq : real ;
+begin
+         {we write all the relevant global informations}
+         TDBrecord('PG0.global').cont_choice := False ; 
          TDBrecord('PG0.global').stim := True ;
          TDBrecord('PG0.global').Efield_stim := True ;
          TDBrecord('PG0.global').patch_stim := False ;
+         TDBrecord('PG0.global').episode_duration :=  chirp_duration ;
+         TDBrecord('PG0.global').max_EP_num := 1 ; // 1 episodes !!
+         TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.global').acquisitionISI:= 0.2 ;  // small break between the stims
+         if amplifier='nrn_simulation' then TDBrecord('PG0.global').FadvanceON := True else TDBrecord('PG0.global').FadvanceON := False;
          TDBrecord('PG0.Exp_Params').clear;
-         TDBrecord('PG0.Exp_Params').exp_type:='ef_multiple_sin';
-         TDBrecord('PG0.Exp_Params').sin_amplitude:=amp_sin;
-         TDBrecord('PG0.Exp_Params').sin_amplitude:=amp_sin;
-         TDBrecord('PG0.Exp_params').frequency_start:=freq_start;
-         TDBrecord('PG0.Exp_params').frequency_stop:=freq_end;
-         TDBrecord('PG0.Exp_params').frequency_step:=freq_step;
+         TDBrecord('PG0.Exp_Params').exp_type:='ef_chirp_stimulation';
+         TDBrecord('PG0.Exp_Params').chirp_amplitude:=amp_sin;
+         TDBrecord('PG0.Exp_params').chirp_frequency_start:=chirp_freq_start;
+         TDBrecord('PG0.Exp_Params').chirp_frequency_end:=chirp_freq_end;
          {then we initialize the stimulation}
          InitializeChannels; // we can initialize the channels
-         stimulator.Channels[1].BuildEp := Build_MultipleSin ; 
+         stimulator.Channels[1].BuildEp := Build_Chirp ; 
          stimulator.initVectors;
-         //acquisition.InstallProcess(nil, multiplesin_initprocess, multiplesin_processcont, multiplesin_endprocess);
+end;
+         
+         
+procedure Chirp_Event(n:integer); 
+begin {when we modify the dialog, we adjust the stimulation params}
+   chirp_dialog.updatevar;
+   case n of 
+   201 : prepare_chirp;
+   end;
+end;
+
+//=================================================
+// ------- MULTIPLE SINUSOIDS PROTOCOL
+//=================================================
+
+
+var current_stop_value : integer ;
+var exp_freq_vec, exp_time_vec, exp_amp_vec : Tvector; // for saving freq and time
+   var string_for_saving :  string;
+
+procedure check_for_stop_acq(n:integer);
+begin
+    if not continu_flag then acquisition.stop;
+    if n>current_stop_value then acquisition.stop ;
+
+end;
+
+procedure initialize_a_single_exp;
+begin
+      global_freq_index :=global_freq_index+1;
+      freq_sin := freq_vec[global_freq_index];
+      amp_sin := amp_freq_vec[global_freq_index];
+      stim_dialog.update; // to see the values of the amp and frequencies                                      
+      current_stop_value := Round((1+5./freq_sin)/CONTINUOUS_TIMER); // 5s min, +5periods in case of long period
+
+       exp_freq_vec.addtolist(freq_sin); // for recording
+       exp_amp_vec.addtolist(amp_sin);
+       
+     RTneuron.execute('finitialize()'); // reinitializing NEURON
+     stimulator.Channels[1].BuildEp := Build_Sin ; 
+     stimulator.initVectors;
+     // then Tdetector settings, we redo it for security !
+     detector.create; detector.InitTimer(v1, CONTINUOUS_TIMER);
+     detector.AddEvent(check_for_stop_acq, 0.);
+end;
+
+procedure multiplesin_endprocess;
+begin
+   exp_time_vec.addtolist(v1.Xend);
+   detector.update(v1.Iend);
+   if (global_freq_index<freq_step_num) and (continu_flag=True) then
+   begin
+      initialize_a_single_exp;
+      acquisition.InstallProcess(nil, nil, nil, multiplesin_endprocess); // need to make disapear the myinitprocess0
+      if SAVING then acquisition.startandsave(True) else acquisition.start;  
+   end
+   else begin // we need to save the vectors
+      continu_flag:=False;   // we prevent restarting !
+      exp_freq_vec.SaveAsObject(acquisition.genericfilename+'_freq');
+      exp_time_vec.SaveAsObject(acquisition.genericfilename+'_time');
+      exp_amp_vec.SaveAsObject(acquisition.genericfilename+'_amp');
+   end;
 end;
 
 
+procedure Shuffle_2Vector(var vec1, vec2:Tvector);   // identically shuffles 2 vectors...
+var ii,i1,i2:integer; temp1, temp2:real;
+begin
+    for ii:=0 to 10*vec1.Iend do 
+    begin
+        i1:= 1+Random(vec1.Iend-1); i2:= 1+Random(vec1.Iend-1);
+        temp1:= vec1[i1]; vec1[i1]:=vec1[i2]; vec1[i2]:=temp1;
+        temp2:= vec2[i1]; vec2[i1]:=vec2[i2]; vec2[i2]:=temp2;
+    end;
+end;
+
+procedure launch_multiple_sim; // also handle the case of the interrupted experiment
+begin
+   exp_freq_vec.create(t_double, 0, -1);
+   exp_time_vec.create(t_double, 0, -1);
+   exp_time_vec.addtolist(0);  // we add zero !
+   exp_amp_vec.create(t_double, 0, -1);
+   string_for_saving := TDBrecord('PG0.global').PathOfTheDay+'multiple_sin';
+   InitializeChannels; // we can initialize the channels
+   initialize_a_single_exp;   
+   acquisition.InstallProcess(nil, nil, nil, multiplesin_endprocess);
+  if SAVING then acquisition.startandsave else acquisition.start;
+end; { launch_multiple_sim }
+
+  
+procedure prepare_multiplesin;
+var ii : integer ; exponent : real;
+begin
+     freq_vec.create(t_double, 1, freq_step_num);
+     amp_freq_vec.create(t_double, 1, freq_step_num);
+     for ii:=1 to freq_step_num do
+     begin
+          exponent := LN(freq_start)+(ii-1)/(freq_step_num-1)*(LN(freq_end)-LN(freq_start)) ;
+          freq_vec[ii] := Exp(exponent) ;
+          exponent := LN(min_amp_sin)+(ii-1)/(freq_step_num-1)*(LN(max_amp_sin)-LN(min_amp_sin)) ;
+          amp_freq_vec[ii] := Exp(exponent) ;
+     end;
+     Shuffle_2Vector(freq_vec, amp_freq_vec); // then we shuffle the order of frequencies
+     
+     t0_trial :=0;
+     SAVING := True ; 
+     global_freq_index := 0 ; // we start the sequence of stimulation
+     continu_flag := True;
+     maindialog.update;
+     stim_dialog.update;
+     
+     {we write all the relevant global informations}
+     TDBrecord('PG0.global').cont_choice := True ;  // single sinusiod in continuous mode
+     TDBrecord('PG0.global').Efield_stim := True ;
+     TDBrecord('PG0.global').patch_stim := False ;
+     TDBrecord('PG0.global').stim := True ;
+     TDBrecord('PG0.Exp_Params').clear;
+     TDBrecord('PG0.Exp_Params').exp_type:='ef_multiple_sin';
+     TDBrecord('PG0.Exp_Params').freq_start:=freq_start;
+     TDBrecord('PG0.Exp_params').freq_stop:=freq_end;
+     TDBrecord('PG0.Exp_Params').min_amp_freq:=min_amp_sin;
+     TDBrecord('PG0.Exp_params').max_amp_freq:=max_amp_sin;
+     {then we initialize the stimulation}
+end;
+         
+        
 procedure EF_Sin_Event(n:integer); 
 begin {when we modify the dialog, we adjust the stimulation params}
    Stim_dialog.updatevar;
    case n of 
    201 : prepare_singlesin;
-   202 : prepare_multiplesin;
+   202 : prepare_chirp;
+   203 : prepare_multiplesin;
+   204 : launch_multiple_sim;
    end;
 end;
+ 
+//=================================================
+// ------- THEN DIALOG
+//=================================================
 
-      
 procedure Init_SinDialog_EF;
 begin
-    amp_sin := 40 ;  freq_sin := 10. ;  phase_sin := 0 ; // for single sin
-    freq_start := 0.1 ;  freq_end := 200 ; freq_step := 1 ; // for multiple sin
+    amp_sin := 40 ;  freq_sin := 10 ;  phase_sin := 0 ; // for single sin
+    freq_start := 0.1 ;  freq_end := 200 ; freq_step_num := 10 ; // for multiple sin
+    min_amp_sin := 40 ; max_amp_sin := 40 ;
+    chirp_freq_start := 0.001 ;  chirp_freq_end := 100 ; chirp_amp := 40 ; chirp_duration := 10000 ; // for multiple sin
     
    with Stim_dialog do
    begin
    create;
    Caption := 'Efield stimulation';
    OnEvent := EF_Sin_Event;
+   
    setText(' ==<| Single Sinusoid Stimulation |> ');
    getRealA('Amplitude (pA or mV)',amp_sin,10,3,200);
    getRealA('frequency (Hertz)',freq_sin,10,3,200);
    getRealA('phase shift (Rd)',phase_sin,10,3,200);
+   setText('(watch here to see multiple_sin variations)');
    getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
-   setText(' ==<| Multiple Sinusoid Stimulation |> ');
-   getRealA('Amplitude (pA or mV)',amp_sin,10,3,200);
-   getRealA('start frequency (Hz)',freq_start,10,3,200);
-   getRealA('stop frequency (Hz)',freq_end,10,3,200);
-   getRealA('frequency step (Hz)',freq_step,10,3,200);
-   getboolean('Continue Running (stop asap...)',continu_flag);
-   getCommandA(' init() ',0,202); { OnEvent flag -> 201 }
+   
+   setText(' ==<| Chirp Stimulation |> ');
+   getRealA('Amplitude (pA or mV)',chirp_amp,10,3,200);
+   getRealA('frequency start (Hz)',chirp_freq_start,10,3,200);
+   getRealA('frequency end (Hz)',chirp_freq_end,10,3,200);
+   getRealA('duration (ms)',chirp_duration,10,3,200);
+   getCommandA(' init() ',0,202); { OnEvent flag -> 202 }
+   
+      setText(' ==<| Multiple Sinusoids Stimulation |> ');
+      getRealA('start frequency (Hz)',freq_start,10,3,200);
+      getRealA('stop frequency (Hz)',freq_end,10,3,200);
+      getIntegerA('number of freq steps',freq_step_num,10,200);
+      setText(' Increasing amplitude with frequency ');
+      getRealA(' min amplitude at low freq (pA or mV)',min_amp_sin,10,3,200);
+      getRealA(' max amplitude at high freq (pA or mV)',max_amp_sin,10,3,200);
+      getCommandA(' init() ',0,203); { OnEvent flag -> 201 }
+      getCommandA(' START ',0,204); { OnEvent flag -> 301 }
+      getIntegerA('Index of the current step',global_freq_index,10,200);
    end;
    Stim_dialog.show;
 end;
-
- 
-
 
 {$EDIT efield_and_patch_pulses}
 { ==============================================================================
@@ -1206,15 +1345,15 @@ end;
 ================================================================================ }
 
 procedure launch_exp;
-var Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; PathOfTheDay, sep, amplifier : string ; {variables to fetch the date and time }
+var Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; protocol, PathOfTheDay, sep, amplifier : string ; {variables to fetch the date and time }
 begin
   amplifier := TDBrecord('PG0.global').amplifier ;
   if amplifier='nrn_simulation' then acquisition.Fcontinuous:=True ; // NEURON doesn't support well episode mode
 
+  protocol := TDBrecord('PG0.Exp_params').exp_type ;
   PathOfTheDay := TDBrecord('PG0.global').PathOfTheDay ;
   DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
-  acquisition.genericfilename := PathOfTheDay+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)
-  +  '_'+Protocolname[protocol_choice] ;
+  acquisition.genericfilename := PathOfTheDay+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)+  '_'+protocol ;
   
   if SAVING then acquisition.startandsave else acquisition.start;
 end;
@@ -1243,6 +1382,7 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
   MainDialog.updatevar;
   TDBrecord('PG0.global').Gain1_int:=gain1_int;
   TDBrecord('PG0.global').Gain2_int:=gain2_int;
+  TDBrecord('PG0.global').Gain3_int:=gain3_int;
   clamp_int:=TDBrecord('PG0.global').clamp_int; 
   
   case n of
@@ -1261,9 +1401,9 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
 		             8 : IVcurve_Init;
               end;
          end;
-    //111 : begin t_channels_setting.ExecuteCommand('SetGain1');  t_channels_setting.ExecuteCommand('Init_AcqChannels'); end;
-    //112 : begin t_channels_setting.ExecuteCommand('SetGain2');  t_channels_setting.ExecuteCommand('Init_AcqChannels'); end;
-    //113 : begin t_channels_setting.ExecuteCommand('SetGain3');  t_channels_setting.ExecuteCommand('Init_AcqChannels'); end;
+    111 : begin SetGain1; InitializeChannels;  end;
+    112 : begin SetGain2; InitializeChannels;  end;
+    113 : begin SetGain3; InitializeChannels;  end;
     200 : launch_exp;
     201 : acquisition.stop ;
     301 : comments := '';
@@ -1271,7 +1411,7 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
     281 : RTneuron.Execute(dll_load);
     282 : RTneuron.Restart;
   end;
-  gain1:=TDBrecord('PG0.global').Gain1;gain2:=TDBrecord('PG0.global').Gain2;    
+  gain1:=TDBrecord('PG0.global').Gain1;gain2:=TDBrecord('PG0.global').Gain2;gain3:=TDBrecord('PG0.global').Gain3;    
   clamp_int:=TDBrecord('PG0.global').clamp_int ;      
   MainDialog.update;
 end;    
@@ -1301,13 +1441,15 @@ PathOfTheDay := TDBrecord('PG0.global').PathOfTheDay ; // data path
 	setText(' ==<| GAIN  multiclamp|>== ');
 	getStringListA('Primary Output  ','1 | 2 | 5 | 10 | 20 | 50 | 100 | 200 | 500 | 1000 | 2000',Gain1_int,111);
 	getStringListA('Secondary Output ','1 | 2 | 5 | 10 | 20 | 50 | 100',Gain2_int,112);
-	setText(' ==<| GAIN  stim. unit|>== ');
-	getStringListA('Range (uA/mV) ','1 | 2 | 5 | 10 | 20 | 50 | 100 | 200 | 500 | 1000 | 2000',Gain3_int,113);
+	setText(' ==<| SCALE  stim. unit|>== ');
+	getStringListA('Range (uA/V) ','1 | 10 | 100 | 1000',Gain3_int,113);
 	setText('');
      end;
    getBoolean(' saving ? ',SAVING);
    getCommandA(' => Start ...           ',0,200);
    getCommandA(' Stop the Acquisition ',0,201);
+   getBoolean('continu ? (close loop!)', continu_flag);
+
    setText('');
    getMemo(' Comments ',comments,15,4,1,300);
    getCommandA(' reset comments ',0,301);
@@ -1349,9 +1491,9 @@ global.int_gain1:=ii; // integer coding for this gain
 global.gain2:=1; // gain of the second channel
 global.int_gain2:=ii; //
 global.gain3:=1; // gain of the second channel
-global.int_gain3:=2; //
+global.int_gain3:=1; //
 global.clamp_int := ii; // integer that code for 1:IC, 2: VC
-global.cont_choice := False; // if True -> continus mode, else episode
+global.cont_choice := True; // if True -> continus mode, else episode
 global.stim := False;  // if True acquisition.Fstimulate := True
 global.main_protocol:='';
 global.protocol:='';
@@ -1359,9 +1501,9 @@ global.saving := False ;
 global.Rs := 0;
 global.Rm := 0;
 global.Cm :=0;
-global.episode_duration := 0 ;
+global.episode_duration := 100 ;
 global.max_EP_num :=0 ;
-global.acquisitionISI:=0. ; 
+global.acquisitionISI:=0.1 ; 
 global.FadvanceON := False ;
 Exp_Params.create;
 already_initiated :=True;

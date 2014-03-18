@@ -393,8 +393,8 @@ with stimulator do
     stimulator.setValue(0,0,1,0);
     stimulator.setValue(0,1,0,0);
 end;
-if acquisition.Fcontinuous=True then  //no other way to set the output to 0 ??
-begin
+if acquisition.Fcontinuous=True then  // well... i think there is no other way to set the output to 0.... ;(
+begin   // if continuous qnd not pqssive recording
 acquisition.Fcontinuous :=False;
 acquisition.MaxEpCount :=1;
 stimulator.Channels[1].BuildEp := Build_Set0 ; 

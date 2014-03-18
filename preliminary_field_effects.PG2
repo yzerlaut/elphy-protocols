@@ -19,6 +19,7 @@ var  { ========= COMMON VARIABLES ============ }
    dll_load : string ;
    continu_flag : boolean ;
    detector : Tdetector; // detector use througout the protocols in cqse of continuous mode for online analysis
+   electrode_distance : real;  solution_extra_flag: integer ;
 
 
 { ============================================================================
@@ -61,6 +62,12 @@ this is stored in a TDBrecord object attached to the .DAT file
  ============================================================================= }
 
 
+{ ============================================================================
+ ---- File saving and Comments+Information storing ---------------------------
+this is stored in a TDBrecord object attached to the .DAT file
+ ============================================================================= }
+
+
 procedure FillDBinfo(var DB: TDBrecord); {procedure to write the metadata !}
 var jj:integer; st:string;
 begin
@@ -83,11 +90,43 @@ begin
   DB.Comments := comments ; {comments is a global variable }
 end;
 
-procedure my_initprocess0;
+procedure save_metadata_as_txt;
+var jj:integer; st, st2:string;
 begin
-  FillDBinfo(DB); 
-  if acquisition.saving then acquisition.writeDBfileinfo(DB);
+   openText(1,acquisition.genericFilename+'.json',false);
+   writelnText(1,'{');
+  for jj:=1 to TDBrecord('PG0.global').count do
+  begin  
+    st:= TDBrecord('PG0.global').Names[jj] ;
+    st2:=TDBrecord('PG0.global').Valstring[jj] ;
+    writelnText(1,'"'+st+'":"'+st2+'",');
+  end;                                                                      
+  for jj:=1 to TDBrecord('PG0.Exp_params').count do
+  begin  
+    st:= TDBrecord('PG0.Exp_params').Names[jj] ;
+    st2:=TDBrecord('PG0.Exp_params').Valstring[jj];
+    writelnText(1,'"'+st+'":"'+st2+'",');
+  end;        
+  writelnText(1,'"lastline":"no_value"');
+  writelnText(1,'}');
+  closeText(1);                                                              
 end;
+
+procedure my_initprocess0;
+var Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; PathOfTheDay, sep, protocol  : string ; {variables to fetch the date and time }
+begin
+  PathOfTheDay := TDBrecord('PG0.global').PathOfTheDay ;
+  protocol := TDBrecord('PG0.Exp_params').exp_type ;
+  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
+  acquisition.genericfilename := PathOfTheDay+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)+  '_'+protocol ;
+  FillDBinfo(DB); 
+  if acquisition.saving then
+     begin
+	    acquisition.writeDBfileinfo(DB);
+	    save_metadata_as_txt;
+     end;
+end;
+
 
 {$EDIT channels_settings} 
 { Acquisition + Stimulation + Gain settings }
@@ -454,6 +493,7 @@ begin {when we modify the dialog, we adjust the stimulation params}
 	       InitializeChannels;
 	       stimulator.Channels[1].BuildEp := Build_SinglePulse_EF ; 
        	 stimulator.initVectors;
+       	 acquisition.InstallProcess(my_initprocess0, nil,nil, nil);
          end;
    203 : begin {we write all the relevant global informations}
          TDBrecord('PG0.global').cont_choice := False ; 
@@ -475,6 +515,7 @@ begin {when we modify the dialog, we adjust the stimulation params}
 	       InitializeChannels;
 	       stimulator.Channels[1].BuildEp := Build_Varying_EFsteps ; 
        	 stimulator.initVectors;
+       	 acquisition.InstallProcess(my_initprocess0, nil,nil, nil);
          end;
    end;
 end;
@@ -555,10 +596,10 @@ begin
          TDBrecord('PG0.Exp_Params').phase_shift:=phase_sin;
          {then we initialize the stimulation}
          InitializeChannels; // we can initialize the channels
-     detector.create; detector.InitTimer(v1, CONTINUOUS_TIMER);
-
+         detector.create; detector.InitTimer(v1, CONTINUOUS_TIMER);
          stimulator.Channels[1].BuildEp := Build_Sin ; 
          stimulator.initVectors;
+       	 acquisition.InstallProcess(my_initprocess0, nil,nil, nil);
 end;
          
          
@@ -606,6 +647,7 @@ begin
          InitializeChannels; // we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_Chirp ; 
          stimulator.initVectors;
+       	 acquisition.InstallProcess(my_initprocess0, nil,nil, nil);
 end;
          
          
@@ -644,7 +686,7 @@ begin
        exp_freq_vec.addtolist(freq_sin); // for recording
        exp_amp_vec.addtolist(amp_sin);
        
-     RTneuron.execute('finitialize()'); // reinitializing NEURON
+     //RTneuron.execute('finitialize()'); // reinitializing NEURON
      stimulator.Channels[1].BuildEp := Build_Sin ; 
      stimulator.initVectors;
      // then Tdetector settings, we redo it for security !
@@ -691,7 +733,7 @@ begin
    string_for_saving := TDBrecord('PG0.global').PathOfTheDay+'multiple_sin';
    InitializeChannels; // we can initialize the channels
    initialize_a_single_exp;   
-   acquisition.InstallProcess(nil, nil, nil, multiplesin_endprocess);
+   acquisition.InstallProcess(my_initprocess0, nil, nil, multiplesin_endprocess);
   if SAVING then acquisition.startandsave else acquisition.start;
 end; { launch_multiple_sim }
 
@@ -850,261 +892,8 @@ begin
 end;
 
 {$EDIT current_field_charact}
-{ ==============================================================================
-- Characterizing the relationship between applied current and measured field  --
-================================================================================ }
-
-
-{we use the procedures of ef_pulses}
-
-var vfield_baseline, vfield_jump, Iinj_baseline, Iinj_jump, Rsys : real ;  ce_memo : Tmemo ;
-    field_vector, current_vector : Tvector ; field_current_graph : Tgraph ;
-    conductivity_flag : integer ; distance_electrodes : real;
-    
-
-procedure currentfield_process;
-var vfield_vec, Iinj_vec : Tvector ;
-begin
-    Iinj_vec.create; Vcopy(v3,Iinj_vec) ; // injected current on channel 3
-    Iinj_baseline := Iinj_vec.mean(1,del_sp_EF-1); {constantes a ajuster en fonction des parametres du pulse}
-    Iinj_jump := Iinj_vec.mean(del_sp_EF+dur_sp_EF/2.-1,del_sp_EF+dur_sp_EF-1)-Iinj_baseline;
-    vfield_vec.create; Vcopy(v1,vfield_vec) ; // field recording on channel 1
-    vfield_baseline := vfield_vec.mean(1,del_sp_EF-1); {constantes a ajuster en fonction des parametres du pulse}
-    vfield_jump := vfield_vec.mean(del_sp_EF+dur_sp_EF/2.-1,del_sp_EF+dur_sp_EF-1)-vfield_baseline;
-    {we add this to the list}
-    field_vector.addtolist(vfield_jump) ;
-    current_vector.addtolist(Iinj_jump) ;
-    field_current_graph.refresh ;
-      
-    ce_memo.lines[2]:='I jump = '+Rstr(Iinj_jump,6,1)+' uA';
-    ce_memo.lines[3]:='Ve jump = '+Rstr(Vfield_jump,6,2)+' mV';
-    ce_memo.refresh;
-end;
-
-procedure write_current_field_charact;
-var ii:integer; st, stf : string ; Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint;
-begin
-    stf := TDBrecord('PG0.global').PathOfTheDay ; 
-    stf := stf+'conduct.txt'; // we first write a general file
-    openText(1,stf,false);
-    for ii := 0 to field_vector.Iend-1 do begin st:=Rstr(current_vector[ii],1,6)+chr(9); writeText(1, st); end;
-    writeText(1, Chr(10)); // newline
-    for ii := 0 to field_vector.Iend-1 do begin st:=Rstr(field_vector[ii],1,6)+chr(9); writeText(1, st); end;
-    closeText(1);   
-    // then we copy it with the conductivity flag and date
-    case conductivity_flag of
-    1 : CopyFile(stf,stf+'low.txt');
-    2 : CopyFile(stf,stf+'middle.txt');
-    3 : CopyFile(stf,stf+'high.txt');
-    end;
-    DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
-    CopyFile(stf,stf+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)+'.txt');  // to keep a copy
-end;
-
-procedure Current_Field_event(n:integer); 
-begin {when we modify the dialog, we adjust the stimulation params}
-   Stim_dialog.updatevar;
-   case n of 
-   201 : begin
-	 {we write all the relevant global informations}
-         TDBrecord('PG0.global').cont_choice := False ; 
-         TDBrecord('PG0.global').episode_duration :=  2*del_sp_EF+dur_sp_EF ;
-         TDBrecord('PG0.global').max_EP_num :=0 ;
-         TDBrecord('PG0.global').stim := True ;
-         TDBrecord('PG0.global').Efield_stim := True ;
-         TDBrecord('PG0.global').patch_stim := False ;
-         TDBrecord('PG0.global').acquisitionISI := 5 ; // long intestim to have the time to manually change the stim 
-         TDBrecord('PG0.Exp_Params').clear;
-         TDBrecord('PG0.Exp_Params').exp_type:='current-field-charact';
-         TDBrecord('PG0.Exp_Params').pulse_amplitude:=amp_sp_EF;
-         TDBrecord('PG0.Exp_params').start_at:=del_sp_EF;
-         TDBrecord('PG0.Exp_Params').pulse_duration:=dur_sp_EF;
-         TDBrecord('PG0.Exp_Params').conductivity := conductivity_flag ;
-         TDBrecord('PG0.Exp_Params').electrode_distance := distance_electrodes ;
-         {some initialization}
-         field_vector.create; 
-         current_vector.create; 
-         field_current_graph.create(current_vector, field_vector, 0, -1) ;
-         field_current_graph.Autolimit := True ;
-         field_current_graph.show ;
-	       {then we initialize the stimulation}
-	       InitializeChannels; addObject(1,1,ce_memo);
-	       stimulator.Channels[1].BuildEp := Build_SinglePulse_EF ; 
-       	 stimulator.initVectors;
-         acquisition.InstallProcess(my_initprocess0, nil, currentfield_process, set_dac_to_zero);
-         end;
-   203 : write_current_field_charact;
-   end;
-end;
-
-
-procedure Init_CurrentField_Dialog_EF;
-var pn:integer;
-begin
-   amp_sp_EF := 5000.0; del_sp_EF:=100.0; dur_sp_EF:=800.0;
-   distance_electrodes := 1000;
-   with Stim_dialog do
-   begin
-   create;
-   Caption := 'Current-Field characterization';
-   OnEvent := Current_Field_event;
-   setText(' ==<| Pulse Stimulation |> ');
-   getRealA('Amplitude (pA or mV)',amp_sp_EF,10,3,200);
-   getRealA('Onset/Delay (ms)',del_sp_EF,10,3,200);
-   getRealA('Duration (ms)',dur_sp_EF,10,3,200);
-   getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
-   setText('');
-   getRealA('Distance (um)',distance_electrodes,10,3,200);
-   getStringList('Solution : ','low conductivity|middle conductivity|high conductivity', conductivity_flag,202) ;
-   getCommandA(' Write File ',0,203); { OnEvent flag -> 201 }
-   end;
-   ce_memo.create(''); ce_memo.font.name:='Times New Roman'; ce_memo.font.size:=13;
-   ce_memo.font.color:=rgb(0,0,0);  ce_memo.font.style:=fs_bold;
-   ce_memo.lines[2]:='I jump = '+Rstr(Iinj_jump,6,1)+' uA';
-   ce_memo.lines[3]:='Ve jump = '+Rstr(Vfield_jump-vfield_baseline,6,2)+' mV';
-   Stim_dialog.show;                   
-   SAVING := True ;
-end;
-
 
 {$EDIT get_the_pol}
-{ ==============================================================================
-- Characterizing the the membrane polarization for a given field  --
-================================================================================ }
-
-// we use the procedures of ef_pulses and current_field_charact
-
-var gtp_mean_vm, gtp_mean_i : Taverage ; Dvm_vector : Tvector ;
-    v_baseline, v_jump : real ;
-    i_vm_graph : Tgraph ;
-
-procedure GetThePol_initprocess;
-begin
-    gtp_mean_i.reset;
-    gtp_mean_i.StdOn := True ;
-    gtp_mean_vm.reset;
-    gtp_mean_vm.StdOn := True ;
-end;
-
-procedure GetThePol_process;
-begin
-    gtp_mean_i.add(v3);
-    gtp_mean_vm.add(v1);
-end;
-
-
-procedure GetThePol_endprocess;
-var v_vec, Iinj_vec : Tvector ;
-begin
-    Iinj_vec.create; Vcopy(gtp_mean_i,Iinj_vec) ; // injected current on channel 3
-    Iinj_baseline := Iinj_vec.mean(1,del_sp_EF-1); {constantes a ajuster en fonction des parametres du pulse}
-    Iinj_jump := Iinj_vec.mean(del_sp_EF+dur_sp_EF/2.-1,del_sp_EF+dur_sp_EF-1)-Iinj_baseline;
-    v_vec.create;
-    Vcopy(gtp_mean_vm,v_vec) ; 
-    v_baseline := v_vec.mean(1,del_sp_EF-1); {constantes a ajuster en fonction des parametres du pulse}
-    v_jump := v_vec.mean(del_sp_EF+dur_sp_EF/2.-1,del_sp_EF+dur_sp_EF-1)-v_baseline;
-    {we add this to the list}
-    Dvm_vector.addtolist(v_jump) ;
-    current_vector.addtolist(Iinj_jump) ;
-    i_vm_graph.refresh ;
-       
-    ce_memo.lines[2]:='I jump = '+Rstr(Iinj_jump,6,1)+' uA';
-    ce_memo.lines[3]:='Vm jump = '+Rstr(v_jump,6,2)+' mV';
-    ce_memo.refresh;
-    set_dac_to_zero;
-end;
-
-procedure write_GetThePol;
-var ii:integer; st, stf : string ; Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint;
-begin
-    stf := TDBrecord('PG0.global').PathOfTheDay ; 
-    stf := stf+'polarization.txt'; // we first write a general file
-    openText(1,stf,false);
-    for ii := 0 to DVm_vector.Iend-1 do begin st:=Rstr(current_vector[ii],1,6)+chr(9); writeText(1, st); end;
-    writeText(1, Chr(10)); // newline
-    for ii := 0 to Dvm_vector.Iend-1 do begin st:=Rstr(Dvm_vector[ii],1,6)+chr(9); writeText(1, st); end;
-    closeText(1);   
-    // then we copy it with the conductivity flag and date
-    case conductivity_flag of
-    1 : CopyFile(stf,stf+'low.txt');
-    2 : CopyFile(stf,stf+'middle.txt');
-    3 : CopyFile(stf,stf+'high.txt');
-    end;
-    DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
-    CopyFile(stf,stf+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)+'.txt');  // to keep a copy
-end;
-
-
-procedure GetThePol_event(n:integer); 
-begin {when we modify the dialog, we adjust the stimulation params}
-   Stim_dialog.updatevar;
-   case n of 
-   201 : begin {we write all the relevant global informations}
-         TDBrecord('PG0.global').cont_choice := False ; 
-         TDBrecord('PG0.global').episode_duration :=  2*del_sp_EF+dur_sp_EF ;
-         TDBrecord('PG0.global').max_EP_num :=10 ;
-         TDBrecord('PG0.global').stim := True ;
-         TDBrecord('PG0.global').Efield_stim := True ;
-         TDBrecord('PG0.global').patch_stim := False ;
-         TDBrecord('PG0.global').acquisitionISI := 1 ; // no need of long stim interval 
-         TDBrecord('PG0.Exp_Params').clear;
-         TDBrecord('PG0.Exp_Params').exp_type:='get_the_pol';
-         TDBrecord('PG0.Exp_Params').pulse_amplitude:=amp_sp_EF;
-         TDBrecord('PG0.Exp_params').start_at:=del_sp_EF;
-         TDBrecord('PG0.Exp_Params').pulse_duration:=dur_sp_EF;
-	       {then we initialize the stimulation}
-	       InitializeChannels;
-	       stimulator.Channels[1].BuildEp := Build_SinglePulse_EF ; 
-       	 stimulator.initVectors;
-         acquisition.InstallProcess(my_initprocess0, GetThePol_initprocess, GetThePol_process, GetThePol_endprocess);
-         end;
-   203 : write_GetThePol;
-   end;
-end;
-
-
-procedure Init_GetThePol;
-var pn:integer;
-begin
-   {some initialization}
-   Dvm_vector.create; 
-   current_vector.create; 
-   i_vm_graph.create(current_vector, Dvm_vector, 0, -1) ;
-   i_vm_graph.Autolimit := True ;
-   i_vm_graph.show ;
-   gtp_mean_vm.create(t_single, 0, 1);
-   gtp_mean_vm.color := CL_Red ;
-   gtp_mean_vm.LineWidth := 3 ;
-   AddObject(1, 1, gtp_mean_vm);
-   AddObject(1, 1, gtp_mean_vm.VstdUp);
-   AddObject(1, 1, gtp_mean_vm.VstdDw);
-   gtp_mean_i.create(t_single, 0, 1);
-   gtp_mean_i.color := CL_Red ;
-   gtp_mean_i.LineWidth := 3 ;
-   AddObject(1, 3, gtp_mean_i);
-   AddObject(1, 3, gtp_mean_i.VstdUp);
-   AddObject(1, 3, gtp_mean_i.VstdDw);
-   amp_sp_EF := 5000.0; del_sp_EF:=200.0; dur_sp_EF:=800.0;
-   pn:=1;
-   
-   with Stim_dialog do
-   begin
-   create;
-   Caption := 'Polarization';
-   OnEvent := GetThePol_event;
-   setText(' ==<| Get the Polarization |> ');
-   getRealA('Onset/Delay (ms)',del_sp_EF,10,3,200);
-   getRealA('Duration (ms)',dur_sp_EF,10,3,200);
-   getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
-   setText('');
-   getStringList('Solution : ','low conductivity|middle conductivity|high conductivity', conductivity_flag,202) ;
-   getCommandA(' Write File ',0,203); { OnEvent flag -> 201 }
-   end;
-   ce_memo.create(''); ce_memo.font.name:='Times New Roman'; ce_memo.font.size:=13;
-   ce_memo.font.color:=rgb(0,0,0);  ce_memo.font.style:=fs_bold;
-   Stim_dialog.show;
-   SAVING :=True ;
-end;
 
 {$EDIT track_the_AP}
 { ==============================================================================
@@ -1380,11 +1169,10 @@ var amplifier : string ;
 begin { Main dialog, fot the choice of the protocol, the start/stop and saving of the acquisition}     
   if acquisition.IsRunning then acquisition.stop; 
   MainDialog.updatevar;
-  TDBrecord('PG0.global').Gain1_int:=gain1_int;
-  TDBrecord('PG0.global').Gain2_int:=gain2_int;
-  TDBrecord('PG0.global').Gain3_int:=gain3_int;
-  clamp_int:=TDBrecord('PG0.global').clamp_int; 
-  
+  TDBrecord('PG0.global').Gain1_int:=gain1_int;  TDBrecord('PG0.global').Gain2_int:=gain2_int;  TDBrecord('PG0.global').Gain3_int:=gain3_int;
+  TDBrecord('PG0.global').electrode_distance :=electrode_distance ;
+  TDBrecord('PG0.global').solution_extra_flag := solution_extra_flag ;
+
   case n of
     101: begin 
               Page := 1 ;               
@@ -1395,12 +1183,13 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
                      end;
 		             2 : Init_PulsesDialog_EF; 
 		             3 : Init_SinDialog_EF;
-		             5 : Init_CurrentField_Dialog_EF;
-		             6 : Init_GetThePol;
-		             7 : Init_trackAP_Dialog;
-		             8 : IVcurve_Init;
+		             //5 : Init_CurrentField_Dialog_EF;
+		             //6 : Init_GetThePol;
+		             //7 : Init_trackAP_Dialog;
+		             //8 : IVcurve_Init;
               end;
          end;
+    102 : begin TDBrecord('PG0.global').clamp_int:=clamp_int; InitializeChannels; end;
     111 : begin SetGain1; InitializeChannels;  end;
     112 : begin SetGain2; InitializeChannels;  end;
     113 : begin SetGain3; InitializeChannels;  end;
@@ -1423,6 +1212,10 @@ begin
 DB.create;
 dll_load := TDBrecord('PG0.global').loadnrnpath ; dll_load := 'nrn_load_dll("'+dll_load+'nrnmech.dll")';
 PathOfTheDay := TDBrecord('PG0.global').PathOfTheDay ; // data path
+gain1_int:=TDBrecord('PG0.global').Gain1_int;gain2_int:=TDBrecord('PG0.global').Gain2_int;gain3_int:=TDBrecord('PG0.global').Gain3_int;    
+electrode_distance := TDBrecord('PG0.global').electrode_distance ;
+solution_extra_flag := TDBrecord('PG0.global').solution_extra_flag ;
+
 //------------ MAIN dialog
    with MainDialog do
    begin
@@ -1438,13 +1231,15 @@ PathOfTheDay := TDBrecord('PG0.global').PathOfTheDay ; // data path
    setText('');
    if amplifier='multiclamp' then 
      begin 
-	setText(' ==<| GAIN  multiclamp|>== ');
-	getStringListA('Primary Output  ','1 | 2 | 5 | 10 | 20 | 50 | 100 | 200 | 500 | 1000 | 2000',Gain1_int,111);
-	getStringListA('Secondary Output ','1 | 2 | 5 | 10 | 20 | 50 | 100',Gain2_int,112);
-	setText(' ==<| SCALE  stim. unit|>== ');
-	getStringListA('Range (uA/V) ','1 | 10 | 100 | 1000',Gain3_int,113);
-	setText('');
+      	setText(' ==<| GAIN  multiclamp|>== ');
+	      getStringListA('Primary Output  ','1 | 2 | 5 | 10 | 20 | 50 | 100 | 200 | 500 | 1000 | 2000',Gain1_int,111);
+       getStringListA('Secondary Output ','1 | 2 | 5 | 10 | 20 | 50 | 100',Gain2_int,112);
      end;
+	 setText(' ==<| SCALE  stim. unit|>== ');
+	 getStringListA('Range (uA/V) ',' 1 | 10 | 100 | 1000',Gain3_int,113);
+	 setText('');
+   getStringList(' Extracellular solution :','low conduct.  |high conduct. ','1|2',solution_extra_flag,102);  { Onevent flag ->199}
+	 setText('');
    getBoolean(' saving ? ',SAVING);
    getCommandA(' => Start ...           ',0,200);
    getCommandA(' Stop the Acquisition ',0,201);
@@ -1487,11 +1282,11 @@ global.root_path :='Z:/home/yann/experiments/myelphy/' ;
 global.sep:='/_';  // separator for loading files  (has to change between linux and mswin)
 global.f_acq:=10; // in kHz
 global.gain1:=1; // gain of the first channel
-global.int_gain1:=ii; // integer coding for this gain
+global.gain1_int:=ii; // integer coding for this gain
 global.gain2:=1; // gain of the second channel
-global.int_gain2:=ii; //
-global.gain3:=1; // gain of the second channel
-global.int_gain3:=1; //
+global.gain2_int:=ii; //
+global.gain3:=100; // gain of the second channel
+global.gain3_int:=3; //
 global.clamp_int := ii; // integer that code for 1:IC, 2: VC
 global.cont_choice := True; // if True -> continus mode, else episode
 global.stim := False;  // if True acquisition.Fstimulate := True
@@ -1505,6 +1300,8 @@ global.episode_duration := 100 ;
 global.max_EP_num :=0 ;
 global.acquisitionISI:=0.1 ; 
 global.FadvanceON := False ;
+global.electrode_distance := 0;  // special for this Efield protocol
+global.solution_extra_flag := 1;  // special for this Efield protocol, 1 is low conductivity
 Exp_Params.create;
 already_initiated :=True;
 InsertPage(1,'fake');DeleteAllPages('fake');InsertPage(1,'default');DeleteAllPages('default');

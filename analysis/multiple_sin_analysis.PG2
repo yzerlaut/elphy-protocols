@@ -6,13 +6,14 @@ var cursor : Tcursor;
     t_start, t_stop : real ;  lver_start,lver_stop  : Tlinever ;
     current_freq, current_amp : real ;
     fit : Tcurvefitting;
-
+    ANALYSIS_TYPE : string ; // either membrane, or Efield
 
 procedure load_objects;
 var ii:integer; last_t : real ; 
 begin
    memo.create;splitstring(dataName,'_',memo) ; {datapath}
    prefix := datapath+memo.lines[1]+'_'+memo.lines[2]+'_'+memo.lines[3]+'_';
+   if ANALYSIS_TYPE='Efield' then prefix:=prefix+'EF_';
    time_vec.create; time_vec.loadObject(prefix+'MULTIPLE_SIN_time');
    freq_vec.create; freq_vec.loadObject(prefix+'MULTIPLE_SIN_freq');
    amp_vec.create ; amp_vec.loadObject(prefix+'MULTIPLE_SIN_amp');
@@ -35,7 +36,8 @@ begin
    begin t_start := time_vec[ii] ; t_stop := time_vec[ii+1]; end 
    else begin t_start := time_vec[ii+1] ; t_stop := time_vec[ii]; end;
    v1.SetWorld(t_start-switch,v1.Mini(t_start-switch,t_stop+switch),t_stop+switch,v1.Maxi(t_start-switch,t_stop+switch));
-   v2.SetWorld(t_start-switch,v2.Mini(t_start-switch,t_stop+switch),t_stop+switch,v2.Maxi(t_start-switch,t_stop+switch));
+   if ANALYSIS_TYPE='Efield' then v3.SetWorld(t_start-switch,v3.Mini(t_start-switch,t_stop+switch),t_stop+switch,v3.Maxi(t_start-switch,t_stop+switch))
+   else v2.SetWorld(t_start-switch,v2.Mini(t_start-switch,t_stop+switch),t_stop+switch,v2.Maxi(t_start-switch,t_stop+switch));
    lver_start.x := t_start ; lver_stop.x := t_stop;
    cursor.position[1]:= t_start+switch ; cursor.position[2]:=t_stop-switch ;
    current_freq:= freq_vec[ii];
@@ -50,7 +52,7 @@ begin
    { fit.setWorld(cursor.position[1],v1.Ymin,cursor.position[2],v1.Ymax); }
    fit.XstartFit:=cursor.position[1];
    fit.XendFit:=cursor.position[2];
-   fit.param['a1']:=v1.maxiX(fit.XstartFit,fit.XendFit)-v1.miniX(fit.XstartFit,fit.XendFit);
+   fit.param['a1']:=v1.maxiX(cursor.position[1],cursor.position[2])-v1.miniX(cursor.position[1],cursor.position[2]);
    fit.param['a2']:=2*PI*current_freq;  fit.Clamp['a2']:=True;
    fit.param['a4']:=v1.mean(fit.XstartFit,fit.XendFit); fit.Clamp['a4']:=True;
    fit.Execute;
@@ -79,14 +81,14 @@ begin
      { 100: init_analysis; }
      99	 : begin ii:=ii-1; if ii>=time_vec.Istart then zoom_on_exp(ii) ; end;
      101 : begin ii:=ii+1;
-	      if ii<time_vec.Iend-1 then zoom_on_exp(ii) else begin closeText(1); MessageBox('Over !'); end;
+	      if ii<time_vec.Iend then zoom_on_exp(ii) else begin closeText(1); MessageBox('Over !'); end;
 	   end;
      102: make_fit;
      103 : begin 
             imped_vec.AddToList(ABS(fit.param['a1']/current_amp));
             actual_freq.AddToList(current_freq);
             ii:=ii+1;
-	          if ii<time_vec.Iend-1 then zoom_on_exp(ii)
+	          if ii<time_vec.Iend then zoom_on_exp(ii)
             else MessageBox('Over !');
 	         end;
      104: write_on_file;
@@ -103,10 +105,18 @@ begin
    Page:=1;
    color:=cl_gray;
    addObject(1,1,v1); v1.title:='V_intra(t)'; v1.color := CL_black ;
+   v1.cpx:=1 ; v1.cpy:=1 ;
+   if ANALYSIS_TYPE='Efield' then
+   begin
+   addObject(1,2,v3); v2.title:='I_th_extra(t)'; v2.color := CL_green ; 
+   v3.cpx:=1 ; v3.cpy := 2 ;
+   end
+   else 
+   begin
    addObject(1,2,v2); v2.title:='I_th(t)'; v2.color := CL_green ; 
    addObject(1,2,v3); v5.title:='I_real(t)';  v5.color := CL_Olive ; 
-   v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1;
-   v1.cpy:=1 ; v2.cpy := 2 ; v3.cpy:=2 ; 
+   v2.cpx:=1 ; v3.cpx:=1; v2.cpy := 2 ; v3.cpy:=2 ;
+   end;
    lVer_start.create('',0,cl_green,0); lver_start.width:=3; addObject(1,1,lVer_start);
    lVer_stop.create('',0,cl_green,0); lver_stop.width:=3; addObject(1,1,lVer_stop);
    cursor.create ; cursor.DoubleCursor:=True ; cursor.InstallSource(v1);
@@ -153,13 +163,28 @@ begin
     write_on_file;
 end;
 
-program Manual_Analysis
+program Manual_Analysis_Current_input
+ANALYSIS_TYPE:='';
 analysis_windows;
 analysis_dialog;
 load_objects;
 zoom_on_exp(ii);
+ 
+program Automated_analysis_Current_input
+ANALYSIS_TYPE:='';
+analysis_windows;
+analysis_dialog;
+full_analysis;
 
-program Automated_analysis
+program Manual_Analysis_Efield
+ANALYSIS_TYPE:='Efield';
+analysis_windows;
+analysis_dialog;
+load_objects;
+zoom_on_exp(ii);
+ 
+program Automated_analysis_Efield
+ANALYSIS_TYPE:='Efield';
 analysis_windows;
 analysis_dialog;
 full_analysis;

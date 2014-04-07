@@ -8,8 +8,8 @@ modl_reg(){
 
     fprintf(stderr," Exp2Syn_eiNtwk.mod");
     fprintf(stderr," IClamp_WhiteNoise.mod");
+    fprintf(stderr," adexp.mod");
     fprintf(stderr," hh2.mod");
-    fprintf(stderr," instantaneous_freq.mod");
     fprintf(stderr," myIClamp.mod");
     fprintf(stderr," myVClamp.mod");
     fprintf(stderr," netstim_from_self_spike.mod");
@@ -17,8 +17,8 @@ modl_reg(){
   }
   _Exp2Syn_eiNtwk_reg();
   _IClamp_WhiteNoise_reg();
+  _adexp_reg();
   _hh2_reg();
-  _instantaneous_freq_reg();
   _myIClamp_reg();
   _myVClamp_reg();
   _netstim_from_self_spike_reg();

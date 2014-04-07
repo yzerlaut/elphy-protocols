@@ -1,0 +1,1 @@
+../netstim_from_self_spike.mod

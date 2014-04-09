@@ -2,32 +2,23 @@ COMMENT
 modified by yann zerlaut (UNIC lab, Destexhe team 2014) from
 : $Id: netstim.mod 1305 2006-04-10 21:14:26Z hines $
 
-the "interval" variable of Netstim becomes determined by the time
-course of a discrete rate model of a two population neural network.
+the "interval" variable of Netstim (that generates the random point
+process) becomes determined by the time course of a discrete rate
+model of a two population neural network.
 
 The rate model is determined by the two "transfer functions",the
 functions; output_rate=F(input_rate_exc, input_rate_inh), for the
 excitation and inhibition respectively, they follow the template
 described in Zerlaut et al. XXXX. You need to set its parameters.
 
-
-dependent on the
-output firing of the post-synaptic neuron Each
-"spike_number_for_update" spikes we update "interval" thanks to the
-firing rate calculated from this number of spikes
-
-The calculus of interval is performed within the "check()" function
----
-The thing is that we need to start to sample the output firing rate 
-frequency before we start to send presynaptic events
+The discrete update of the network firing rate is made in temporal
+bins of size ; time_discretisation
 ENDCOMMENT
 
 NEURON	{ 
   POINT_PROCESS NetStim_from_rate_model
   RANGE interval, number, start, synapses_number
-  RANGE noise, interval_increment
-  RANGE n, thresh, time, firing
-  RANGE spike_number_for_update, nspike_last_freq
+  RANGE noise, time_discretization
   POINTER donotuse
 }
 
@@ -40,23 +31,16 @@ PARAMETER {
     number	= 10 <0,1e9>	: number of spikes (independent of noise)
     start		= 50 (ms)	: start of first spike
     noise		= 0 <0,1>	: amount of randomness (0.0 - 1.0)
-    n
-    thresh = -20 (mV)
     time (ms)
     synapses_number = 1 : number of synapses of the population
-    spike_number_for_update = 3 : by default, 5 spikes to have an update
 }
 
 ASSIGNED {
-    v (mV)
-    firing
     space
     event (ms)
     on
     ispike
     donotuse
-    nspike_last_freq : number of spikes until last freq update
-    interval_increment
 }
 
 PROCEDURE seed(x) {
@@ -65,9 +49,6 @@ PROCEDURE seed(x) {
 
 
 INITIAL {
-    n = 0
-    nspike_last_freq = 0
-    firing = 0
     check()
     interval_increment = 0
     on = -1 : tenatively off
@@ -82,31 +63,6 @@ INITIAL {
 	net_send(start, 3)
     }
 }	
-
-BREAKPOINT {
-    SOLVE check METHOD after_cvode
-}
-
-
-PROCEDURE check() {
-    
-    if (v >= thresh && !firing) {
-	firing = 1
-	n = n+1
-	interval_increment = interval_increment+t-time
-	if (n-nspike_last_freq>=spike_number_for_update) {
-	    interval = interval_increment/spike_number_for_update
-	    nspike_last_freq = n
-	    interval_increment = 0
-	}
-	time = t
-    }  : /* END OF SPIKING CONDITION */
-
-    if (firing && v < thresh && t > time) {
-	firing = 0
-    }
-}
-
 
 PROCEDURE init_sequence(t(ms)) {
     if (number > 0) {

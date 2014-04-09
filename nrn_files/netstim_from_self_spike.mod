@@ -1,5 +1,5 @@
 COMMENT
-modified by yann zerlaut (UNIC lab, destexhe team 2014) from
+modified by yann zerlaut (UNIC lab, Destexhe team 2014) from
 : $Id: netstim.mod 1305 2006-04-10 21:14:26Z hines $
 and from the APcount.mod file (it's a mix of them)
 

@@ -1,10 +1,17 @@
 const
-explorDir = True;
+explorDir = True; // do you want to recursively execute the procedure over your whole tree
 Default_Dir = 'C:\Users\yann\Desktop'; // just the value for the starting directory
 
 var initial_directory : string ;
 
-procedure delete_the_last_row(json_file:string);
+var db : TdbRecord; datafile : Tdatafile ; // GLOBAL OBJECTS !!!!
+
+
+procedure delete_the_last_two_lines(json_file:string);
+{you should use this function if you want to append things
+to a pre-existing json file that contains parameters. You need
+to delete the last two lines, then add the lines you wnat then
+again add the two fake last lines (see below) for the dict() structure }
 var line2, lst_ln : string ;
 begin
     lst_ln :='"lastline":"no_value"'; // default last line of the json file
@@ -23,28 +30,43 @@ begin
 end;
 
 
-procedure create_json_file(filename:string);
-var datafile : Tdatafile ; json_file : string;
-    dy_vec : Tvector ; ii : integer ;
+procedure load_dbrecord(filename:string); // increments the global objects
 begin
-   json_file := filename+'.json'; 
-   if FileExists(json_file) then 
-   // in case the json file exists, we delete the 2 last rows and append things to it
+    db.create;
+    datafile.create;
+    datafile.NewFile(filename);
+    datafile.ReadDBFileInfo(db);
+end;
+
+procedure create_and_fill_json_file(datafile_name:string);
+var json_file, st, st2 : string; ii, jj : integer ;
+begin
+   json_file := datafile_name+'.json'; 
+   { in case the json file exists, we delete the 2 last rows and append things to it,
+   the code would be :
+   if FileExists(json_file) then
    begin
-      delete_the_last_row(json_file);
+      delete_the_last_two_lines(json_file);
       AppendText(1, json_file);
-   end
-   // in case the file doesn't already exists, we create it
-   else 
-   begin
-     openText(1, json_file, False);
-     writelnText(1,'{'); // and we start the dict() structure
-   end;
-   datafile.create;
-   //MessageBox(filename);
-   datafile.NewFile(filename);
-   for ii:=1 to datafile.ChannelCount do
-      WriteLnText(1, '"DY'+Istr(ii)+'" : "'+Rstr(datafile.v[ii].dY)+'",');
+   end                }
+
+   // but for now we just rewrite it (ALL the informations should lie on the TDBrecord object)
+   if FileExists(json_file) then DeleteFile(json_file);
+   openText(1, json_file, False);
+   writelnText(1,'{'); // and we start the dict() structure
+
+  load_dbrecord(datafile_name);
+  {we start by the informations stored in the TdbRecord associated to the acquisition file} 
+  for jj:=1 to DB.count do
+  begin  
+    st:= DB.Names[jj] ;
+    st2:=DB.Valstring[jj];
+    writelnText(1,'"'+st+'":"'+st2+'",');
+  end;        
+  {then the dy values for each channels, this is CRUCIAL for the contiuous mode in NEO }
+   for ii:=1 to datafile.ChannelCount do WriteLnText(1, '"DY'+Istr(ii)+'" : "'+Rstr(datafile.v[ii].dY)+'",');
+   
+   {finally we write the last two lines that insures the right dict()-like syntax}   
    writelnText(1,'"lastline":"no_value"'); // we write a last line (just to have no comma)
    writelnText(1,'}'); // and we close the dict() structure
    CloseText(1);
@@ -63,7 +85,7 @@ begin
     current_file := FirstFile(initial_directory+'\*.*', True, time, size, att);
     while current_file<>'' do
     begin
-        if extractFileExt(current_file)='.DAT' then create_json_file(current_file);
+        if extractFileExt(current_file)='.DAT' then create_and_fill_json_file(current_file);
         current_file := NextFile(time, size, att);    
     end;
     MessageBox('procedure terminated');
@@ -73,3 +95,6 @@ end;
 
 program start
 loop_over_files;
+
+program load2
+load_dbrecord('Z:\home\yann\files\DATA\2014_3_5\15_24_25_SINGLE_PULSE1.DAT');

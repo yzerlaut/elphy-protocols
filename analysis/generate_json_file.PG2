@@ -1,0 +1,75 @@
+const
+explorDir = True;
+Default_Dir = 'C:\Users\yann\Desktop'; // just the value for the starting directory
+
+var initial_directory : string ;
+
+procedure delete_the_last_row(json_file:string);
+var line2, lst_ln : string ;
+begin
+    lst_ln :='"lastline":"no_value"'; // default last line of the json file
+    openText(1, json_file+'.txt', False);  // writing      
+    openText(2, json_file, True); // reading
+    ReadLnText(2, line2); 
+    while (line2<>'') and (line2<>lst_ln) do
+    // if different than last line 
+    begin
+         WriteLnText(1, line2);
+         ReadLnText(2, line2);
+    end;
+    CloseText(1);CloseText(2);
+    DeleteFile(json_file);
+    RenameFile(json_file+'.txt', json_file);
+end;
+
+
+procedure create_json_file(filename:string);
+var datafile : Tdatafile ; json_file : string;
+    dy_vec : Tvector ; ii : integer ;
+begin
+   json_file := filename+'.json'; 
+   if FileExists(json_file) then 
+   // in case the json file exists, we delete the 2 last rows and append things to it
+   begin
+      delete_the_last_row(json_file);
+      AppendText(1, json_file);
+   end
+   // in case the file doesn't already exists, we create it
+   else 
+   begin
+     openText(1, json_file, False);
+     writelnText(1,'{'); // and we start the dict() structure
+   end;
+   datafile.create;
+   //MessageBox(filename);
+   datafile.NewFile(filename);
+   for ii:=1 to datafile.ChannelCount do
+      WriteLnText(1, '"DY'+Istr(ii)+'" : "'+Rstr(datafile.v[ii].dY)+'",');
+   writelnText(1,'"lastline":"no_value"'); // we write a last line (just to have no comma)
+   writelnText(1,'}'); // and we close the dict() structure
+   CloseText(1);
+end;
+
+procedure loop_over_files;
+var
+initial_directory : string ;
+time : TdateTime;
+size : longword ;
+att : integer ;
+current_file : string;
+begin
+    If ChooseDirectory('What directory do you want to explore ?',Default_Dir,
+         initial_directory) then begin
+    current_file := FirstFile(initial_directory+'\*.*', True, time, size, att);
+    while current_file<>'' do
+    begin
+        if extractFileExt(current_file)='.DAT' then create_json_file(current_file);
+        current_file := NextFile(time, size, att);    
+    end;
+    MessageBox('procedure terminated');
+    end else MessageBox('procedure aborted');  // no directory choosen !
+end;
+
+
+program start
+loop_over_files;

@@ -1,0 +1,4 @@
+===================================================================
+Note for the installation of the RTneuron-simulation mode,
+Spaces are not well handle by the NEURON shell, so the installation path shouldn't be
+have spaces neither for Elphy of for NEURON6.0 , so path like "C:\Program Files\Elphy2" should be avoided ! rather "C:\Users\yann\Elphy2" and "C:\Users\yann\nrn60"

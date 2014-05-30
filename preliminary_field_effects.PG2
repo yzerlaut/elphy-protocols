@@ -204,7 +204,8 @@ begin {-- we set all the variables of the acquisition class, then we create
     v1.cpx:=1 ; v2.cpx:=1 ; v1.cpy := 1 ; v2.cpy:= 2; {we set the coupling value -> to couple to future analysis}
     
     addObject(1,1,v1);  addObject(1,2,v2);  
-    
+    detector.create; detector.InitTimer(v1, CONTINUOUS_TIMER);
+
 end;
 
 { ==============================================================================
@@ -445,7 +446,6 @@ procedure Build_SinglePulse_EF(seq:longint;var vec:Tvector);  {pulse procedure c
 begin { we fill of 0, except between the t0+delay and t0+delay+duration }
   vec.fill(0); vec.fill1(amp_sp_EF,del_sp_EF+vec.Istart,del_sp_EF+dur_sp_EF+vec.Istart);
 end;
-
 
 
 { ------------ Triple Pulses ----------------------}
@@ -892,6 +892,85 @@ begin
 end;
 
 {$EDIT current_field_charact}
+{ ==============================================================================
+- Characterizing the relationship between applied current and measured field  --
+================================================================================ }
+
+
+{we use the procedures of ef_pulses}
+
+var vfield_baseline, vfield_jump, Iinj_baseline, Iinj_jump, Rsys : real ;  ce_memo : Tmemo ;
+
+procedure currentfield_process;
+var vfield_vec, Iinj_vec : Tvector ;
+begin
+    Iinj_vec.create; Vcopy(v3,Iinj_vec) ; // injected current on channel 3
+    Iinj_baseline := Iinj_vec.mean(1,del_sp_EF-1); {constantes a ajuster en fonction des parametres du pulse}
+    Iinj_jump := Iinj_vec.mean(del_sp_EF+20,del_sp_EF+dur_sp_EF-5)-Iinj_baseline;
+    vfield_vec.create; Vcopy(v4,vfield_vec) ; // field recording on channel 4
+    vfield_baseline := vfield_vec.mean(1,del_sp_EF-1); {constantes a ajuster en fonction des parametres du pulse}
+    vfield_jump := vfield_vec.mean(del_sp_EF+10,del_sp_EF+dur_sp_EF-5)-vfield_baseline;
+    
+    if vfield_jump<>0 then Rsys := Abs(Iinj_jump/Vfield_jump) else Rsys:=0 ; 
+      
+    ce_memo.lines[2]:='Rsys= '+Rstr(Rsys,6,2)+' Mohm';
+    ce_memo.lines[3]:='I jump = '+Rstr(Iinj_jump,6,1)+' uA';
+    ce_memo.lines[4]:='Ve jump = '+Rstr(Vfield_jump,6,2)+' mV';
+    ce_memo.refresh;
+end;
+
+
+procedure Current_Field_event(n:integer); 
+begin {when we modify the dialog, we adjust the stimulation params}
+   Stim_dialog.updatevar;
+   case n of 
+   201 : begin
+	 {we write all the relevant global informations}
+         TDBrecord('PG0.global').cont_choice := False ; 
+         TDBrecord('PG0.global').episode_duration :=  2*del_sp_EF+dur_sp_EF ;
+         TDBrecord('PG0.global').max_EP_num :=0 ;
+         TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.global').Efield_stim := True ;
+         TDBrecord('PG0.global').patch_stim := False ;
+         TDBrecord('PG0.global').acquisitionISI := 5 ; // long intestim to have the time to manually change the stim 
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='current_field_charact';
+         TDBrecord('PG0.Exp_Params').pulse_amplitude:=amp_sp_EF;
+         TDBrecord('PG0.Exp_params').start_at:=del_sp_EF;
+         TDBrecord('PG0.Exp_Params').pulse_duration:=dur_sp_EF;
+	       {then we initialize the stimulation}
+	       InitializeChannels; addObject(1,1,ce_memo);
+	       stimulator.Channels[1].BuildEp := Build_SinglePulse_EF ; 
+       	 stimulator.initVectors;
+         acquisition.InstallProcess(my_initprocess0, nil, currentfield_process, set_dac_to_zero);
+         end;
+   end;
+end;
+
+
+procedure Init_CurrentField_Dialog_EF;
+var pn:integer;
+begin
+   amp_sp_EF := 5000.0; del_sp_EF:=100.0; dur_sp_EF:=800.0;
+   with Stim_dialog do
+   begin
+   create;
+   Caption := 'Current-Field characterization';
+   OnEvent := Current_Field_event;
+   setText(' ==<| Single Pulse Stimulation |> ');
+   getRealA('Amplitude (pA or mV)',amp_sp_EF,10,3,200);
+   getRealA('Onset/Delay (ms)',del_sp_EF,10,3,200);
+   getRealA('Duration (ms)',dur_sp_EF,10,3,200);
+   getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
+   end;
+   ce_memo.create(''); ce_memo.font.name:='Times New Roman'; ce_memo.font.size:=13;
+   ce_memo.font.color:=rgb(0,0,0);  ce_memo.font.style:=fs_bold;
+    ce_memo.lines[2]:='Rsys= '+Rstr(Rsys,6,2)+' Mohm';
+    ce_memo.lines[3]:='I jump = '+Rstr(Iinj_jump,6,1)+' uA';
+    ce_memo.lines[4]:='Ve jump = '+Rstr(Vfield_jump-vfield_baseline,6,2)+' mV';
+   Stim_dialog.show;
+end;
+
 
 {$EDIT get_the_pol}
 
@@ -1095,7 +1174,6 @@ begin
    end;
 end;
 
-
 procedure IVcurve_Init;
 begin
    amp_sp_EF := 5000.0; del_sp_EF:=100.0; dur_sp_EF:=800.0;
@@ -1124,8 +1202,6 @@ begin
    Stim_dialog.show;
    SAVING:=True;
 end;
-
-
 
 
 {$EDIT main_dialog}
@@ -1178,12 +1254,13 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
               Page := 1 ;               
               case protocol_choice of
 		             1 : begin Stim_dialog.close ; TDBrecord('PG0.global').stim:=False;TDBrecord('PG0.global').cont_choice:=True;
+		                 TDBrecord('PG0.Exp_params').exp_type :='passive_recording';
                      InitializeChannels;
                      acquisition.InstallProcess(nil, nil, nil, set_dac_to_zero);
                      end;
 		             2 : Init_PulsesDialog_EF; 
 		             3 : Init_SinDialog_EF;
-		             //5 : Init_CurrentField_Dialog_EF;
+		             5 : Init_CurrentField_Dialog_EF;
 		             //6 : Init_GetThePol;
 		             //7 : Init_trackAP_Dialog;
 		             //8 : IVcurve_Init;

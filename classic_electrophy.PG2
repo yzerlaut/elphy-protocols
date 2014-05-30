@@ -393,7 +393,7 @@ with stimulator do
     stimulator.setValue(0,0,1,0);
     stimulator.setValue(0,1,0,0);
 end;
-if acquisition.Fcontinuous=True then  // well... i think there is no other way to set the output to 0.... ;(
+if (acquisition.Fcontinuous=True) and (acquisition.Fstimulate=True) then  // well... i think there is no other way to set the output to 0.... ;(
 begin   // if continuous qnd not pqssive recording
 acquisition.Fcontinuous :=False;
 acquisition.MaxEpCount :=1;
@@ -418,7 +418,7 @@ TDBrecord('PG0.global').cont_choice:=True;
 TDBrecord('PG0.global').stim:=False;
 TDBrecord('PG0.Exp_params').exp_type :='passive-recording' ;
 InitializeChannels;
-acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
+my_initprocess0;
 end;
 
 

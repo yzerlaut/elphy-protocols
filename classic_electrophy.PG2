@@ -261,8 +261,8 @@ begin {-- we set all the variables of the acquisition class, then we create
     v1.cpx:=1 ; v2.cpx:=1 ; v1.cpy := 1 ; v2.cpy:= 2; {we set the coupling value -> to couple to future analysis}
     addObject(1,1,v1);
     addObject(1,2,v2);
-    // then in case of continuous mode we create the detector
-    if continu then begin detector.create; detector.InitTimer(v1, CONTINUOUS_TIMER); end;  // period between analysis to adjust !!
+    // then in case of continuous mode we create the detector  
+    //if continu then begin detector.create; detector.InitTimer(v1, CONTINUOUS_TIMER); end;  // period between analysis to adjust !!
     
 end;
 
@@ -418,7 +418,10 @@ TDBrecord('PG0.global').cont_choice:=True;
 TDBrecord('PG0.global').stim:=False;
 TDBrecord('PG0.Exp_params').exp_type :='passive-recording' ;
 InitializeChannels;
-my_initprocess0;
+detector.create;
+acquisition.InstallProcess(my_initprocess0, nil, nil, nil);
+addObject(1,1,v1);
+addObject(1,2,v2);
 end;
 
 
@@ -2116,7 +2119,7 @@ dll_load := TDBrecord('PG0.global').loadnrnpath ;
 dll_load := 'nrn_load_dll("'+dll_load+'nrnmech.dll")';
 PathOfTheDay := TDBrecord('PG0.global').PathOfTheDay ; // data path
 amplifier := TDBrecord('PG0.global').amplifier ;
-protocol_choice := 0;
+protocol_choice := 1;
 //------------
    with MainDialog do
    begin
@@ -2217,6 +2220,8 @@ global_init ;
 SetProtocolNames;
 init_windows;
 Init_Main_Dialog;
+passive_recording_init;
+
 
 program set_to_zero
 Rtneuron.DacChan[0].HoldingValue:=0;
@@ -2234,5 +2239,6 @@ program Launch_from_Tmacro
 SetProtocolNames;
 init_windows;
 Init_Main_Dialog;
+passive_recording_init;
 
 

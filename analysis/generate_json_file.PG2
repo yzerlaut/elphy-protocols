@@ -1,6 +1,6 @@
 const
 explorDir = True; // do you want to recursively execute the procedure over your whole tree
-Default_Dir = 'C:\Users\yann\Desktop'; // just the value for the starting directory
+Default_Dir = '/media/DATA_EqAlain/files/DATA'; // just the value for the starting directory
 
 var initial_directory : string ;
 
@@ -28,8 +28,8 @@ end;
 
 
 procedure create_json_file(filename:string);
-var datafile : Tdatafile ; json_file : string;
-    ii : integer ; db_info : TDBrecord;
+var datafile : Tdatafile ; json_file, st, st2 : string;
+    ii, jj : integer ; db_info : TDBrecord;
 begin
    json_file := filename+'.json'; 
    if FileExists(json_file) then 
@@ -50,14 +50,13 @@ begin
    datafile.NewFile(filename);
    
   {we start by the informations stored in the TdbRecord associated to the acquisition file} 
-  // NOT WORKING YET !!!!    why ????
-  {datafile.ReadDBFileInfo(db_info);
+  datafile.ReadDBFileInfo(db_info);
   for jj:=1 to db_info.count do
   begin  
     st:= db_info.Names[jj] ;
     st2:=db_info.Valstring[jj];
-    writelnText(1,'"'+st+'":"'+st2+'",');
-  end;}        
+    if st<>'s' then writelnText(1,'"'+st+'":"'+st2+'",');
+  end;        
 
    for ii:=1 to datafile.ChannelCount do
       WriteLnText(1, '"DY'+Istr(ii)+'" : "'+Rstr(datafile.v[ii].dY)+'",');

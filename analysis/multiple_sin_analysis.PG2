@@ -44,26 +44,30 @@ begin
 end;
 
 procedure make_fit;
+var i_phase : real;
 begin
    //// CURRENT FIT
-   fit2.Text:='RES=a1*sin(a2*x-a3)+a4'; 
+   fit2.Text:='RES=ABS(a1)*sin(a2*x-a3)+a4'; 
    fit2.initialize:=true;
-   fit2.reset;  fit2.setYdata(v2);  
+   fit2.reset; 
    fit2.setYdata(v2);  fit2.MaxIt:=30;fit2.Maxdata:=10000;   
    fit2.XstartFit:=cursor.position[1]; fit2.XendFit:=cursor.position[2];
    fit2.param['a1']:=v2.maxiX(cursor.position[1],cursor.position[2])-v2.miniX(cursor.position[1],cursor.position[2]);
    fit2.param['a2']:=2*PI*current_freq;  fit2.Clamp['a2']:=True;
    fit2.param['a4']:=v2.mean(fit2.XstartFit,fit2.XendFit); //fit.Clamp['a4']:=True;
    fit2.Execute; fit2.Refresh;
+   i_phase := fit2.param['a3'];
    //// VOLTAGE FIT
-   if fit2.param['a3']>0 then fit.Text:='RES=a1*sin(a2*x-'+Rstr(fit2.param['a3'])+'+a3)+a4' 
-   else fit.Text:='RES=a1*sin(a2*x-'+Rstr(ABS(fit2.param['a3']))+'+a3)+a4';  
+   //if fit2.param['a3']>0 then fit.Text:='RES=a1*sin(a2*x-'+Rstr(fit2.param['a3'])+'+a3)+a4' 
+   //else 
+   fit.Text:='RES=ABS(a1)*sin(a2*x-a5-a3)+a4';  
    fit.initialize:=true; 
-   fit.reset;  fit.setYdata(v1);  
-   fit.setYdata(v1);  fit.MaxIt:=30;fit.Maxdata:=10000;   
+   fit.reset;  
+   fit.setYdata(v1); fit.MaxIt:=30;fit.Maxdata:=10000;   
    fit.XstartFit:=cursor.position[1]; fit.XendFit:=cursor.position[2];
    fit.param['a1']:=v1.maxiX(cursor.position[1],cursor.position[2])-v1.miniX(cursor.position[1],cursor.position[2]);
    fit.param['a2']:=2*PI*current_freq;  fit.Clamp['a2']:=True;
+   fit.param['a5']:=fit2.param['a3'];  fit.Clamp['a5']:=True;
    fit.param['a3']:=0;
    fit.param['a4']:=v1.mean(fit.XstartFit,fit.XendFit); //fit.Clamp['a4']:=True;
    fit.Execute; fit.Refresh;
@@ -73,11 +77,11 @@ procedure write_on_file;
 var st : string ;  ii : integer ;
 begin
   openText(1,prefix+'MULTIPLE_SIN_analysed.txt',false);
-  writelnText(1,'## impedance in 1000*mV/pA=MOhm');
+  writelnText(1,'## impedance in 1000*mV/pA=MOhm, then phase in Rd');
   if Imped_vec.Iend<>actual_freq.Iend then MessageBox('problem in the analysis, vector size not compatible');
   for ii:=Imped_vec.Istart to Imped_vec.Iend do 
   begin
-     st := Rstr(actual_freq[ii])+Chr(9)+Rstr(1000*Imped_vec[ii])+Chr(9)+Rstr(1000*phase_vec[ii]) ;
+     st := Rstr(actual_freq[ii])+Chr(9)+Rstr(1000*Imped_vec[ii])+Chr(9)+Rstr(phase_vec[ii]) ;
      writelnText(1,st);
   end; 
   closeText(1);
@@ -97,7 +101,7 @@ begin
      102: make_fit;
      103 : begin 
             imped_vec.AddToList(ABS(fit.param['a1']/current_amp));
-            phase := fit.param['a3'];
+            phase := 1; //fit.param['a3'];
             phase_vec.AddToList(phase);
             actual_freq.AddToList(current_freq);
             ii:=ii+1;

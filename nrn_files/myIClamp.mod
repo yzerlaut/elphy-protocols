@@ -12,17 +12,13 @@ ENDCOMMENT
 
 NEURON {
 	POINT_PROCESS myIClamp
-	RANGE del, i, Ipico
+	RANGE i, Ipico
 	ELECTRODE_CURRENT i
 }
 UNITS {
 	(nA) = (nanoamp)
 }
 
-PARAMETER {
-	del (ms)
-}
-    
 ASSIGNED { 
     i (nA) 
     Ipico
@@ -34,14 +30,7 @@ INITIAL {
 }
 
 BREAKPOINT {
-	at_time(del)
-	
-	if (t >= del) {
-	    UNITSOFF
-	    i = 0.001*Ipico
-	    UNITSON
-	}else{
-	    i = 0
-	}
-	   
+    UNITSOFF
+    i = 0.001*Ipico
+    UNITSON
 }

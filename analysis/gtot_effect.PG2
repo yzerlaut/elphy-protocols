@@ -1,0 +1,168 @@
+var  { ========= COMMON VARIABLES ============ }
+   DT	: real ; { time step of the acquisition (1/f_acq) }
+   protocol_choice : integer; { global variable, it will also code for the page}
+   MainDialog	 : Tdialog ;  dialog : Tdialog ;{ two dialogs for buttons and protocols}
+   comment_memo : Tmemo ; comments : string ; { to store the comments }
+   Gain_dialog : Tdialog ; gain1 : real ; gain2	: real ; gain1_int : integer ; gain2_int:integer; {gain params}
+   clamp_choice : integer ;  cont_choice : boolean ; stim : boolean ; {choices for the IC/VC ; Continuous/Episode mode ; stim/not}
+   DB:Tdbrecord ; DBcomment : Tdbrecord ; {for metadata information, storing comments, ... }
+   PathOfTheDay,root_dir : string ;
+   Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; {variables to fetch the date and time }
+var 
+   prefix : string ; time_vec : Tvector; fe_vec : Tvector ; fi_vec : Tvector ;
+   qe_vec : Tvector ; qi_vec : Tvector ;
+   memo : Tmemo ; current_v : Tvector ; current_t : Tvector ;  graph : Tgraph ; 
+   ii: integer ; tfa_dialog : Tdialog ; n:integer;  detect : Tdetect ; 
+   t_start, t_stop : real ;  lver_start,lver_stop  : Tlinever ;
+   th_cursor,cursor: Tcursor ;  spk_vec : Tvector ; stf : string ; 
+   spike_number : integer ; last_written : real ;
+   dbrecord : TDBrecord ; 
+   moy : Taverage ; 
+   index_of_sample_saving : integer ;
+
+
+procedure tf_analysis_windows;
+begin
+DeleteAllPages('default');
+insertpage(1,'Gtot_effect_analysis');
+DefineWindow(1,0,0,PageWidth,Round(PageHeight/2.2));
+DefineWindow(1,0,Round(PageHeight/2.2),PageWidth,PageHeight);
+DivideWindow(1,2,1,3);
+Page:=1;
+color:=cl_gray;
+end;
+
+
+procedure zoom_on_exp(ii:integer);
+var jj : integer ;
+begin
+    if time_vec[ii]<time_vec[ii+1] then
+    begin t_start := time_vec[ii] ; t_stop := time_vec[ii+1]; end 
+    else begin t_start := time_vec[ii+1] ; t_stop := time_vec[ii]; end;
+    v1.SetWorld(t_start-0.1,-90,t_stop+0.1,30);
+    v2.SetWorld(t_start-0.1,v2.Mini(t_start-0.1,t_stop+0.1),t_stop+0.1,v2.Maxi(t_start-0.1,t_stop+0.1));
+    v3.SetWorld(t_start-0.1,v3.Mini(t_start-0.1,t_stop+0.1),t_stop+0.1,v3.Maxi(t_start-0.1,t_stop+0.1));
+    v4.SetWorld(t_start-0.1,v4.Mini(t_start-0.1,t_stop+0.1),t_stop+0.1,v4.Maxi(t_start-0.1,t_stop+0.1));
+    //v5.SetWorld(t_start-0.1,v5.Mini(t_start-0.1,t_stop+0.1),t_stop+0.1,v5.Maxi(t_start-0.1,t_stop+0.1));
+    lver_start.x := t_start ; lver_stop.x := t_stop;
+    cursor.position[1]:= t_start+0.05 ; cursor.position[2]:=t_stop ; 
+    tfa_dialog.update;
+end;
+
+procedure Count_Spikes;
+var 
+threshold : real ;refrac : real ; yinit : real;
+begin
+   detect.create ;             
+   detect.InstallSource(v1); detect.Xstart := cursor.position[1] ; detect.Xend := cursor.position[2] ;
+   detect.Mode := 6 ; {cross up} detect.height := th_cursor.position[1] ; 
+   detect.execute;  detect.BKcolor:=cl_white;
+   detect.Vevent.cpx:=1 ;
+   addObject(1,1,detect.Vevent);
+   spike_number:=detect.count;
+end;
+
+
+procedure write_episode_to_txt;
+var st, pp: string; j : integer ;
+begin
+    pp := datapath+'sample'+Istr(index_of_sample_saving);
+    if saveFileDialog(pp,'.txt') then openText(2,pp,false) else MessageBox('sample wont be saved');
+    for j:=v1.InvConvX(cursor.position[1]) to v1.InvConvX(cursor.position[2]) do
+    begin
+        st:=Rstr(v1.Convx(j))+chr(9)+Rstr(v1[j],1,6)+chr(9)+Rstr(v2[j],1,6)+chr(9)+Rstr(v3[j],1,6)+chr(9)+Rstr(v4[j],1,6);
+        writelnText(2,st);
+    end;
+    closetext(2);
+    index_of_sample_saving := index_of_sample_saving +1;
+end;
+
+
+procedure write_on_file;
+var st : string;
+begin
+      st:=Istr(ii)+chr(9)+Rstr(fe_vec[ii],1,3)+chr(9)+Rstr(fi_vec[ii],1,3)+chr(9)+Rstr(detect.count,1,3)+chr(9);
+      st:=st+Rstr(cursor.position[1],1,6)+chr(9)+Rstr(cursor.position[2],1,6);
+      writelnText(1,st);
+      ii:=ii+2;
+      if ii<time_vec.Iend-1 then zoom_on_exp(ii) else begin closeText(1); MessageBox('Over !'); end;
+      tfa_dialog.update;
+end;
+
+procedure init_graph;
+begin
+   addObject(1,1,v1); v1.title:='V_intra(t)'; v1.color := CL_black ;
+   addObject(1,2,v2); v2.title:='I_th(t)'; v2.color := CL_green ; 
+   addObject(1,2,v5); v5.title:='I_real(t)';  v5.color := CL_Olive ; 
+   addObject(1,3,v3);  v3.title:='Ge(t)';  v3.color := CL_blue ;
+   addObject(1,4,v4); v4.title:='Gi(t)'; v4.color := CL_red ;
+   v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ; v4.cpx:=1 ;  v5.cpx:=1 ; 
+   v1.cpy:=1 ; v2.cpy := 2 ; v3.cpy:=3 ;  v4.cpy:=4 ; {we set the coupling value -> to couple to future analysis} 
+   lVer_start.create('',0,cl_green,0); lver_start.width:=3; addObject(1,1,lVer_start);
+   lVer_stop.create('',0,cl_green,0); lver_stop.width:=3; addObject(1,1,lVer_stop);
+   cursor.create ; cursor.DoubleCursor:=True ; cursor.InstallSource(v1);
+   cursor.style:=cs_X ; cursor.visible:=True ; cursor.color:=cl_red;
+   cursor.position[1]:= v1.Xstart ; cursor.position[2]:=v1.Xend ; 
+   th_cursor.create ; th_cursor.InstallSource(v1); th_cursor.style:=cs_Y ;
+   th_cursor.position[1]:= -15 ; th_cursor.visible:=True ; th_cursor.color:=cl_green;
+ end;
+ 
+procedure init_tf_analysis; 
+var ii:integer; last_t : real ; 
+begin
+  memo.create ;splitstring(dataName,'_',memo) ; {datapath}
+  prefix := datapath+memo.lines[1]+'_'+memo.lines[2]+'_'+memo.lines[3]+'_';
+  time_vec.create; time_vec.loadObject(prefix+'t');
+  fe_vec.create; fe_vec.loadObject(prefix+'fe');
+  fi_vec.create ; fi_vec.loadObject(prefix+'fi');
+  if saveFileDialog(prefix,'.txt') then openText(1,prefix,false) else MessageBox('analysis will not be saved');
+  ii:=time_vec.Istart;
+  zoom_on_exp(ii);
+  index_of_sample_saving :=1;
+end;
+
+
+procedure DialogUpdate(n:integer);
+begin
+     tfa_dialog.updatevar;
+     case n of
+     100: init_tf_analysis;
+     99 : begin ii:=ii-1; if ii>=time_vec.Istart then zoom_on_exp(ii) ; end;
+     101 : begin ii:=ii+1;
+      if ii<time_vec.Iend-1 then zoom_on_exp(ii) else begin closeText(1); MessageBox('Over !'); end;
+      end;
+     102: Count_Spikes;
+     103: write_on_file;
+     104 : closetext(1) ;
+     124 : write_episode_to_txt;
+     end;
+     tfa_dialog.update;
+end;
+ 
+procedure tf_analysis_dialog;
+begin
+tfa_dialog.create;
+tfa_dialog.OnEvent:= DialogUpdate;
+tfa_dialog.getRealA('t_start (s)',t_start,10,3,200);
+tfa_dialog.getRealA('t_stop (s)',t_stop,10,3,200);
+tfa_dialog.getIntegerA('episode number',ii,6,200);
+tfa_dialog.getIntegerA('spike number',spike_number,6,200);
+tfa_dialog.getCommandA(' |-next step-| ',0,101); { OnEvent flag -> 201 }
+tfa_dialog.getCommandA(' previous step ',0,99); { OnEvent flag -> 201 }
+tfa_dialog.setText('');
+tfa_dialog.getCommandA(' count spikes ',0,102); { OnEvent flag -> 201 }
+tfa_dialog.getCommandA(' write & next ',0,103); { OnEvent flag -> 201 }
+tfa_dialog.setText('');
+tfa_dialog.getCommandA('Export Episode to TXT',0,124); { OnEvent flag -> 201 }
+tfa_dialog.setText('');
+tfa_dialog.getCommandA(' SAVE and close',0,104); { OnEvent flag -> 201 }
+tfa_dialog.Caption:='TF Analysis';
+tfa_dialog.winleft:=0;tfa_dialog.wintop:=0;
+tfa_dialog.show;
+end;
+
+program Launch
+tf_analysis_windows;
+init_graph;
+tf_analysis_dialog;
+init_tf_analysis;

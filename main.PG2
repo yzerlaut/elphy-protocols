@@ -30,7 +30,7 @@ global.experiment_type:='classic_electrophy';
 //t_classic_electrophy.create(root_path+'classic_electrophy.PG2');
 //t_classic_electrophy.ExecuteCommand('Launch_from_Tmacro');
 //t_macro.reset;
-t_macro.create(root_path+'classic_electrophy.PG2');
+t_macro.create('classic_electrophy.PG2');
 t_macro.ExecuteCommand('Launch_from_Tmacro');
 end;
 
@@ -39,7 +39,7 @@ begin
 global.experiment_type:='field_effects';
 //field_effects.create(root_path+'field_effects.PG2');
 //field_effects.ExecuteCommand('Launch_from_Tmacro');
-t_macro.create(root_path+'field_effects.PG2');
+t_macro.create('field_effects.PG2');
 //t_macro.ExecuteCommand('Launch_from_Tmacro');
 end;
  
@@ -75,7 +75,8 @@ begin
                     global.root_path:=root_path ;
                     global.sep:='/_'; {N.B. linux computers have different separators, see above paths}
                  end;
-                 PathOfTheDay := global.data_Path+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'/' ;
+                 PathOfTheDay := global.data_Path;
+                 PathOfTheDay := PathOfTheDay+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'/' ;
                  global.PathOfTheDay := PathOfTheDay ;
              case amplifier_int of
              1 : global.amplifier := 'nrn_simulation' ;

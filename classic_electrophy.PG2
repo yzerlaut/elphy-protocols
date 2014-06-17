@@ -721,6 +721,13 @@ begin
 end;
          
 
+procedure Set_global_RsRmCm;
+begin
+     TDBrecord('PG0.Exp_Params').Rs := Rs ;
+     TDBrecord('PG0.Exp_Params').Rm := Rm ;
+     TDBrecord('PG0.Exp_Params').Cm := Cm ;
+end;
+
 procedure VCMT_Event(n:integer);
 var amplifier : string ; 
 begin    
@@ -728,6 +735,7 @@ begin
    case n of 
    999 : prepare_mt ; 
    998 : rsCm(VCMT_moy,rm,rs,cm,rs2,True);
+   997 : Set_global_RsRmCm;
    end;
 end;
 
@@ -879,12 +887,12 @@ begin
          TDBrecord('PG0.global').clamp_int := 1 ; 
          TDBrecord('PG0.global').cont_choice := False ; 
          TDBrecord('PG0.global').episode_duration :=  ICMT_t1+ICMT_t2 ;
-         TDBrecord('PG0.global').max_EP_num :=20 ; // 20 episodes !!
+         TDBrecord('PG0.global').max_EP_num :=10 ; // 10 episodes !!
          TDBrecord('PG0.global').stim := True ;
          TDBrecord('PG0.global').acquisitionISI:= ICMT_interStim ;  // small beak between the stims
          if amplifier='nrn_simulation' then TDBrecord('PG0.global').FadvanceON := True else TDBrecord('PG0.global').FadvanceON := False;
          TDBrecord('PG0.Exp_Params').clear;
-         TDBrecord('PG0.Exp_Params').exp_type:='IC_MembraneTest_test';
+         TDBrecord('PG0.Exp_Params').exp_type:='IC_MembraneTest';
          TDBrecord('PG0.Exp_Params').pulse_amplitude:=ICMT_amp;
          TDBrecord('PG0.Exp_params').t1:=ICMT_t1;
          TDBrecord('PG0.Exp_params').t2:=ICMT_t2;
@@ -895,6 +903,11 @@ begin
          acquisition.InstallProcess(my_initprocess0, mtic_initprocess, mtic_process, mtic_endprocess);
 end;
 
+procedure Set_global_RmCm;
+begin
+     TDBrecord('PG0.Exp_Params').Rm := Rm ;
+     TDBrecord('PG0.Exp_Params').Cm := Cm ;
+end;
          
 procedure ICMT_Event(n:integer);
 var amplifier : string ; 
@@ -903,6 +916,7 @@ begin
    case n of 
    999 : prepare_icmt;
    998 :IC_RmCm(ICMT_moy,rm,cm,True);
+   997 :Set_global_RmCm;   
    end;
 end;
 
@@ -917,7 +931,7 @@ begin
   DIvideWindow(1,3,3,1);
   color:=cl_gray;
 
-   ICMT_amp:=200; ICMT_t1:=100; ICMT_t2:=300; ICMT_interStim:=0.2 ; // params
+   ICMT_amp:=50; ICMT_t1:=500; ICMT_t2:=1500; ICMT_interStim:=0.2 ; // params
    {then we display the channels}
    addObject(1,1,v1);  addObject(1,2,v2);   addObject(1,2,v3);   
    
@@ -937,6 +951,7 @@ begin
    ICMT_dialog.getCommandA('  init() ',0,999);
    ICMT_dialog.setText('');
    ICMT_dialog.getCommandA(' Fit with cursors ',0,998);
+   ICMT_dialog.getCommandA(' Set Global Rm & Cm ',0,997);
    ICMT_dialog.OnEvent:=ICMT_event ;
    AddDialog(1,5,ICMT_dialog); 
 
@@ -1134,7 +1149,7 @@ begin
   color:=cl_gray;
 
    v_start := -20; v_step :=10 ;  int_repet:=0 ; max_step := 10 ;
-   interstim_iv := 1 ; del_iv := 40 ; dur_iv := 120 ;
+   interstim_iv := 1 ; del_iv := 40 ; dur_iv := 70 ;
    with iv_dialog do
    begin
       create;

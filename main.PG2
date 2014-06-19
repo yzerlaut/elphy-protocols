@@ -19,7 +19,7 @@ var global_dialog : Tdialog ;
     main_protocol : string ; 
     already_initiated : boolean ;
 
-{Tmacro object, see doc, specifically loads only one file}
+{Tmacro object, see doc\, specifically loads only one file}
 var 
 t_classic_electrophy, field_effects, t_transfer_functions : Tmacro ;
 t_macro : Tmacro ;
@@ -29,8 +29,7 @@ begin
 global.experiment_type:='classic_electrophy';
 //t_classic_electrophy.create(root_path+'classic_electrophy.PG2');
 //t_classic_electrophy.ExecuteCommand('Launch_from_Tmacro');
-//t_macro.reset;
-t_macro.create('classic_electrophy.PG2');
+t_macro.create(root_path+'classic_electrophy.PG2');
 t_macro.ExecuteCommand('Launch_from_Tmacro');
 end;
 
@@ -66,12 +65,12 @@ begin
                     global.root_path:= root_path ;
                     global.sep:='\_';
                  end;
-             if location_int=1 then   // Linux + Laptop
+             if location_int=1 then   // MSWin + Notebook
                  begin
-                    global.location := 'Personal computer' ;
-                    global.data_Path:='Z:\home\yann\experiments\DATA\';
-                    global.loadnrnPath:='Z:/home/yann/experiments/myelphy/nrn_files/';
-                    root_path:= 'Z:/home/yann/experiments/myelphy/';
+                    global.location := 'Notebook' ;
+                    global.data_Path:='D:\home\yann\files\DATA\';
+                    global.loadnrnPath:='D:/home/yann/work/elphy_code/nrn_files/';
+                    root_path:= 'D:\home\yann\work\elphy_code\';
                     global.root_path:=root_path ;
                     global.sep:='/_'; {N.B. linux computers have different separators, see above paths}
                  end;
@@ -94,8 +93,8 @@ end;
 
 procedure init_global_dialog;
 begin
-    location_int :=2;
-    amplifier_int := 2 ;
+    location_int :=1;
+    amplifier_int := 1;
     experiment_int := 1;
     global.create;
     // we initialize some recording quantities
@@ -124,7 +123,7 @@ begin
   begin
   create;
   OnEvent := global_event ;
-  getStringList(' Setup  : ',' | Laptop | Bal Setup ','0|1|2',location_int,101);  { Onevent flag ->199}
+  getStringList(' Device  : ',' | Notebook | Bal Setup ','0|1|2',location_int,101);  { Onevent flag ->199}
   setText(' ================================= ');
   getStringList(' Amplifier : ',' | RTneuron-Simulation | MultiClamp | NPI | AxoClamp ','0|1|2|3|4',amplifier_int,102);  { Onevent flag ->199}
   setText(' ================================= ');

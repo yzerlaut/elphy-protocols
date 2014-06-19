@@ -1151,3 +1151,5 @@ program Launch_from_Tmacro
 SetProtocolNames;
 init_windows;
 Init_Main_Dialog;
+initTFparameters;
+init_massivetf_const;

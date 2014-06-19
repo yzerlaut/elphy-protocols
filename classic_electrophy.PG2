@@ -2254,6 +2254,6 @@ program Launch_from_Tmacro
 SetProtocolNames;
 init_windows;
 Init_Main_Dialog;
-passive_recording_init;
-
+//passive_recording_init;
+//MessageBox('working ?');
 

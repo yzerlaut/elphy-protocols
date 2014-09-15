@@ -10,16 +10,15 @@
 
 
 const 
-   location= 'Notebook'; {'Notebook' or 'Patch Setup'}
-   amplifier= 'nrn_simulation'; {'nrn_simulation' or 'multiclamp' or 'NPI'}
+   location= 'Patch Setup'; {'Notebook' or 'Patch Setup'}
+   amplifier= 'multiclamp'; {'nrn_simulation' or 'multiclamp' or 'NPI'}
 
 
 var 
     global : TDBrecord ;  {     = => Stores the global variables !! }
     Exp_Params : TDBrecord ; { = => Stores the parameters specific to each experience !!}
     {variables to fetch the date and time }
-    Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; 
-   pathOfTheDay, root_path : string ; successfull_init : Boolean;
+    root_path : string ; 
 
 {Tmacro object, see doc\, specifically loads only one file}
 var 
@@ -62,7 +61,6 @@ end;
 
 procedure setup_init;
 begin
-   successfull_init:=False;
    if location='Notebook' then
    begin
       global.location := 'Notebook' ;
@@ -71,23 +69,17 @@ begin
       root_path:= 'D:\home\yann\work\elphy_code\';
       global.root_path:=root_path ;
       global.sep:='/_'; {N.B. linux computers have different separators, see above paths}
-      successfull_init := True;
    end
    else if location='Patch Setup' then
    begin
       global.location  := 'Patch Setup'  ;
       global.data_Path := 'D:\yann\DATA\' ;
-      global.loadnrnPath := 'D:/yann/myelphy/nrn_files/' ;
-      root_path := 'D:\yann\myelphy\' ;
+      global.loadnrnPath := 'D:/yann/elphy_code/nrn_files/' ;
+      root_path := 'D:\yann\elphy_code\' ;
       global.root_path:= root_path ;
       global.sep:='\_';
-      successfull_init := True;
-   end
-   else MessageBox('Problem with the Setup Initialisation \n check the path');
-   PathOfTheDay := global.data_Path;
-   PathOfTheDay := PathOfTheDay+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'/' ;
-   DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond);
-   global.PathOfTheDay := PathOfTheDay ;
+   end;
+   if not DirectoryExists(root_path) then MessageBox('Problem with the Setup Initialisation, check the path !');
    global.amplifier := amplifier;
 end;
 
@@ -104,7 +96,7 @@ begin
     global.cont_choice := True; // if True -> continus mode, else episode
     global.stim := False;  // if True acquisition.Fstimulate := True
     global.max_EP_num := 0 ;
-    global.episode_duration := 2000 ;
+    global.episode_duration := 20 ;
     global.acquisitionISI := 1;  
     
     Exp_Params.create;
@@ -126,11 +118,14 @@ e.g. the membrane resistance -> experimental value
  name and the time's start of the protocol
 ===============================================================================}
 
+
 program initialisation
 init_global;
 setup_init;
 
 program classic_electrophy
+init_global;
+setup_init;
 classic_electrophy;
 
 program AdExp_charact

@@ -7,7 +7,7 @@ Additional stationary current can be injected with the Icst variable (Icst in nA
 ENDCOMMENT
 
 NEURON {
-	POINT_PROCESS Exp2Syn_eiNtwk
+	POINT_PROCESS ExpSyn_eiNtwk
 	RANGE tauE, Ee, ge 
 	RANGE tauI, Ei, gi
 	RANGE Ipico, Icst, stop_flag
@@ -31,8 +31,6 @@ PARAMETER {
 ASSIGNED {
 	v (mV)
 	i (nA)
-	ge (uS)
-	gi (uS)
 	Ipico
 	stop_flag
 }
@@ -59,8 +57,8 @@ BREAKPOINT {
 }
 
 DERIVATIVE state {
-    ge' = -ge/tau1E
-    gi' = -gi/tau1I
+    ge' = -ge/tauE
+    gi' = -gi/tauI
 }
 
 NET_RECEIVE(weight (uS)) { 

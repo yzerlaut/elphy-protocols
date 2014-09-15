@@ -1,7 +1,7 @@
 NEURON {
 	POINT_PROCESS Exp2Syn_eiNtwk
-	RANGE tau1E,tau2E, Ee, ge 
-	RANGE tau1I,tau2I, Ei, gi
+	RANGE tau1E,tauE, Ee, ge 
+	RANGE tau1I,tauI, Ei, gi
 	RANGE Ipico, stop_flag
 	NONSPECIFIC_CURRENT i
 }
@@ -14,10 +14,10 @@ UNITS {
 
 PARAMETER {
 	tau1E = 0.1 (ms) <1e-9,1e9>
-	tau2E = 5 (ms) <1e-9,1e9>
+	tauE = 5 (ms) <1e-9,1e9>
 	Ee = 0	(mV)
 	tau1I = 0.2 (ms) <1e-9,1e9>
-	tau2I = 10 (ms) <1e-9,1e9>
+	tauI = 10 (ms) <1e-9,1e9>
 	Ei = -80 (mV)
 }
 
@@ -42,22 +42,22 @@ STATE {
 INITIAL {
     LOCAL tpE,tpI
     :excitation
-    if (tau1E/tau2E > .9999) {
-	tau1E = .9999*tau2E
+    if (tau1E/tauE > .9999) {
+	tau1E = .9999*tauE
     }
     Ae = 0
     Be = 0
-    tpE = (tau1E*tau2E)/(tau2E - tau1E) * log(tau2E/tau1E)
-    factorE = -exp(-tpE/tau1E) + exp(-tpE/tau2E)
+    tpE = (tau1E*tauE)/(tauE - tau1E) * log(tauE/tau1E)
+    factorE = -exp(-tpE/tau1E) + exp(-tpE/tauE)
     factorE = 1/factorE
     :inhibition
-    if (tau1I/tau2I > .9999) {
-	tau1I = .9999*tau2I
+    if (tau1I/tauI > .9999) {
+	tau1I = .9999*tauI
     }
     Ai = 0
     Bi = 0
-    tpI = (tau1I*tau2I)/(tau2I - tau1I) * log(tau2I/tau1I)
-    factorI = -exp(-tpI/tau1I) + exp(-tpI/tau2I)
+    tpI = (tau1I*tauI)/(tauI - tau1I) * log(tauI/tau1I)
+    factorI = -exp(-tpI/tau1I) + exp(-tpI/tauI)
     factorI = 1/factorI
     Ipico = 0
     stop_flag = 0
@@ -76,9 +76,9 @@ BREAKPOINT {
 
 DERIVATIVE state {
     Ae' = -Ae/tau1E
-    Be' = -Be/tau2E
+    Be' = -Be/tauE
     Ai' = -Ai/tau1I
-    Bi' = -Bi/tau2I
+    Bi' = -Bi/tauI
 }
 
 NET_RECEIVE(weight (uS)) { 

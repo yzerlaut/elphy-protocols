@@ -21,42 +21,50 @@ var global_dialog : Tdialog ;
 
 {Tmacro object, see doc\, specifically loads only one file}
 var 
-t_classic_electrophy, field_effects, t_transfer_functions : Tmacro ;
 t_macro : Tmacro ;
 
 procedure classic_electrophy;
 begin
 global.experiment_type:='classic_electrophy';
-//t_classic_electrophy.create(root_path+'classic_electrophy.PG2');
-//t_classic_electrophy.ExecuteCommand('Launch_from_Tmacro');
 t_macro.create(root_path+'classic_electrophy.PG2');
+t_macro.ExecuteCommand('Launch_from_Tmacro');
+end;
+
+procedure AdExp_charact;
+begin
+t_macro.free;
+global.experiment_type:='AdExp_charact';
+t_macro.create(root_path+'AdExp_charact.PG2');
+t_macro.ExecuteCommand('Launch_from_Tmacro');
+end;
+ 
+procedure fluctuation_driven_regime;
+begin
+global.experiment_type:='fluctuation_driven_regime';
+t_macro.create(root_path+'fluctuation_driven_regime.PG2');
+t_macro.ExecuteCommand('Launch_from_Tmacro');
+end;
+
+procedure transfer_functions;
+begin
+global.experiment_type:='transfer_functions';
+t_macro.create(root_path+'transfer_functions.PG2');
 t_macro.ExecuteCommand('Launch_from_Tmacro');
 end;
 
 procedure Efield_effects;
 begin
 global.experiment_type:='field_effects';
-//field_effects.create(root_path+'field_effects.PG2');
-//field_effects.ExecuteCommand('Launch_from_Tmacro');
-t_macro.create('field_effects.PG2');
-//t_macro.ExecuteCommand('Launch_from_Tmacro');
+t_macro.create(root_path+'field_effects.PG2');
+t_macro.ExecuteCommand('Launch_from_Tmacro');
 end;
- 
-              
-procedure transfer_functions;
-begin
-global.experiment_type:='transfer_functions';
-t_transfer_functions.create(root_path+'transfer_functions.PG2');
-t_transfer_functions.ExecuteCommand('Launch_from_Tmacro');
-end;
-
 
 procedure global_event(n:integer);
 begin
     global_dialog.updatevar;
      case n of
        100 : begin
-             if location_int=2 then   // MSwin + Bal's Setup
+             if location_int=2 then   // MSwin + Bal Setup
                  begin
                     global.location  := 'Patch Setup'  ;
                     global.data_Path := 'D:\yann\DATA\' ;
@@ -83,8 +91,10 @@ begin
              end;
              case experiment_int of
               1 : classic_electrophy;
-              2 : field_effects ;
-              3 : transfer_functions ;
+              2 : AdExp_charact;
+              3 : fluctuation_driven_regime;
+              4 : transfer_functions;
+              5 : Efield_effects;
              end;
        end;
      end;   
@@ -130,7 +140,7 @@ begin
   setText(' today is :'+Istr(Day)+'/'+Istr(Month)+'/'+Istr(Year)+' ');
   setText(' (important for data saving) ');
   setText(' ================================= ');
-  getStringList(' Experiment Type : ',' | Classic Electrophy| Field Effect  | Transfer Function ','0|1|2|3',experiment_int,1003);  { Onevent flag ->199}
+  getStringList(' Experiment Type : ',' | Classic Electrophy| AdExp charact | Fluctuation driven Regime| Transfer Function| E-Field Effects','0|1|2|3|4|5',experiment_int,1003);  { Onevent flag ->199}
   setText(' ================================= ');
   getCommandA(' ----------------LAUNCH----------------- ', 0,100);
   caption := 'Global' ;
@@ -151,12 +161,9 @@ e.g. the membrane resistance -> experimental value
  name and the time's start of the protocol
 ===============================================================================}
 
-
-
 program Experiments
 init_global_dialog; 
 global_dialog.show;                                                     
-
 
 
 { =================== ANALYSIS ====================== }

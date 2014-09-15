@@ -13,6 +13,7 @@ modl_reg(){
 fprintf(stderr," Exp2Syn_eiNtwk.mod");
 fprintf(stderr," ExpSyn_eiNtwk.mod");
 fprintf(stderr," IClamp_WhiteNoise.mod");
+fprintf(stderr," WangBuszaki.mod");
 fprintf(stderr," adexp.mod");
 fprintf(stderr," hh2.mod");
 fprintf(stderr," myIClamp.mod");
@@ -23,6 +24,7 @@ fprintf(stderr, "\n");
 _Exp2Syn_eiNtwk_reg();
 _ExpSyn_eiNtwk_reg();
 _IClamp_WhiteNoise_reg();
+_WangBuszaki_reg();
 _adexp_reg();
 _hh2_reg();
 _myIClamp_reg();

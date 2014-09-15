@@ -8,7 +8,6 @@ Const
    CONTINUOUS_TIMER = 0.5 ; {timer for Tdetect update}
    
    
-
 var  { ========= COMMON VARIABLES ============ }
    protocol_choice : integer; 
    amplifier, comments, PathOfTheDay, root_dir : string ; 
@@ -147,12 +146,13 @@ begin {-- we set all the variables of the acquisition class, then we create
    RTneuron.FadvanceON:=True; { in dynamic clamp -> NEURON calculus }  
    RTneuron.execute('create soma');
    RTneuron.execute('insert pas');
+   RTneuron.execute('e_pas = -65');
    RTneuron.execute('L=diam=79.8');
    RTneuron.Execute('g_pas = 5e-5');
-   RTneuron.execute('insert hh_hippoc');
+   RTneuron.execute('insert WangBuszaki');
    
    RTneuron.Execute('objref stim');
-   RTneuron.Execute('soma stim = new Exp2Syn_eiNtwk(.5)');
+   RTneuron.Execute('soma stim = new ExpSyn_eiNtwk(.5)');
    for i:=1 to 6 do 
    begin 
      acquisition.Channels[i].ChannelType := TI_Neuron;
@@ -194,7 +194,7 @@ begin {-- we set all the variables of the acquisition class, then we create
 
    RTneuron.Execute('create soma');
    RTneuron.Execute('objref stim');
-   RTneuron.Execute('soma stim = new Exp2Syn_eiNtwk(.5)');
+   RTneuron.Execute('soma stim = new ExpSyn_eiNtwk(.5)');
    
    for i:=1 to 6 do 
    begin 
@@ -812,6 +812,7 @@ begin
    RTneuron.execute('nsE.seed('+Rstr(SEED)+')');
    fe_tot := f_exc; // NO SYNAPSES NUMBER !! 
    RTneuron.execute('ncE.weight = 0.001*'+Rstr(Qe));
+
    if fe_tot<>0 then RTneuron.execute('nsE.interval = 1000/'+Rstr(fe_tot)) else RTneuron.execute('nsE.interval = 1e30');
    // configuring the inhibitory presynaptic events
    RTneuron.execute('nsI.seed('+Rstr(SEED+1)+')');
@@ -1090,7 +1091,6 @@ end;
 -------------------- initialisation from file ----------------------------------
 -------------------------------------------------------------------------------}
 
-
 var 
     already_initiated : boolean ; // to know if we need to reinitialize the TDBrecord
     global, Exp_params : TDBrecord ;
@@ -1105,20 +1105,15 @@ begin
      begin
      vec_params.LoadObject(filename);
      f_acq:= vec_params[0]; 
-     Rm :=vec_params[1] ; 
-     Cm :=vec_params[2] ; 
-     El :=vec_params[3] ;  
-     Bridge :=vec_params[4] ; 
-     Holding:=vec_params[5]; 
-     gain1_int:=Round(vec_params[6]) ; 
-     gain1:=vec_params[7] ;
-     gain2_int := Round(vec_params[8]) ; 
-     gain2:=vec_params[9] ;
+     Rm :=vec_params[1] ;  Cm :=vec_params[2] ; 
+     El :=vec_params[3] ;  Bridge :=vec_params[4] ;  Holding:=vec_params[5]; 
+     gain1_int:=Round(vec_params[6]) ;   gain1:=vec_params[7] ;
+     gain2_int := Round(vec_params[8]) ; gain2:=vec_params[9] ;
      // now the time at which they have been calculated !
      Hour:=Round(vec_params[10]); Minute:=Round(vec_params[11]) ; Second:=Round(vec_params[11]) ; 
      end else begin
      MessageBox('no parameters loaded !!!');
-     Rm :=500;Cm:=33;Bridge:=5;El:=-65;f_acq:=20;Holding:=0;
+     Rm :=100;Cm:=200;Bridge:=15;El:=-65;f_acq:=20;Holding:=0;
      gain1_int:=1;gain1:=1;gain2_int:=1;gain2:=1;
      end; 
      TDBrecord('PG0.global').f_acq := f_acq ; TDBrecord('PG0.global').Rm := Rm ;
@@ -1139,13 +1134,13 @@ global.create; Exp_Params.create;
  
 
 /// ---- CASE ON LAPTOP
-{TDBrecord('PG0.global').amplifier:='nrn_simulation'; // choice of the amplifier
+TDBrecord('PG0.global').amplifier:='nrn_simulation'; // choice of the amplifier
 PathOfTheDay := 'C:\Users\yann\Documents\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ;
-TDBrecord('PG0.global').loadnrnPath := 'D:/home/yann/work/elphy_code/nrn_files/' ; }
+TDBrecord('PG0.global').loadnrnPath := 'D:/home/yann/work/elphy_code/nrn_files/' ; 
 /// ---- CASE ON MULTICLAMP
-TDBrecord('PG0.global').amplifier:='multiclamp';
+{TDBrecord('PG0.global').amplifier:='multiclamp';
 PathOfTheDay := 'D:\Yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
-TDBrecord('PG0.global').loadnrnPath := 'D:/Yann/elphy_code/nrn_files/' ; 
+TDBrecord('PG0.global').loadnrnPath := 'D:/Yann/elphy_code/nrn_files/' ; }
 if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);
 TDBrecord('PG0.global').PathOfTheDay := PathOfTheDay ;
 

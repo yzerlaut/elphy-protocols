@@ -777,6 +777,7 @@ begin
    mt_dialog.getCommandA('  init() ',0,999);
    mt_dialog.setText('');
    mt_dialog.getCommandA(' Fit "Tau" with cursors ',0,998);
+   mt_dialog.getCommandA(' Set Global Rs, Rm & Cm ',0,997);
    mt_dialog.OnEvent:=VCMT_event ;
    AddDialog(1,5,mt_dialog); 
 

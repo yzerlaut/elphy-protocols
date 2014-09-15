@@ -9,15 +9,17 @@
 { -----------------------------------------------  2013-[...] -------- }
 
 
-var global_dialog : Tdialog ;
-    location_int, amplifier_int, experiment_int : integer ;// ==> amplifier, location and experiment flag
-    global : TDBrecord ; // ==> Stores the global variables !! 
-    Exp_Params : TDBrecord ; // ==> Stores the parameters specific to each experience !!
+const 
+   location= 'Notebook'; {'Notebook' or 'Patch Setup'}
+   amplifier= 'nrn_simulation'; {'nrn_simulation' or 'multiclamp' or 'NPI'}
+
+
+var 
+    global : TDBrecord ;  {     = => Stores the global variables !! }
+    Exp_Params : TDBrecord ; { = => Stores the parameters specific to each experience !!}
     {variables to fetch the date and time }
     Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; 
-    pathOfTheDay, root_path : string ;
-    main_protocol : string ; 
-    already_initiated : boolean ;
+   pathOfTheDay, root_path : string ; successfull_init : Boolean;
 
 {Tmacro object, see doc\, specifically loads only one file}
 var 
@@ -32,7 +34,6 @@ end;
 
 procedure AdExp_charact;
 begin
-t_macro.free;
 global.experiment_type:='AdExp_charact';
 t_macro.create(root_path+'AdExp_charact.PG2');
 t_macro.ExecuteCommand('Launch_from_Tmacro');
@@ -59,53 +60,39 @@ t_macro.create(root_path+'field_effects.PG2');
 t_macro.ExecuteCommand('Launch_from_Tmacro');
 end;
 
-procedure global_event(n:integer);
+procedure setup_init;
 begin
-    global_dialog.updatevar;
-     case n of
-       100 : begin
-             if location_int=2 then   // MSwin + Bal Setup
-                 begin
-                    global.location  := 'Patch Setup'  ;
-                    global.data_Path := 'D:\yann\DATA\' ;
-                    global.loadnrnPath := 'D:/yann/myelphy/nrn_files/' ;
-                    root_path := 'D:\yann\myelphy\' ;
-                    global.root_path:= root_path ;
-                    global.sep:='\_';
-                 end;
-             if location_int=1 then   // MSWin + Notebook
-                 begin
-                    global.location := 'Notebook' ;
-                    global.data_Path:='D:\home\yann\files\DATA\';
-                    global.loadnrnPath:='D:/home/yann/work/elphy_code/nrn_files/';
-                    root_path:= 'D:\home\yann\work\elphy_code\';
-                    global.root_path:=root_path ;
-                    global.sep:='/_'; {N.B. linux computers have different separators, see above paths}
-                 end;
-                 PathOfTheDay := global.data_Path;
-                 PathOfTheDay := PathOfTheDay+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'/' ;
-                 global.PathOfTheDay := PathOfTheDay ;
-             case amplifier_int of
-             1 : global.amplifier := 'nrn_simulation' ;
-             2 : global.amplifier := 'multiclamp' ;
-             end;
-             case experiment_int of
-              1 : classic_electrophy;
-              2 : AdExp_charact;
-              3 : fluctuation_driven_regime;
-              4 : transfer_functions;
-              5 : Efield_effects;
-             end;
-       end;
-     end;   
-    global_dialog.update;
+   successfull_init:=False;
+   if location='Notebook' then
+   begin
+      global.location := 'Notebook' ;
+      global.data_Path:='D:\home\yann\files\DATA\';
+      global.loadnrnPath:='D:/home/yann/work/elphy_code/nrn_files/';
+      root_path:= 'D:\home\yann\work\elphy_code\';
+      global.root_path:=root_path ;
+      global.sep:='/_'; {N.B. linux computers have different separators, see above paths}
+      successfull_init := True;
+   end
+   else if location='Patch Setup' then
+   begin
+      global.location  := 'Patch Setup'  ;
+      global.data_Path := 'D:\yann\DATA\' ;
+      global.loadnrnPath := 'D:/yann/myelphy/nrn_files/' ;
+      root_path := 'D:\yann\myelphy\' ;
+      global.root_path:= root_path ;
+      global.sep:='\_';
+      successfull_init := True;
+   end
+   else MessageBox('Problem with the Setup Initialisation \n check the path');
+   PathOfTheDay := global.data_Path;
+   PathOfTheDay := PathOfTheDay+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'/' ;
+   DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond);
+   global.PathOfTheDay := PathOfTheDay ;
+   global.amplifier := amplifier;
 end;
 
-procedure init_global_dialog;
+procedure init_global;
 begin
-    location_int :=1;
-    amplifier_int := 1;
-    experiment_int := 1;
     global.create;
     // we initialize some recording quantities
     global.f_acq:=10; // in kHz
@@ -117,34 +104,12 @@ begin
     global.cont_choice := True; // if True -> continus mode, else episode
     global.stim := False;  // if True acquisition.Fstimulate := True
     global.max_EP_num := 0 ;
-    global.f_acq := 10 ;  // in kHz
     global.episode_duration := 2000 ;
     global.acquisitionISI := 1;  
     
     Exp_Params.create;
-    already_initiated :=True;
     InsertPage(1,'fake');DeleteAllPages('fake');InsertPage(1,'default');DeleteAllPages('default');
     Color := cl_gray ;
-
-  {----- Path for file saving ------- }
-  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
-  
-  with global_dialog do
-  begin
-  create;
-  OnEvent := global_event ;
-  getStringList(' Device  : ',' | Notebook | Bal Setup ','0|1|2',location_int,101);  { Onevent flag ->199}
-  setText(' ================================= ');
-  getStringList(' Amplifier : ',' | RTneuron-Simulation | MultiClamp | NPI | AxoClamp ','0|1|2|3|4',amplifier_int,102);  { Onevent flag ->199}
-  setText(' ================================= ');
-  setText(' today is :'+Istr(Day)+'/'+Istr(Month)+'/'+Istr(Year)+' ');
-  setText(' (important for data saving) ');
-  setText(' ================================= ');
-  getStringList(' Experiment Type : ',' | Classic Electrophy| AdExp charact | Fluctuation driven Regime| Transfer Function| E-Field Effects','0|1|2|3|4|5',experiment_int,1003);  { Onevent flag ->199}
-  setText(' ================================= ');
-  getCommandA(' ----------------LAUNCH----------------- ', 0,100);
-  caption := 'Global' ;
-  end;
 end;
 
 
@@ -161,9 +126,25 @@ e.g. the membrane resistance -> experimental value
  name and the time's start of the protocol
 ===============================================================================}
 
-program Experiments
-init_global_dialog; 
-global_dialog.show;                                                     
+program initialisation
+init_global;
+setup_init;
+
+program classic_electrophy
+classic_electrophy;
+
+program AdExp_charact
+AdExp_charact;
+
+program fluctuation_driven_regime
+fluctuation_driven_regime;
+
+program transfer_functions
+transfer_functions;
+
+program Efield_effects
+Efield_effects;
+
 
 
 { =================== ANALYSIS ====================== }

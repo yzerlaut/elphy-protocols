@@ -1,8 +1,0 @@
-Exception: STATUS_ACCESS_VIOLATION at eip=610672B7
-eax=00000000 ebx=00000000 ecx=00000000 edx=00000000 esi=00000000 edi=00000000
-ebp=0062C9E8 esp=0062C9C0 program=Z:\home\yann\Elphy\nrn60\bin\rxvt.exe, pid 49, thread main
-cs=0023 ds=002B es=002B fs=0063 gs=006B ss=002B
-Stack trace:
-Frame     Function  Args
-0062C9E8  610672B7  (61167DF0, 61167C28, 0062CA18, 7B85BCD4)
-End of stack trace

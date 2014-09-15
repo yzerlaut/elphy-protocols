@@ -20,7 +20,7 @@ var  { ========= COMMON VARIABLES ============ }
    gain1,gain2 : real; gain1_int,gain2_int,clamp_int:integer;cont_choice:boolean;  
    dll_load : string ;
    detector, time_detector : Tdetector ;
-   Rm, Cm, Rs, El : real ; // parameters of the patch recording !
+   Rm, Cm, Bridge, El, Holding, f_acq : real ; // parameters of the patch recording !
 
 { ============================================================================
  ---- Protocol names and graphical settings ----------------------------------
@@ -201,11 +201,15 @@ begin {-- we set all the variables of the acquisition class, then we create
      acquisition.Channels[i].ChannelType := TI_Neuron;
      acquisition.Channels[i].DownSamplingFactor:=1;
    end;
-   RTneuron.AdcChan[0].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[0].NrnSymbolName:='soma.v(.5)';    // primary points on v
+   // FILTERED MEMBRANE POTENTIAL (EXITS FROM SCOPE !!!)
+   RTneuron.AdcChan[2].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[2].NrnSymbolName:='soma.v(.5)';    // primary points on v
+   // HIGH FREQUENCY MEMBRANE POTENTIAL
+   RTneuron.AdcChan[0].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[0].NrnSymbolName:='v_hf';
+   
    RTneuron.AdcChan[1].setScale(0,32767,0,20000.0/gain2); RTneuron.AdcChan[1].NrnSymbolName:='Iinj'; // secondary comes from analogous
    RTneuron.DacChan[0].NrnSymbolName:='stim.Ipico'; RTneuron.DacChan[0].setScale(0,32767,0,4000.0); // command -> I clamp
    
-   acquisition.Channels[1].NrnSymbolName:='soma.v(.5)'; acquisition.Channels[1].unitY:='mV' ;
+   acquisition.Channels[1].NrnSymbolName:='v_hf'; acquisition.Channels[1].unitY:='mV' ;
    acquisition.Channels[2].NrnSymbolName:='Iinj'; acquisition.Channels[2].unitY:='pA' ;
    acquisition.Channels[1].unitY:='mV'; addObject(1,1,v1); v1.title:='V_intra(t)';
    // For real data, 2-> real current, 5 -> theoretical current
@@ -295,26 +299,25 @@ var
 
 { *** Balanced Conductance Shotnoise Stim *** }
 var
-   freq_ge, freq_gi, qe, qi, tau1E, tau2E, tau1I, tau2I, Ee, Ei	: real; { excitatory time constant}
+   freq_ge, freq_gi, qe, qi, tauE, tauI, Ee, Ei	: real; { excitatory time constant}
    Nexc, Ninh	: integer;   SEED : integer;  vsum : Tvector; ind : integer ;
 
 procedure initTFparameters;
 begin
    freq_ge :=1.6; freq_gi :=4; Nexc := 2000; Ninh := 500;
    qe:=0.6;  { nS }  
-   tau1E:=0.01; {ms}
-   tau2E:=5; {ms}
-   qi:= 1.1;  { uS }  tau1I:=0.01; {ms} tau2I:=5; {ms}
+   tauE:=5; {ms}
+   qi:= 1.1;  { uS }  tauI:=5; {ms}
    Ee:= 0; Ei:= -80; SEED :=1 ;
    max_spikes_number :=20;
 end;
 
 procedure write_shotnoise_params;
 begin
-    TDBrecord('PG0.Exp_params').tau1E:=tau1E ; TDBrecord('PG0.Exp_params').tau2E:=tau2E ;
+    TDBrecord('PG0.Exp_params').tauE:=tauE ; 
     TDBrecord('PG0.Exp_params').Ee:=Ee ; TDBrecord('PG0.Exp_params').Qe:=Qe ;
     TDBrecord('PG0.Exp_params').f_exc:=freq_ge ; TDBrecord('PG0.Exp_params').seed_exc:=SEED ;
-    TDBrecord('PG0.Exp_params').tau1I:=tau1I ; TDBrecord('PG0.Exp_params').tau2I:=tau2I ;
+    TDBrecord('PG0.Exp_params').tauI:=tauI ; 
     TDBrecord('PG0.Exp_params').Ei:=Ei ; TDBrecord('PG0.Exp_params').Qi:=Qi ;
     TDBrecord('PG0.Exp_params').f_inh:=freq_gi ; TDBrecord('PG0.Exp_params').seed_inh:=SEED+1 ;
 end;
@@ -359,8 +362,8 @@ begin
    RTneuron.execute('objref ncE, nsE, ncI, nsI');
    
    // parameters of the synapses
-   RTneuron.execute('stim.tau1E = '+Rstr(tau1E)); RTneuron.execute('stim.tau2E = '+Rstr(tau2E));
-   RTneuron.execute('stim.tau1I = '+Rstr(tau1I)); RTneuron.execute('stim.tau2I = '+Rstr(tau2I));
+   RTneuron.execute('stim.tauE = '+Rstr(tauE));
+   RTneuron.execute('stim.tauI = '+Rstr(tauI));
    RTneuron.execute('stim.Ee = '+Rstr(Ee)); RTneuron.execute('stim.Ei = '+Rstr(Ei));
    
    // configuring the excitatory presynaptic events
@@ -414,14 +417,12 @@ begin
       setText('o==> EXCITATION');
       getIntegerA('Nexc (# exc synapses)',Nexc,6,200);
       getRealA('excitatory quantal (nS)',qe,10,2,200);
-      getRealA('Tau1_E (ms)',tau1E,10,2,200);
-      getRealA('Tau2_E (ms)',tau2E,10,2,200);
+      getRealA('Tau_E (ms)',tauE,10,2,200);
       getRealA('Ee (revers. pot.) (mV)',Ee,10,2,200);
       setText('o==> INHIBITION');
       getIntegerA('Ninh (# inh synapses)',Ninh,6,200);
       getRealA('inhibitory quantal (nS)',qi,10,2,200);
-      getRealA('Tau1_I (ms)',tau1I,10,2,200);
-      getRealA('Tau2_I (ms)',tau2I,10,2,200);
+      getRealA('Tau_I (ms)',tauI,10,2,200);
       getRealA('Ei (revers. pot.) (mV)',Ei,10,2,200);
       setText('');
       setText(' === frequencies ===');
@@ -577,8 +578,7 @@ begin
    RTneuron.execute('ncI.weight = -0.001*'+Rstr(Qi));
    RTneuron.execute('ncI.delay = 0');
    // parameters of the synapses
-   RTneuron.execute('stim.tau1E = '+Rstr(tau1E)); RTneuron.execute('stim.tau2E = '+Rstr(tau2E));
-   RTneuron.execute('stim.tau1I = '+Rstr(tau1I)); RTneuron.execute('stim.tau2I = '+Rstr(tau2I));
+   RTneuron.execute('stim.tauE = '+Rstr(tauE)); RTneuron.execute('stim.tauI = '+Rstr(tauI));
    RTneuron.execute('stim.Ee = '+Rstr(Ee)); RTneuron.execute('stim.Ei = '+Rstr(Ei));
    // then
    continu_flag :=True ;
@@ -754,10 +754,10 @@ end;
 
 procedure write_GTE_params;
 begin
-    TDBrecord('PG0.Exp_params').tau1E:=tau1E ; TDBrecord('PG0.Exp_params').tau2E:=Te ;
+    TDBrecord('PG0.Exp_params').tauE:=Te ;
     TDBrecord('PG0.Exp_params').Ee:=Ee ; 
     TDBrecord('PG0.Exp_params').seed_exc:=SEED ;
-    TDBrecord('PG0.Exp_params').tau1I:=tau1I ; TDBrecord('PG0.Exp_params').tau2I:=Ti ;
+    TDBrecord('PG0.Exp_params').tauI:=Ti ;
     TDBrecord('PG0.Exp_params').Ei:=Ei ; 
     TDBrecord('PG0.Exp_params').seed_inh:=SEED+1 ;
     TDBrecord('PG0.Exp_params').clamp_mean := clamp_mean;
@@ -836,11 +836,10 @@ begin
    RTneuron.execute('nsI.start = 0'); RTneuron.execute('nsI.number = 1e30');
    RTneuron.execute('nsI.noise = 1');                        
    RTneuron.execute('ncI = new NetCon(nsI, stim)');
-   RTneuron.execute('ncI.weight = -0.001*'+Rstr(Qi));
+   RTneuron.execute('ncI.weight = -0.001*'+Rstr(Qi));  // NEGATIVE FLAG HERE !!!!
    RTneuron.execute('ncI.delay = 0');
    // parameters of the synapses
-   RTneuron.execute('stim.tau1E = '+Rstr(tau1E)); RTneuron.execute('stim.tau2E = '+Rstr(tau2E));
-   RTneuron.execute('stim.tau1I = '+Rstr(tau1I)); RTneuron.execute('stim.tau2I = '+Rstr(tau2I));
+   RTneuron.execute('stim.tauE = '+Rstr(tauE)); RTneuron.execute('stim.tauI = '+Rstr(tauI));
    RTneuron.execute('stim.Ee = '+Rstr(Ee)); RTneuron.execute('stim.Ei = '+Rstr(Ei));
    // then
    continu_flag :=True ;
@@ -1007,6 +1006,7 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
   TDBrecord('PG0.global').Gain1_int:=gain1_int;
   TDBrecord('PG0.global').Gain2_int:=gain2_int;
   TDBrecord('PG0.global').clamp_int := clamp_int; 
+  TDBrecord('PG0.global').f_acq := f_acq; 
   case n of
     101: begin 
               case protocol_choice of
@@ -1026,6 +1026,7 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
   gain1:=TDBrecord('PG0.global').Gain1;
   gain2:=TDBrecord('PG0.global').Gain2;    
   clamp_int:=TDBrecord('PG0.global').clamp_int ;      
+  f_acq := TDBrecord('PG0.global').f_acq ; 
   MainDialog.update;
 end;    
 
@@ -1043,11 +1044,14 @@ protocol_choice := 0;
    with MainDialog do
    begin
       create;
+      getRealA('Acquisition freq. (kHz)',f_acq,3,2,785);
       setText('|=== Recording Parameters ===|');
-      getRealA('Access resistance (MO)',Rs,10,2,200);
-      getRealA('Input resistance (MO)',Rm,10,2,200);
-      getRealA('Membrane capacitance (pF)',Cm,10,2,200);
-      getRealA('Resting potential (mV)',El,10,2,200);
+      getRealA('Rs -- Access resistance (MO)',Bridge,4,2,785);
+      getRealA('Rm -- Input resistance (MO)',Rm,4,2,785);
+      getRealA('Cm -- Membrane capacitance (pF)',Cm,4,2,785);
+      getRealA('El -- Resting potential (mV)',El,4,2,785);
+      getRealA('Ih -- Holding current (pA)',Holding,4,2,785);
+      setText('Last measured at : '+Istr(Hour)+'h '+Istr(Minute)+'m '+Istr(Second)+'s');
       setText('|--------------------------------------------------------|');
       setText('');
       OnEvent := MainDialog_update;
@@ -1090,66 +1094,92 @@ end;
 var 
     already_initiated : boolean ; // to know if we need to reinitialize the TDBrecord
     global, Exp_params : TDBrecord ;
+    vec_params : Tvector ;
+
+procedure read_params;
+var size : integer ;  filename : string;
+begin
+     vec_params.create;
+     filename :=TDBrecord('PG0.global').PathOfTheDay+'cell_params';
+     if FileExists(filename) then 
+     begin
+     vec_params.LoadObject(filename);
+     f_acq:= vec_params[0]; 
+     Rm :=vec_params[1] ; 
+     Cm :=vec_params[2] ; 
+     El :=vec_params[3] ;  
+     Bridge :=vec_params[4] ; 
+     Holding:=vec_params[5]; 
+     gain1_int:=Round(vec_params[6]) ; 
+     gain1:=vec_params[7] ;
+     gain2_int := Round(vec_params[8]) ; 
+     gain2:=vec_params[9] ;
+     // now the time at which they have been calculated !
+     Hour:=Round(vec_params[10]); Minute:=Round(vec_params[11]) ; Second:=Round(vec_params[11]) ; 
+     end else begin
+     MessageBox('no parameters loaded !!!');
+     Rm :=500;Cm:=33;Bridge:=5;El:=-65;f_acq:=20;Holding:=0;
+     gain1_int:=1;gain1:=1;gain2_int:=1;gain2:=1;
+     end; 
+     TDBrecord('PG0.global').f_acq := f_acq ; TDBrecord('PG0.global').Rm := Rm ;
+     TDBrecord('PG0.global').Cm := Cm ; TDBrecord('PG0.global').El := El ;  
+     TDBrecord('PG0.global').Bridge := Bridge ;  TDBrecord('PG0.global').Holding := Holding ; 
+     TDBrecord('PG0.global').gain1 := gain1 ;  TDBrecord('PG0.global').gain2 := gain2 ;
+end;
 
 procedure global_init;
 var PathOfTheDay : string ;
 begin
 
 RTneuron.resetParams;
-Rm :=500;Cm:=33;Rs:=5;El:=-65; // initialize recording parameters
+DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
 time_detector.create ; detector.create ;
 
-global.create;
-DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
+global.create; Exp_Params.create;
+ 
+
 /// ---- CASE ON LAPTOP
-{global.amplifier:='nrn_simulation'; // choice of the amplifier
+{TDBrecord('PG0.global').amplifier:='nrn_simulation'; // choice of the amplifier
 PathOfTheDay := 'C:\Users\yann\Documents\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ;
-global.loadnrnPath := 'D:/home/yann/work/elphy_code/nrn_files/' ; }
+TDBrecord('PG0.global').loadnrnPath := 'D:/home/yann/work/elphy_code/nrn_files/' ; }
 /// ---- CASE ON MULTICLAMP
-global.amplifier:='multiclamp';
-PathOfTheDay := 'D:\yann\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ; 
-global.loadnrnPath := 'D:/yann/elphy_code/nrn_files/' ; 
+TDBrecord('PG0.global').amplifier:='multiclamp';
+PathOfTheDay := 'D:\Yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
+TDBrecord('PG0.global').loadnrnPath := 'D:/Yann/elphy_code/nrn_files/' ; 
 if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);
-global.PathOfTheDay := PathOfTheDay ;
-global.f_acq:=10; // in kHz
-global.gain1:=1; // gain of the first channel
-global.int_gain1:=1; // integer coding for this gain
-global.gain2:=1; // gain of the second channel
-global.int_gain2:=1; //
-global.clamp_int := 1; // integer that code for 1:IC, 2: VC
-global.cont_choice := True; // if True -> continus mode, else episode
-global.stim := False;  // if True acquisition.Fstimulate := True
-global.main_protocol:='';
-global.protocol:='transfer_functions';
-global.saving := False ;
-global.Rs := 0;
-global.Rm := 0;
-global.Cm :=0;
-global.episode_duration := 0 ;
-global.max_EP_num :=0 ;
-global.acquisitionISI:=0. ; 
-global.FadvanceON := False ;
-Exp_Params.create;
-already_initiated :=True;
+TDBrecord('PG0.global').PathOfTheDay := PathOfTheDay ;
+
+
+// those 3 parameters are obvious, we just keep them for compatibility with the other conventions
+TDBrecord('PG0.global').clamp_int := 1; // integer that code for 1:IC, 2: VC
+TDBrecord('PG0.global').cont_choice := True; // if True -> continus mode, else episode
+TDBrecord('PG0.global').stim := False;  // if True acquisition.Fstimulate := True
+
+
+TDBrecord('PG0.global').main_protocol:='';
+TDBrecord('PG0.global').protocol:='transfer_functions';
+TDBrecord('PG0.global').saving := True ;
+
+
+TDBrecord('PG0.global').FadvanceON := True ;  
+   
 InsertPage(1,'fake');DeleteAllPages('fake');InsertPage(1,'default');DeleteAllPages('default');
 Color := cl_gray ;
 end;
 
-program Launch_from_file
-global_init ;
-SetProtocolNames;
-init_windows;
-Init_Main_Dialog;
-initTFparameters;
-init_massivetf_const;
 
+{
 program set_to_zero
 Rtneuron.DacChan[0].HoldingValue:=0;
 Rtneuron.DacChan[0].UseHoldingValue:=True;    
+}
 
-program Launch_from_Tmacro
+program Launch
+global_init ;
+read_params;
 SetProtocolNames;
 init_windows;
 Init_Main_Dialog;
 initTFparameters;
 init_massivetf_const;
+

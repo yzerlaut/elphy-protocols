@@ -11,7 +11,9 @@ modl_reg(){
 	fprintf(stderr, "Additional mechanisms from files\n");
 
 fprintf(stderr," Exp2Syn_eiNtwk.mod");
+fprintf(stderr," ExpSyn_eiNtwk.mod");
 fprintf(stderr," IClamp_WhiteNoise.mod");
+fprintf(stderr," adexp.mod");
 fprintf(stderr," hh2.mod");
 fprintf(stderr," myIClamp.mod");
 fprintf(stderr," myVClamp.mod");
@@ -19,7 +21,9 @@ fprintf(stderr," netstim_from_self_spike.mod");
 fprintf(stderr, "\n");
     }
 _Exp2Syn_eiNtwk_reg();
+_ExpSyn_eiNtwk_reg();
 _IClamp_WhiteNoise_reg();
+_adexp_reg();
 _hh2_reg();
 _myIClamp_reg();
 _myVClamp_reg();

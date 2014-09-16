@@ -17,6 +17,7 @@ ENDCOMMENT
 NEURON	{ 
   POINT_PROCESS NetStim_from_self_spike
   RANGE interval, number, start, synapses_number
+  RANGE bound_min_interval, bound_max_interval
   RANGE noise, interval_increment
   RANGE n, thresh, time, firing
   RANGE spike_number_for_update, nspike_last_freq
@@ -29,14 +30,16 @@ UNITS {
 
 PARAMETER {
     interval	= 1e4 (ms) <1e-9,1e9>: time between spikes (msec)
-    number	= 10 <0,1e9>	: number of spikes (independent of noise)
+    number	= 1e8 <0,1e9>	: number of spikes (independent of noise)
     start		= 50 (ms)	: start of first spike
-    noise		= 0 <0,1>	: amount of randomness (0.0 - 1.0)
+    noise		= 1 <0,1>	: amount of randomness (0.0 - 1.0)
     n
     thresh = -20 (mV)
     time (ms)
     synapses_number = 1 : number of synapses of the population
-    spike_number_for_update = 3 : by default, 5 spikes to have an update
+    spike_number_for_update = 5 : by default, 5 spikes to have an update
+    bound_min_interval = 5e-6 (ms) : 200 Hz
+    bound_max_interval = 100 (ms) : 0.1 Hz
 }
 
 ASSIGNED {
@@ -86,8 +89,10 @@ PROCEDURE check() {
 	firing = 1
 	n = n+1
 	interval_increment = interval_increment+t-time
-	if (n-nspike_last_freq>=spike_number_for_update) {
-	    interval = interval_increment/spike_number_for_update
+	
+	: now update of the interval variable
+	if (n-nspike_last_freq>=spike_number_for_update && t>start) {
+	    interval = bounded_interval_update(interval_increment/spike_number_for_update)
 	    nspike_last_freq = n
 	    interval_increment = 0
 	}
@@ -116,6 +121,16 @@ FUNCTION invl(mean (ms)) (ms) {
 	invl = mean
     }else{
 	invl = (1. - noise)*mean + noise*mean*erand()
+    }
+}
+
+FUNCTION bounded_interval_update(interval) {
+    if ( (interval>=bound_min_interval) && (interval<=bound_max_interval) ) {
+        bounded_interval_update = interval
+    } else if (interval<=bound_min_interval) {
+        bounded_interval_update = bound_min_interval
+    } else if (interval>=bound_max_interval) {
+        bounded_interval_update = bound_max_interval
     }
 }
 
@@ -183,6 +198,9 @@ NET_RECEIVE (w) {
 		}
 	}
 	if (flag == 3) { : from INITIAL
+	    nspike_last_freq = n : we actually start the calculus of the freq
+	    interval = bounded_interval_update((1e-9+start)/n) : new interval 
+	    
 		if (on == -1) { : but ignore if turned off by external event
 			init_sequence(t)
 			net_send(0, 1)

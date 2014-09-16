@@ -77,7 +77,7 @@ procedure write_on_file;
 var st : string ;  ii : integer ;
 begin
   openText(1,prefix+'MULTIPLE_SIN_analysed.txt',false);
-  writelnText(1,'## impedance in 1000*mV/pA=MOhm, then phase in Rd');
+  writelnText(1,'## impedance in 1000*mV/pA=MOhm or admittance in 1000*pA/mV=pS, then phase in Rd');
   if Imped_vec.Iend<>actual_freq.Iend then MessageBox('problem in the analysis, vector size not compatible');
   for ii:=Imped_vec.Istart to Imped_vec.Iend do 
   begin

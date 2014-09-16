@@ -3,14 +3,16 @@ Mod file to recreate a network input made of two synaptic populations :
 and excitatory and inhibitory one
 Merged excitation and inhibition to be use with the dynamic clamp setup
 negative weight is the flag for inhibition
-Additional stationary current can be injected with the Icst variable (Icst in nA !)
+Additional stationary current can be injected with the Icst variable
+(Icst in pA !)
 ENDCOMMENT
 
 NEURON {
 	POINT_PROCESS ExpSyn_eiNtwk
 	RANGE tauE, Ee, ge 
 	RANGE tauI, Ei, gi
-	RANGE Ipico, Icst, stop_flag
+	RANGE startI, stopI, Icst
+	RANGE stop_flag
 	NONSPECIFIC_CURRENT i
 }
 
@@ -25,13 +27,14 @@ PARAMETER {
 	Ee = 0	(mV)
 	tauI = 5 (ms) <1e-9,1e9>
 	Ei = -80 (mV)
-	Icst = 0 (nA)
+	startI = 0 (ms) <1e-9,1e9>
+	stopI = 0 (ms) <1e-9,1e9>
+	Icst = 0 (nA) : additional currrent input
 }
 
 ASSIGNED {
 	v (mV)
 	i (nA)
-	Ipico
 	stop_flag
 }
 
@@ -43,17 +46,22 @@ STATE {
 INITIAL {
     ge=0
     gi=0
-    Ipico = 0
     stop_flag = 0
 }
     
 
 BREAKPOINT {
-    SOLVE state METHOD cnexp
-    if (stop_flag==1) {i=0} else { i = ge*(v-Ee)+gi*(v-Ei) - Icst}
-    UNITSOFF
-    Ipico = -1000*i
-    UNITSON
+    SOLVE state METHOD cnexp : exp decay for the conductances
+    
+    if (stop_flag==1) {
+	i=0
+    } else { 
+	if (t < stopI && t >= startI) { 
+	    i = ge*(v-Ee)+gi*(v-Ei) - Icst
+	} else {
+	    i = ge*(v-Ee)+gi*(v-Ei)
+	}
+    }
 }
 
 DERIVATIVE state {

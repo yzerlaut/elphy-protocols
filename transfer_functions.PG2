@@ -129,7 +129,7 @@ end;
 
 procedure Set_DC_Channels_DEMO;
 var 
-   i :integer;
+   i : integer; f_acq:real;
 begin {-- we set all the variables of the acquisition class, then we create 
       the NEURON variables and link it to the analogous variables
        -- the NEURON files are loaded thanks to main dialog buttons}
@@ -141,7 +141,8 @@ begin {-- we set all the variables of the acquisition class, then we create
 
    acquisition.Fcontinuous:=true;
    acquisition.Fstimulate := False ; {we DON'T stimulate in Elphy!!}
-   acquisition.PeriodPerChannel:=0.1 ; { in ms }
+   f_acq := TDBrecord('PG0.global').f_acq ;
+   acquisition.PeriodPerChannel:=1./f_acq ; { in ms }
  
    RTneuron.FadvanceON:=True; { in dynamic clamp -> NEURON calculus }  
    RTneuron.execute('create soma');
@@ -160,8 +161,8 @@ begin {-- we set all the variables of the acquisition class, then we create
    end;
    acquisition.Channels[1].unitY:='mV'; addObject(1,1,v1); v1.title:='V_intra(t)';
    acquisition.Channels[1].NrnSymbolName:='soma.v(.5)';
-   acquisition.Channels[2].unitY:='pA'; addObject(1,2,v2); v1.title:='Iinj(t)';
-   acquisition.Channels[2].NrnSymbolName:='stim.Ipico';
+   acquisition.Channels[2].unitY:='nA'; addObject(1,2,v2); v1.title:='Iinj(t)';
+   acquisition.Channels[2].NrnSymbolName:='stim.i';
    acquisition.Channels[3].unitY:='uS'; addObject(1,3,v3);  v3.title:='Ge(t)';
    acquisition.Channels[3].NrnSymbolName:='stim.ge';
    acquisition.Channels[4].unitY:='uS'; addObject(1,4,v4); v4.title:='Gi(t)';
@@ -207,14 +208,14 @@ begin {-- we set all the variables of the acquisition class, then we create
    RTneuron.AdcChan[0].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[0].NrnSymbolName:='v_hf';
    
    RTneuron.AdcChan[1].setScale(0,32767,0,20000.0/gain2); RTneuron.AdcChan[1].NrnSymbolName:='Iinj'; // secondary comes from analogous
-   RTneuron.DacChan[0].NrnSymbolName:='stim.Ipico'; RTneuron.DacChan[0].setScale(0,32767,0,4000.0); // command -> I clamp
+   RTneuron.DacChan[0].NrnSymbolName:='stim.i'; RTneuron.DacChan[0].setScale(0,32767,0,-4.0); {command -> I clamp, stim.i in nA !!! and opposite sign !!!}
    
    acquisition.Channels[1].NrnSymbolName:='v_hf'; acquisition.Channels[1].unitY:='mV' ;
    acquisition.Channels[2].NrnSymbolName:='Iinj'; acquisition.Channels[2].unitY:='pA' ;
    acquisition.Channels[1].unitY:='mV'; addObject(1,1,v1); v1.title:='V_intra(t)';
    // For real data, 2-> real current, 5 -> theoretical current
-   acquisition.Channels[5].unitY:='pA'; addObject(1,2,v5); v5.title:='Ith(t)';
-   acquisition.Channels[5].NrnSymbolName:='stim.Ipico';
+   acquisition.Channels[5].unitY:='nA'; addObject(1,2,v5); v5.title:='Ith(t)';
+   acquisition.Channels[5].NrnSymbolName:='stim.i';
    acquisition.Channels[3].unitY:='uS'; addObject(1,3,v3);  v3.title:='Ge(t)';
    acquisition.Channels[3].NrnSymbolName:='stim.ge';
    acquisition.Channels[4].unitY:='uS'; addObject(1,4,v4); v4.title:='Gi(t)';
@@ -299,25 +300,25 @@ var
 
 { *** Balanced Conductance Shotnoise Stim *** }
 var
-   freq_ge, freq_gi, qe, qi, tauE, tauI, Ee, Ei	: real; { excitatory time constant}
+   freq_ge, freq_gi, qe, qi, Te, Ti, Ee, Ei	: real; { excitatory time constant}
    Nexc, Ninh	: integer;   SEED : integer;  vsum : Tvector; ind : integer ;
 
 procedure initTFparameters;
 begin
    freq_ge :=1.6; freq_gi :=4; Nexc := 2000; Ninh := 500;
    qe:=0.6;  { nS }  
-   tauE:=5; {ms}
-   qi:= 1.1;  { uS }  tauI:=5; {ms}
+   Te:=5; {ms}
+   qi:= 1.1;  { uS }  Ti:=5; {ms}
    Ee:= 0; Ei:= -80; SEED :=1 ;
    max_spikes_number :=20;
 end;
 
 procedure write_shotnoise_params;
 begin
-    TDBrecord('PG0.Exp_params').tauE:=tauE ; 
+    TDBrecord('PG0.Exp_params').Te:=Te ; 
     TDBrecord('PG0.Exp_params').Ee:=Ee ; TDBrecord('PG0.Exp_params').Qe:=Qe ;
     TDBrecord('PG0.Exp_params').f_exc:=freq_ge ; TDBrecord('PG0.Exp_params').seed_exc:=SEED ;
-    TDBrecord('PG0.Exp_params').tauI:=tauI ; 
+    TDBrecord('PG0.Exp_params').Ti:=Ti ; 
     TDBrecord('PG0.Exp_params').Ei:=Ei ; TDBrecord('PG0.Exp_params').Qi:=Qi ;
     TDBrecord('PG0.Exp_params').f_inh:=freq_gi ; TDBrecord('PG0.Exp_params').seed_inh:=SEED+1 ;
 end;
@@ -344,10 +345,12 @@ end;
 
 procedure tf_EndProcess; 
 begin // we set the stimulation variable in NEURON to 0 !
-      detector.Update(v1.Iend);  
-      RTneuron.DacChan[0].HoldingValue:=0;
-      RTneuron.DacChan[0].UseHoldingValue:=True;  
+   detector.Update(v1.Iend);
+   RTneuron.execute('stim.stop_flag=1'); {trying to use the stop flag !!!}
+   RTneuron.execute('fadvance()');
+   set_dac_to_zero;
 end;
+
 
 procedure InitGeGi_exp(f_exc, f_inh:real; SEED:integer);
 begin
@@ -362,8 +365,8 @@ begin
    RTneuron.execute('objref ncE, nsE, ncI, nsI');
    
    // parameters of the synapses
-   RTneuron.execute('stim.tauE = '+Rstr(tauE));
-   RTneuron.execute('stim.tauI = '+Rstr(tauI));
+   RTneuron.execute('stim.tauE = '+Rstr(Te));
+   RTneuron.execute('stim.tauI = '+Rstr(Ti));
    RTneuron.execute('stim.Ee = '+Rstr(Ee)); RTneuron.execute('stim.Ei = '+Rstr(Ei));
    
    // configuring the excitatory presynaptic events
@@ -417,12 +420,12 @@ begin
       setText('o==> EXCITATION');
       getIntegerA('Nexc (# exc synapses)',Nexc,6,200);
       getRealA('excitatory quantal (nS)',qe,10,2,200);
-      getRealA('Tau_E (ms)',tauE,10,2,200);
+      getRealA('Tau_E (ms)',Te,10,2,200);
       getRealA('Ee (revers. pot.) (mV)',Ee,10,2,200);
       setText('o==> INHIBITION');
       getIntegerA('Ninh (# inh synapses)',Ninh,6,200);
       getRealA('inhibitory quantal (nS)',qi,10,2,200);
-      getRealA('Tau_I (ms)',tauI,10,2,200);
+      getRealA('Tau_I (ms)',Ti,10,2,200);
       getRealA('Ei (revers. pot.) (mV)',Ei,10,2,200);
       setText('');
       setText(' === frequencies ===');
@@ -549,6 +552,8 @@ end;
 procedure Init_single_exp(f_exc, f_inh:real; SEED:integer);
 var fe_tot, fi_tot :  real;
 begin         
+   // writing the parameters to the ExpParams dict
+   write_shotnoise_params;
    // configuring the excitatory presynaptic events
    RTneuron.execute('nsE.seed('+Rstr(SEED)+')');
    fe_tot := f_exc*Nexc; 
@@ -578,7 +583,7 @@ begin
    RTneuron.execute('ncI.weight = -0.001*'+Rstr(Qi));
    RTneuron.execute('ncI.delay = 0');
    // parameters of the synapses
-   RTneuron.execute('stim.tauE = '+Rstr(tauE)); RTneuron.execute('stim.tauI = '+Rstr(tauI));
+   RTneuron.execute('stim.tauE = '+Rstr(Te)); RTneuron.execute('stim.tauI = '+Rstr(Ti));
    RTneuron.execute('stim.Ee = '+Rstr(Ee)); RTneuron.execute('stim.Ei = '+Rstr(Ei));
    // then
    continu_flag :=True ;
@@ -590,8 +595,6 @@ end;
 
 procedure check_for_stop_acq(n:integer);
 begin
-    //acquisition.stop; 
-    
     if not continu_flag then acquisition.stop;
     if n>Round(max_authorized_time/CONTINUOUS_TIMER) then acquisition.stop ; // if bigger than 20s, we stop !
     if rest_flag and (n>1) then acquisition.stop ; // if REST then only one second of exp
@@ -613,6 +616,7 @@ begin
    time_detector.InitTimer(v1, CONTINUOUS_TIMER);
    time_detector.AddEvent(check_for_stop_acq, 0.);
 end;
+
 
 
 procedure write_freq_time_infos_as_txt;
@@ -644,7 +648,7 @@ begin // we set the stimulation variable in NEURON to 0 !
       rest_flag:=True;
     end;
     // then we reinit everything
-    Init_single_exp(freq_ge,freq_gi,SEED);
+    Init_single_exp(freq_ge,freq_gi,SEED+global_step); {not to have the same seed everytime !}
     acquisition.InstallProcess(nil, massive_initprocess, nil, massive_endprocess);
     recorded_fe.addtolist(freq_ge);recorded_fe.SaveAsObject(current_string+'_fe') ;
     recorded_fi.addtolist(freq_gi);recorded_fi.SaveAsObject(current_string+'_fi') ;
@@ -724,103 +728,129 @@ begin
 end;
 
 
+{$EDIT Calculating parameters} 
+{ ==============================================================================
+---- WE WILL NEED THIS FUNCTION FOR ALL THE REMAINING PROTOCOLS
+================================================================================ }
+
+procedure params_variations_calc(muG, muV, sV, Ts, Ee, Ei, Rm, Cm, El : real ; var fe, fi, Q, Tv : real);
+var Gl, A, B, num, denom, Tv2: real;
+begin {function to change  fe, fi, Q, Ts}
+   Gl := 1000/Rm; {1000/Mohm = nS}
+   Tv:= Ts+Cm/muG ; {ms + pF/nS = ms}
+   A:= (muG*muV-Gl*El)/(muG-Gl) ; {mV*nS / nS = mV}
+   B:= (Ee-A)/(A-Ei) ; { mV/mV = [] }
+   num:= ( (Ee-muV)*(Ee-muV) + B*(Ei-muV)*(Ei-muV) ) * (muG-Gl)*(muG-Gl) ; {mV**2 * nS**2}
+   denom:= (1+B)*(1+B) * 2. * muG*muG * Tv * sV*sV ; {mV**2 * nS**2 * ms}
+   fe:= num/denom ; { 1/ms = kHz}
+   fi:= B*fe ; { 1/ms = kHz}
+   Q:= (muG-Gl)/Ts/(fe+fi) ; {nS /ms /kHz = nS}
+
+   {the the frequencies back to hertz !!}
+   fe:= fe*1000; fi := fi*1000;
+end;
+
+
 {$EDIT G_mean_effect_on_spiking} 
 { ==============================================================================
 ---- How much does the mean somatic conductance might have an influence on the firing freq ---
 ================================================================================ }
 
 { we re-use some of the variables of the massive_TF_scan protocol : }
-var vec_qe,vec_qi,vec_fe,vec_fi : Tvector ; // the weights will have to be changed to maintain the pot and fluctuations fixed !
-var ratio_qe_qi : real; // comodulation factor for the total conductance effect (G Total Effect, GTE)
-var max_conductance_factor : real; // until how much gleak do we increase the conductance ?
-var clamp_mean, clamp_std : real ; // clamping the membrane pot mean and variance to this value
-var recorded_Qe,recorded_Qi : Tvector ;  Te, Ti : real ;
-var GTE_point_number : integer; vec_i : Tvector ; 
+var vec_q, vec_fe, vec_fi, vec_Ts, vec_muG : Tvector ; {the weights will have to be changed to maintain the pot and fluctuations fixed !}
+var ratio_qe_qi : real; {comodulation factor for the total conductance effect (G Total Effect, GTE)}
+var max_conductance_factor : real; {until how much gleak do we increase the conductance ?}
+var clamp_mean, clamp_std, clamp_Tv : real ; {clamping the membrane pot mean and variance to this value and Tv}
+var shift_mean, Q, Ts, Tv, muG    : real ; {you have the possibility to shift the mean of a shift produced by a constant current input (this allows to have lower weights) }
+var recorded_Q,recorded_Ts, recorded_muG : Tvector ; {the one for fe and fi were created above !}
+var GTE_point_number	    : integer; vec_i : Tvector ; 
+
 
 procedure init_gtot_effect_const;
 begin                      
    recorded_fe.create(t_single,0,-1); recorded_fi.create(t_single,0,-1);
-   recorded_Qe.create(t_single,0,-1); recorded_Qi.create(t_single,0,-1);
-   recorded_t.create(t_single,0,-1);
+   recorded_Q.create(t_single,0,-1); recorded_Ts.create(t_single,0,-1);
+   recorded_muG.create(t_single,0,-1);   recorded_t.create(t_single,0,-1);
    TDBrecord('PG0.Exp_params').exp_type := 'Gtot_effect_on_spiking' ;
-   Te := 5 ; Ti := 5 ; // to BE DECIDED, ExpSyn or Exp2Syn...
-   Ee := 0; Ei := -80 ;
-   clamp_mean := -60;
-   clamp_std := 4 ;
-   max_conductance_factor := 15;
-   ratio_qe_qi := 2 ;
-   GTE_point_number := 10 ;
+   clamp_mean := -60; clamp_std := 4 ;
+   clamp_Tv := 8 ; {ms}
+   shift_mean :=0 ;
+   max_conductance_factor := 12;
+   ratio_qe_qi := 1 ; GTE_point_number := 10 ;
 end;
+
 
 procedure write_GTE_params;
 begin
-    TDBrecord('PG0.Exp_params').tauE:=Te ;
     TDBrecord('PG0.Exp_params').Ee:=Ee ; 
     TDBrecord('PG0.Exp_params').seed_exc:=SEED ;
-    TDBrecord('PG0.Exp_params').tauI:=Ti ;
     TDBrecord('PG0.Exp_params').Ei:=Ei ; 
     TDBrecord('PG0.Exp_params').seed_inh:=SEED+1 ;
     TDBrecord('PG0.Exp_params').clamp_mean := clamp_mean;
     TDBrecord('PG0.Exp_params').clamp_std := clamp_std ;
+    TDBrecord('PG0.Exp_params').shift_mean_Vm := shift_mean ;
     TDBrecord('PG0.Exp_params').max_conductance_factor := max_conductance_factor;
     TDBrecord('PG0.Exp_params').ratio_qe_qi := ratio_qe_qi ;
     TDBrecord('PG0.Exp_params').GTE_point_number := GTE_point_number;
 end;
 
-procedure gen_comodulated_input; // 
-var ii : integer ; FE, FI, factor, Q, g_tot, dg_tot, mu_ge, mu_gi, mu_ge0, Gl, Tm : real;
+
+procedure gen_GTE_input; 
+var ii : integer ; FE, FI, g_tot, dg_tot, mu_g1, mu_g0, Gl : real;
 begin
-    vec_fe.create(t_single,0,GTE_point_number-1); vec_fi.create(t_single,0,GTE_point_number-1);
-    vec_qe.create(t_single,0,GTE_point_number-1); vec_qi.create(t_single,0,GTE_point_number-1);
-    vec_i.create(t_smallint,0,GTE_point_number-1); 
-    for ii:=0 to vec_i.Iend do vec_i[ii]:=ii;
-    shuffle_vector(vec_i);  // SHUFFLED !
+   vec_fe.create(t_single,0,GTE_point_number-1);
+   vec_fi.create(t_single,0,GTE_point_number-1);
+   vec_q.create(t_single,0,GTE_point_number-1);
+   vec_Ts.create(t_single,0,GTE_point_number-1);
+   vec_muG.create(t_single,0,GTE_point_number-1);
+
+   vec_i.create(t_smallint,0,GTE_point_number-1); 
+
+   for ii:=0 to vec_i.Iend do vec_i[ii]:=ii;
+   { shuffle_vector(vec_i);  {\SHUFFLED !!!!!!{\ }
     
-    if Rm<>0 then Gl:=1/Rm*1e3 else MessageBox('Rm =0, no calculus possible !');  // nanoSiemens !!!
-    mu_ge0 := Gl*(1.-(El-clamp_mean)/(Ee-clamp_mean));  // minimumm conductance level, nS
-    dg_tot := mu_ge0*(max_conductance_factor-1)/GTE_point_number ;  // nS
-    
-    for ii:=0 to GTE_point_number-1 do 
-    begin
-         g_tot := mu_ge0+vec_i[ii]*dg_tot ; // in nanoSiemens,  already shuffled
-         mu_ge := (g_tot*(clamp_mean-Ei)-Gl*(El-Ei))/(Ee-Ei); // nS
-         mu_gi := (g_tot*(clamp_mean-Ee)-Gl*(El-Ee))/(Ei-Ee); // nS
-         Tm := Cm/g_tot ; // pF/nS, so that milliseconds !
-         //MessageBox('mGe ='+Rstr(mu_ge));
-         //MessageBox('mGi ='+Rstr(mu_gi));
-         
-         FE := 0.5*mu_ge*Te*(clamp_mean-Ee)*(clamp_mean-Ee)/(Te+Tm); // mV**2*nS
-         FI := 0.5*mu_gi*ratio_qe_qi*Ti*(clamp_mean-Ei)*(clamp_mean-Ei)/(Ti+Tm); // mV**2*nS
-         //MessageBox('fe ='+Rstr(Fe));
-         //MessageBox('fi ='+Rstr(Fi));
-         factor := (Cm*clamp_std/Tm)*(Cm*clamp_std/Tm) ; // mV**2*nS**2
-         Q := factor/(FE+FI); // so nS     
-        
-         vec_Qe[ii]:= Q;
-         vec_Qi[ii]:= Q*ratio_qe_qi;
-         vec_fe[ii]:= mu_ge/Q/Te*1e3; // Hz
-         vec_fi[ii]:= mu_gi/Q/ratio_qe_qi/Ti*1e3; // Hz
-         
+   if Rm<>0 then Gl:=1000/Rm else MessageBox('Rm =0, no calculus possible !');  {nanoSiemens !!!}
+
+   mu_g0 := Gl*(1.-(El-shift_mean-clamp_mean)/(Ee-shift_mean-clamp_mean));  {minimumm conductance level to achieve the mean, nS}
+   mu_g1 := Cm/(clamp_Tv-1);  {minimumm conductance to achieve autocorrelation for a 1ms minimum time constant, pF/ms = nS}
+   if mu_g1<mu_g0 then begin clamp_Tv:=Cm/mu_g0+1; mu_g1:=mu_g0; MessageBox('Tv too high, changed to Tv = '+Rstr(clamp_Tv)+'ms'); end;
+
+   dg_tot := (Gl*max_conductance_factor-mu_g1)/(GTE_point_number-1) ;  // nS
+
+   {actually the expression gives weird results for some this stimulation paradigm, so we restrict the input range to 
+   the stable parameter space, this is the procedure to perform this :}
+
+   for ii:=0 to GTE_point_number-1 do 
+   begin
+
+      { g_tot := mu_g0+vec_i[ii]*dg_tot ; {\in nanoSiemens,  shuffled through vec_i!{\ }
+      g_tot := mu_g1+ii*dg_tot ;
+      params_variations_calc(g_tot, clamp_mean+shift_mean, clamp_std, clamp_Tv-Cm/g_tot, Ee, Ei, Rm, Cm, El, FE, FI, Q, Tv);
+      vec_Q[ii]:= Q; vec_Ts[ii]:= clamp_Tv-Cm/g_tot; vec_fe[ii]:= FE; vec_fi[ii]:= FI; vec_muG[ii]:= g_tot; 
     end;
 end;
 
 
-procedure Init_single_exp_with_weights(f_exc, f_inh, Qe, Qi : real; SEED:integer);
-var fe_tot, fi_tot :  real;
+procedure Init_single_exp_GTE(f_exc, f_inh, Q, Ts : real; SEED:integer);
 begin         
-   // configuring the excitatory presynaptic events
+   {configuring the seed of the excitatory presynaptic events}
    RTneuron.execute('nsE.seed('+Rstr(SEED)+')');
-   fe_tot := f_exc; // NO SYNAPSES NUMBER !! 
-   RTneuron.execute('ncE.weight = 0.001*'+Rstr(Qe));
-
-   if fe_tot<>0 then RTneuron.execute('nsE.interval = 1000/'+Rstr(fe_tot)) else RTneuron.execute('nsE.interval = 1e30');
-   // configuring the inhibitory presynaptic events
    RTneuron.execute('nsI.seed('+Rstr(SEED+1)+')');
-   fi_tot := f_inh;
-   RTneuron.execute('ncI.weight = -0.001*'+Rstr(Qi));
-   if fi_tot<>0 then RTneuron.execute('nsI.interval = 1000/'+Rstr(fi_tot)) else RTneuron.execute('nsI.interval = 1e30');
+   
+   {synaptic weights}
+   RTneuron.execute('ncE.weight = 0.001*'+Rstr(Q));
+   RTneuron.execute('ncI.weight = -0.001*'+Rstr(Q)); {NEGATIVE FLAG !!!}
+   
+   {firing frequencies}
+   if f_exc<>0 then RTneuron.execute('nsE.interval = 1000/'+Rstr(f_exc)) else RTneuron.execute('nsE.interval = 1e30');
+   if f_inh<>0 then RTneuron.execute('nsI.interval = 1000/'+Rstr(f_inh)) else RTneuron.execute('nsI.interval = 1e30');
+
+   {then synaptic times}
+   RTneuron.execute('stim.tauE = '+Rstr(Ts));
+   RTneuron.execute('stim.tauI = '+Rstr(Ts));
    RTneuron.execute('finitialize()');
 end;
+
 
 
 procedure GTE_nrn_init;
@@ -840,7 +870,7 @@ begin
    RTneuron.execute('ncI.weight = -0.001*'+Rstr(Qi));  // NEGATIVE FLAG HERE !!!!
    RTneuron.execute('ncI.delay = 0');
    // parameters of the synapses
-   RTneuron.execute('stim.tauE = '+Rstr(tauE)); RTneuron.execute('stim.tauI = '+Rstr(tauI));
+   RTneuron.execute('stim.tauE = '+Rstr(Te)); RTneuron.execute('stim.tauI = '+Rstr(Ti));
    RTneuron.execute('stim.Ee = '+Rstr(Ee)); RTneuron.execute('stim.Ei = '+Rstr(Ei));
    // then
    continu_flag :=True ;
@@ -851,31 +881,14 @@ end;
 
 {we use the process function of massive TF}
 
-procedure GTE_InitProcess; {executer avec acquisition.start, mais apres tout, ici tous les objets ont ete initialises, donc on peut les utiliser}
-var                              
-threshold : real ;refrac : real ; yinit : real;
-begin
-   spiketimes.create(t_single,0,-1);
-   threshold := -30.0 ; // threshold at : ... mV 
-   refrac := 0.003 ; // at least ... s between two events
-   yinit := -80.0 ;
-   detector.create; // this one is foe the spikes
-   detector.InitCrossings(v1,spiketimes,TRUE,FALSE,threshold,threshold,refrac,yinit,FALSE);
-   detector.addevent(At_threshold_event,0);
-   time_detector.create;
-   time_detector.InitTimer(v1, CONTINUOUS_TIMER);
-   time_detector.AddEvent(check_for_stop_acq, 0.);
-end;
-
-
-procedure write_freq_weight_time_infos_as_txt;
+procedure write_GTE_infos_as_txt;
 var st : string; i : integer;
 begin
    openText(1,current_string+'_GRID.txt',false);
    for i:=recorded_fe.Istart to recorded_fe.Iend do
    begin
        st := Rstr(recorded_t[i], 1, 6)+Chr(9)+Rstr(recorded_fe[i], 1, 6)+Chr(9)+Rstr(recorded_fi[i], 1, 6)
-       +Chr(9)+Rstr(recorded_qe[i], 1, 6)+Chr(9)+Rstr(recorded_qi[i], 1, 6);
+       +Chr(9)+Rstr(recorded_q[i], 1, 6)+Chr(9)+Rstr(recorded_ts[i], 1, 6)+Chr(9)+Rstr(recorded_muG[i], 1, 6);
        writelnText(1,st);   // the time is actually the end of the experiment !!
    end; 
    closeText(1);
@@ -889,30 +902,32 @@ begin // we set the stimulation variable in NEURON to 0 !
     begin 
       global_step := global_step+1 ;   
       freq_ge := vec_fe[global_step] ; freq_gi := vec_fi[global_step] ;
-      Qe := vec_qe[global_step] ; Qi := vec_qi[global_step] ;
+      Q := vec_q[global_step] ; Ts := vec_Ts[global_step] ; muG := vec_muG[global_step] ; 
       rest_flag:=False;
     end
     else                              
     begin 
-      freq_ge := 0 ; freq_gi := 0 ;
-      Qe := 0 ; Qi := 0 ;
-      Init_single_exp_with_weights(freq_ge,freq_gi, Qe, Qi, SEED);
+      freq_ge := 0 ; freq_gi := 0 ; 
       rest_flag:=True;
     end;
     // then we reinit everything
-    Init_single_exp_with_weights(freq_ge,freq_gi, Qe, Qi, SEED);
-    acquisition.InstallProcess(nil, GTE_initprocess, nil, GTE_endprocess);
+    Init_single_exp_GTE(freq_ge, freq_gi, Q, Ts, SEED+global_step); {not to have the same seed everytime !}
+
+    acquisition.InstallProcess(nil, massive_InitProcess, nil, GTE_endprocess);
+   {then recordings}
     recorded_fe.addtolist(freq_ge);recorded_fe.SaveAsObject(current_string+'_fe') ;
     recorded_fi.addtolist(freq_gi);recorded_fi.SaveAsObject(current_string+'_fi') ;
-    recorded_qe.addtolist(Qe);recorded_qe.SaveAsObject(current_string+'_qe') ;
-    recorded_qi.addtolist(Qi);recorded_qi.SaveAsObject(current_string+'_qi') ;
+    recorded_q.addtolist(Q);recorded_q.SaveAsObject(current_string+'_q') ;
+    recorded_ts.addtolist(Ts);recorded_ts.SaveAsObject(current_string+'_ts') ;
+    recorded_muG.addtolist(muG);recorded_muG.SaveAsObject(current_string+'_muG') ;
+
     recorded_t.addtolist(v1.Xend);recorded_t.SaveAsObject(current_string+'_t') ;
     RTneuron.FadvanceON:=True;
  
     t0_trial := v1.Xend ;     // t0 setting
     TFdialog.update;TFdialog.updatevar;    
-    if continu_flag then acquisition.startandsave(true) // we restart
-    else write_freq_weight_time_infos_as_txt; // we write the txt file !
+    if (continu_flag=True) and (global_step<=GTE_point_number) then acquisition.startandsave(true) // we restart
+    else write_GTE_infos_as_txt; // we write the txt file !
 end;
 
 
@@ -921,18 +936,21 @@ begin
    DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time} 
    current_string := PathOfTheDay+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second);     
    continu_flag := True ;
-   Qe := vec_qe[global_step] ; Qi := vec_qi[global_step] ;
+   Q := vec_q[global_step] ; Ts := vec_ts[global_step] ; muG := vec_muG[global_step] ; 
    freq_ge := vec_fe[global_step] ; freq_gi := vec_fi[global_step] ;
-   Init_single_exp_with_weights(freq_ge,freq_gi, Qe, Qi, SEED);
+
+   Init_single_exp_GTE(freq_ge,freq_gi, Q, Ts, SEED);
    // Elphy Params initialization
-   acquisition.InstallProcess(my_initProcess0, GTE_initprocess, nil, GTE_endprocess); // initprocess0 for the first exp
+   acquisition.InstallProcess(my_initProcess0, massive_InitProcess, nil, GTE_endprocess); // initprocess0 for the first exp
 
    write_GTE_params; // writing parameters
    recorded_fe.addtolist(freq_ge);recorded_fe.SaveAsObject(current_string+'_fe') ;
    recorded_fi.addtolist(freq_gi);recorded_fi.SaveAsObject(current_string+'_fi') ;      
-   recorded_qe.addtolist(Qe);recorded_qe.SaveAsObject(current_string+'_qe') ;
-   recorded_qi.addtolist(Qi);recorded_qi.SaveAsObject(current_string+'_qi') ;
-   recorded_t.addtolist(0);recorded_t.SaveAsObject(current_string+'_t') ;              
+   recorded_q.addtolist(Q);recorded_q.SaveAsObject(current_string+'_q') ;
+   recorded_ts.addtolist(Ts);recorded_ts.SaveAsObject(current_string+'_ts') ;
+   recorded_muG.addtolist(muG);recorded_muG.SaveAsObject(current_string+'_muG') ;
+   recorded_t.addtolist(v1.Xend);recorded_t.SaveAsObject(current_string+'_t') ;
+
    acquisition.startandsave;
 end;
 
@@ -943,10 +961,11 @@ begin
    TFdialog.updatevar;
    case n of
      201 : Run_GTE;
-     301 : begin gen_comodulated_input; InitializeChannels; GTE_nrn_init;end;
+     301 : begin gen_GTE_input; InitializeChannels; GTE_nrn_init;end;
      end;
      TFdialog.update;
 end;  
+
 
 procedure InitGTEdialog;
 begin
@@ -957,16 +976,16 @@ begin
       create;
       OnEvent:=GTEDialogEvent;
       { !! Very Important : at every GUI event, we call this function}
-      setText(' |  __---   Transfer Function Project   ---__  | ');
       setText('Investigating the effect of input conductance on spike triggering');
       setText('______________________________________');
       getIntegerA('SEED (int)',grid_SEED,6,200);
       setText('o==>Stimulation Parameters :');
       getRealA(' clamping the mean (mV)',clamp_mean,10,3,200);
       getRealA(' clamping the std dev. (mV)',clamp_std,10,3,200);
-      getRealA(' ratio of Qi/Qe',ratio_qe_qi,10,3,200);
-      getRealA(' Max. Conductance factor (*mGe0)',max_conductance_factor,10,3,200);
-      getRealA(' Max. TIME (s)',max_authorized_time,10,3,200);
+      getRealA(' Max. Conductance factor (*Gl)',max_conductance_factor,10,3,200);
+      getRealA(' shift resting pot. (mV) (NT WKG)',shift_mean,10,3,200);
+      getRealA(' ratio of Qi/Qe (NT WKG)',ratio_qe_qi,10,3,200);
+      setText('______________________________________');
       getIntegerA('Number of points ',GTE_point_number,6,200);
       setText('');
       getCommandA(' Generate and Shuffle the stim ',0,301); { OnEvent flag -> 201 }
@@ -988,6 +1007,7 @@ end;
 { ==============================================================================
 --- Response to a shotnoise generated by the output frequency of the neuron ------
 ================================================================================ }
+
 
 
 
@@ -1134,13 +1154,18 @@ global.create; Exp_Params.create;
  
 
 /// ---- CASE ON LAPTOP
-TDBrecord('PG0.global').amplifier:='nrn_simulation'; // choice of the amplifier
+{TDBrecord('PG0.global').amplifier:='nrn_simulation'; // choice of the amplifier
 PathOfTheDay := 'C:\Users\yann\Documents\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ;
-TDBrecord('PG0.global').loadnrnPath := 'D:/home/yann/work/elphy_code/nrn_files/' ; 
+TDBrecord('PG0.global').loadnrnPath := 'D:/home/yann/work/elphy_code/nrn_files/' ; }
 /// ---- CASE ON MULTICLAMP
 {TDBrecord('PG0.global').amplifier:='multiclamp';
 PathOfTheDay := 'D:\Yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
 TDBrecord('PG0.global').loadnrnPath := 'D:/Yann/elphy_code/nrn_files/' ; }
+/// ---- CASE ON LINUX MACHINE
+TDBrecord('PG0.global').amplifier:='nrn_simulation';
+PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
+TDBrecord('PG0.global').loadnrnPath := 'Z:/home/yann/work/elphy_code/nrn_files/' ; 
+
 if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);
 TDBrecord('PG0.global').PathOfTheDay := PathOfTheDay ;
 

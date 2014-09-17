@@ -922,10 +922,12 @@ begin // we set the stimulation variable in NEURON to 0 !
     recorded_muG.addtolist(muG);recorded_muG.SaveAsObject(current_string+'_muG') ;
 
     recorded_t.addtolist(v1.Xend);recorded_t.SaveAsObject(current_string+'_t') ;
+
     RTneuron.FadvanceON:=True;
  
     t0_trial := v1.Xend ;     // t0 setting
     TFdialog.update;TFdialog.updatevar;    
+
     if (continu_flag=True) and (global_step<=GTE_point_number) then acquisition.startandsave(true) // we restart
     else write_GTE_infos_as_txt; // we write the txt file !
 end;
@@ -944,12 +946,9 @@ begin
    acquisition.InstallProcess(my_initProcess0, massive_InitProcess, nil, GTE_endprocess); // initprocess0 for the first exp
 
    write_GTE_params; // writing parameters
-   recorded_fe.addtolist(freq_ge);recorded_fe.SaveAsObject(current_string+'_fe') ;
-   recorded_fi.addtolist(freq_gi);recorded_fi.SaveAsObject(current_string+'_fi') ;      
-   recorded_q.addtolist(Q);recorded_q.SaveAsObject(current_string+'_q') ;
-   recorded_ts.addtolist(Ts);recorded_ts.SaveAsObject(current_string+'_ts') ;
-   recorded_muG.addtolist(muG);recorded_muG.SaveAsObject(current_string+'_muG') ;
-   recorded_t.addtolist(v1.Xend);recorded_t.SaveAsObject(current_string+'_t') ;
+   recorded_fe.addtolist(freq_ge);   recorded_fi.addtolist(freq_gi);
+   recorded_q.addtolist(Q);   recorded_ts.addtolist(Ts);
+   recorded_muG.addtolist(muG);  recorded_t.addtolist(v1.Xend);
 
    acquisition.startandsave;
 end;
@@ -1154,17 +1153,17 @@ global.create; Exp_Params.create;
  
 
 /// ---- CASE ON LAPTOP
-{TDBrecord('PG0.global').amplifier:='nrn_simulation'; // choice of the amplifier
+TDBrecord('PG0.global').amplifier:='nrn_simulation'; // choice of the amplifier
 PathOfTheDay := 'C:\Users\yann\Documents\DATA\'+Istr(Day)+'_'+Istr(Month)+'_'+Istr(Year)+'\' ;
-TDBrecord('PG0.global').loadnrnPath := 'D:/home/yann/work/elphy_code/nrn_files/' ; }
+TDBrecord('PG0.global').loadnrnPath := 'D:/home/yann/work/elphy_code/nrn_files/' ; 
 /// ---- CASE ON MULTICLAMP
 {TDBrecord('PG0.global').amplifier:='multiclamp';
 PathOfTheDay := 'D:\Yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
 TDBrecord('PG0.global').loadnrnPath := 'D:/Yann/elphy_code/nrn_files/' ; }
 /// ---- CASE ON LINUX MACHINE
-TDBrecord('PG0.global').amplifier:='nrn_simulation';
+{TDBrecord('PG0.global').amplifier:='nrn_simulation';
 PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
-TDBrecord('PG0.global').loadnrnPath := 'Z:/home/yann/work/elphy_code/nrn_files/' ; 
+TDBrecord('PG0.global').loadnrnPath := 'Z:/home/yann/work/elphy_code/nrn_files/' ; }
 
 if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);
 TDBrecord('PG0.global').PathOfTheDay := PathOfTheDay ;

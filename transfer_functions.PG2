@@ -6,7 +6,7 @@
 Const
    ProtocolCount    = 9 ; 
    CONTINUOUS_TIMER = 0.5 ; {timer for Tdetect update}
-   location	    = 'Notebook' ;
+   location	    = 'Setup' ;
    
 var  { ========= COMMON VARIABLES ============ }
    protocol_choice : integer; 
@@ -1714,7 +1714,7 @@ procedure init_massive_scan_const;
 begin                      
    TDBrecord('PG0.Exp_params').exp_type := 'tf_massive_mV_sV_Tv_mG';
    min_muV:=-62; max_muV:=-54;
-   min_sV:=2; max_sV:=12;
+   min_sV:=2; max_sV:=10;
    min_muGn:=2; max_muGn:=8;
    min_Ts:=1; max_Ts:=7;
    DISCRET_SV := 2;
@@ -1723,6 +1723,29 @@ begin
    DISCRET_TS:= 2;
    shift_mean :=0 ;   ratio_qe_qi := 1 ;
    GTE_point_number := 10 ;
+end;
+
+
+procedure write_massive_scan_params; {to be used by all subsequent protocols}
+begin
+    TDBrecord('PG0.Exp_params').Ee:=Ee ; 
+    TDBrecord('PG0.Exp_params').seed_exc:=SEED ;
+    TDBrecord('PG0.Exp_params').Ei:=Ei ; 
+    TDBrecord('PG0.Exp_params').seed_inh:=SEED+1 ;
+    TDBrecord('PG0.Exp_params').shift_mean_Vm := shift_mean ;
+    TDBrecord('PG0.Exp_params').ratio_qe_qi := ratio_qe_qi ;
+    TDBrecord('PG0.Exp_params').global_step_start := global_step;
+    TDBrecord('PG0.Exp_params').min_muV:=min_muV; 
+    TDBrecord('PG0.Exp_params').max_muV:=max_muV; 
+    TDBrecord('PG0.Exp_params').min_sV:=min_sV; 
+    TDBrecord('PG0.Exp_params').max_sV:=max_sV; 
+    TDBrecord('PG0.Exp_params').min_muGn:=min_muGn; 
+    TDBrecord('PG0.Exp_params').max_muGn:=max_muGn; 
+    TDBrecord('PG0.Exp_params').max_Ts:=max_Ts; 
+    TDBrecord('PG0.Exp_params').DISCRET_SV := DISCRET_SV;
+    TDBrecord('PG0.Exp_params').DISCRET_MV := DISCRET_MV;
+    TDBrecord('PG0.Exp_params').DISCRET_MUG := DISCRET_MUG;
+    TDBrecord('PG0.Exp_params').DISCRET_TS := DISCRET_TS;
 end;
 
 procedure gen_massive_scan_input; 
@@ -1921,13 +1944,17 @@ begin
       getCommandA(' Generate and Shuffle the stim ',0,301); { OnEvent flag -> 201 }
       getCommandA(' Run ',0,201); { OnEvent flag -> 201 }
       getIntegerA('Current Step ',global_step,6,200);
+      getRealA(' Current muV (mV)',muV,10,3,200);
+      getRealA(' Current sV (mV)',sV,10,3,200);
+      getRealA(' Current muG (nS)',muG,10,3,200);
+      getRealA(' Current Ts (ms)',Ts,10,3,200);
       setText('');
       getboolean('Continue Running (stop asap...)',continu_flag);
       getboolean('jump to the next one',jump_to_next);
       setText('');
       getIntegerA('MAX spikes number',max_spikes_number,6,200);
       getRealA('max_authorized_time)',max_authorized_time,10,3,200);
-      Caption:='Dependence on std Vm';
+      Caption:='massive scan mV-sV-Tv-mG space';
       Show;
    end;
 end;

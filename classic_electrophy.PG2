@@ -2229,7 +2229,7 @@ TDBrecord('PG0.global').amplifier:='multiclamp';
 PathOfTheDay := 'D:\yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
 TDBrecord('PG0.global').loadnrnPath := 'D:/yann/elphy_code/nrn_files/' ; 
 
-f_acq:=20;
+f_acq:=10;
 TDBrecord('PG0.global').f_acq:=f_acq; // in kHz
 
 if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);

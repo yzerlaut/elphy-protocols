@@ -171,7 +171,7 @@ begin {-- we set all the variables of the acquisition class, then we create
    acquisition.Channels[3].NrnSymbolName:='stim.ge';
    acquisition.Channels[4].unitY:='uS'; addObject(1,4,v4); v4.title:='Gi(t)';
 	 acquisition.Channels[4].NrnSymbolName:='stim.gi';
-   v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ; v4.cpx:=1 ;
+   v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ; v4.cpx:=1 ; v5.cpx:=1 ;
    v1.cpy:=1 ; v2.cpy := 2 ; v3.cpy:=3 ;  v4.cpy:=4 ; {we set the coupling value -> to couple to future analysis} 
    v2.color := CL_Olive ; v3.color := CL_Blue ; v4.color := CL_Red ; 
 end;
@@ -224,7 +224,7 @@ begin {-- we set all the variables of the acquisition class, then we create
    acquisition.Channels[3].NrnSymbolName:='stim.ge';
    acquisition.Channels[4].unitY:='uS'; addObject(1,4,v4); v4.title:='Gi(t)';
 	 acquisition.Channels[4].NrnSymbolName:='stim.gi';
-   v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ; v4.cpx:=1 ;
+   v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ;v4.cpx:=1 ; v5.cpx:=1 ;
    v1.cpy:=1 ; v2.cpy := 2 ; v3.cpy:=3 ;  v4.cpy:=4 ; {we set the coupling value -> to couple to future analysis} 
 end;
 
@@ -847,8 +847,8 @@ begin
    RTneuron.execute('ncI.weight = -0.001*'+Rstr(Q)); {NEGATIVE FLAG !!!}
    
    {firing frequencies}
-   if f_exc<>0 then RTneuron.execute('nsE.interval = 1000/'+Rstr(f_exc)) else RTneuron.execute('nsE.interval = 1e30');
-   if f_inh<>0 then RTneuron.execute('nsI.interval = 1000/'+Rstr(f_inh)) else RTneuron.execute('nsI.interval = 1e30');
+   if f_exc>0 then RTneuron.execute('nsE.interval = 1000/'+Rstr(f_exc)) else RTneuron.execute('nsE.interval = 1e30');
+   if f_inh>0 then RTneuron.execute('nsI.interval = 1000/'+Rstr(f_inh)) else RTneuron.execute('nsI.interval = 1e30');
 
    {then synaptic times}
    RTneuron.execute('stim.tauE = '+Rstr(Ts));

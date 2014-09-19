@@ -6,7 +6,7 @@
 Const
    ProtocolCount    = 9 ; 
    CONTINUOUS_TIMER = 0.5 ; {timer for Tdetect update}
-   location	    = 'Notebook' ;
+   location	    = 'Linux' ;
    
 var  { ========= COMMON VARIABLES ============ }
    protocol_choice : integer; 
@@ -1759,16 +1759,16 @@ begin
 
    if Rm<>0 then Gl:=1000/Rm else MessageBox('Rm =0, no calculus possible !');  {nanoSiemens !!!}
 
-   DmV := (max_muV-min_muV)/(DISCRET_MV-1);
-   DTs := (max_Ts-min_Ts)/(DISCRET_TS-1);
-   DmuG := (max_muGn-min_muGn)/(DISCRET_MUG-1);
+   if DISCRET_MV>1 then DmV := (max_muV-min_muV)/(DISCRET_MV-1) else DmV:=1;
+   if DISCRET_TS>1 then DTs := (max_Ts-min_Ts)/(DISCRET_TS-1) else DTs:=1;
+   if DISCRET_MUG>1 then DmuG := (max_muGn-min_muGn)/(DISCRET_MUG-1) else DmuG:=1;
 
    for iv:=0 to DISCRET_MV-1 do 
    begin
       muV := min_muV + iv*DmV;
       {here we construct the triangle for the mean and variance}
       sV1_min:= max_muV-muV+min_sV ;  sv1_max:=min_muV-muV+max_sV;
-      DsV := (sV1_max-sV1_min)/(DISCRET_SV-1);
+      if DISCRET_SV>1 then DsV := (sV1_max-sV1_min)/(DISCRET_SV-1) else DsV:=1;
       for is:=0 to DISCRET_SV-1 do 
       begin 
 	 sV := sv1_min + is*DsV;

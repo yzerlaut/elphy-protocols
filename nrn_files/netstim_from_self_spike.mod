@@ -18,7 +18,7 @@ NEURON	{
   POINT_PROCESS NetStim_from_self_spike
   RANGE interval, number, start, synapses_number
   RANGE bound_min_interval, bound_max_interval
-  RANGE noise, interval_increment
+  RANGE noise, interval_increment, max_duration
   RANGE n, thresh, time, firing
   RANGE spike_number_for_update, nspike_last_freq
   POINTER donotuse
@@ -40,6 +40,7 @@ PARAMETER {
     spike_number_for_update = 5 : by default, 5 spikes to have an update
     bound_min_interval = 5e-6 (ms) : 200 Hz
     bound_max_interval = 100 (ms) : 0.1 Hz
+    max_duration = 3000 (ms) 
 }
 
 ASSIGNED {
@@ -102,6 +103,7 @@ PROCEDURE check() {
     if (firing && v < thresh && t > time) {
 	firing = 0
     }
+    if (t-time>max_duration) {interval=interval+bound_min_interval}
 }
 
 

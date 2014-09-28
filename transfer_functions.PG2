@@ -6,7 +6,7 @@
 Const
    ProtocolCount    = 9 ; 
    CONTINUOUS_TIMER = 0.5 ; {timer for Tdetect update}
-   location	    = 'Notebook' ;
+   location	    = 'Linux' ;
    
 var  { ========= COMMON VARIABLES ============ }
    protocol_choice : integer; 
@@ -563,7 +563,7 @@ begin
    fe_tot := f_exc*Nexc; 
    if fe_tot<>0 then RTneuron.execute('nsE.interval = 1000/'+Rstr(fe_tot)) else RTneuron.execute('nsE.interval = 1e30');
    // configuring the inhibitory presynaptic events
-   RTneuron.execute('nsI.seed('+Rstr(SEED+1)+')');
+   RTneuron.execute('nsI.seed('+Rstr(SEED*SEED+1)+')');
    fi_tot := f_inh*Ninh;
    if fi_tot<>0 then RTneuron.execute('nsI.interval = 1000/'+Rstr(fi_tot)) else RTneuron.execute('nsI.interval = 1e30');
    RTneuron.execute('finitialize()');
@@ -841,7 +841,7 @@ procedure Init_single_exp_GTE(f_exc, f_inh, Q, Ts : real; SEED:integer);
 begin         
    {configuring the seed of the excitatory presynaptic events}
    RTneuron.execute('nsE.seed('+Istr(SEED)+')');
-   RTneuron.execute('nsI.seed('+Istr(SEED+1)+')');
+   RTneuron.execute('nsI.seed('+Istr(SEED*SEED+1)+')');
    
    {synaptic weights}
    RTneuron.execute('ncE.weight = 0.001*'+Rstr(Q));
@@ -1709,13 +1709,14 @@ end;
 ================================================================================ }
 
 var DISCRET_SV, DISCRET_MV, DISCRET_MUG, DISCRET_TS : integer;
-var min_muGn, max_muGn : real; recorded_index:Tvector;
+var min_muGn, max_muGn, sV_compression_factor, min_sV2, max_sV2 : real; recorded_index:Tvector;
 
 procedure init_massive_scan_const;
 begin                      
    TDBrecord('PG0.Exp_params').exp_type := 'tf_massive_mV_sV_Tv_mG';
    min_muV:=-63; max_muV:=-55;
-   min_sV:=2; max_sV:=10;
+   min_sV:=3; max_sV:=10;
+   min_sV2:=2; max_sV2:=4;
    min_muGn:=2; max_muGn:=8;
    min_Ts:=4; max_Ts:=7;
    DISCRET_SV := 4;
@@ -1724,6 +1725,7 @@ begin
    DISCRET_TS:= 1;
    shift_mean :=0 ;   ratio_qe_qi := 1 ;
    GTE_point_number := 10 ;
+   sV_compression_factor:=3; {larger variance domain at low muV than high muV}
 end;
 
 
@@ -1740,6 +1742,8 @@ begin
     TDBrecord('PG0.Exp_params').max_muV:=max_muV; 
     TDBrecord('PG0.Exp_params').min_sV:=min_sV; 
     TDBrecord('PG0.Exp_params').max_sV:=max_sV; 
+    TDBrecord('PG0.Exp_params').min_sV2:=min_sV2; 
+    TDBrecord('PG0.Exp_params').max_sV2:=max_sV2; 
     TDBrecord('PG0.Exp_params').min_muGn:=min_muGn; 
     TDBrecord('PG0.Exp_params').max_muGn:=max_muGn; 
     TDBrecord('PG0.Exp_params').max_Ts:=max_Ts; 
@@ -1747,10 +1751,13 @@ begin
     TDBrecord('PG0.Exp_params').DISCRET_MV := DISCRET_MV;
     TDBrecord('PG0.Exp_params').DISCRET_MUG := DISCRET_MUG;
     TDBrecord('PG0.Exp_params').DISCRET_TS := DISCRET_TS;
+    TDBrecord('PG0.Exp_params').sV_compression_factor := sV_compression_factor;
 end;
 
 procedure gen_massive_scan_input; 
-var iv, is, it, ig, n_tot : integer ; fe, fi, q, muGn, DmuG, DmV, DsV, sV1_min, sv1_max, DTs, Gl, g_tot : real; vec_ts1:Tvector;
+var iv, is, it, ig, n_tot : integer ; 
+fe, fi, q, muGn, DmuG, DmV, DsV, sV1_min, sv1_max, DTs, Gl, g_tot, compress : real; 
+vec_ts1:Tvector;
 begin
    n_tot := DISCRET_SV*DISCRET_MV*DISCRET_MUG*DISCRET_TS; {total number of points}
    vec_fe.create(t_single,0,-1);  vec_fi.create(t_single,0,-1);
@@ -1768,7 +1775,11 @@ begin
    begin
       muV := min_muV + iv*DmV;
       {here we construct the triangle for the mean and variance}
-      sV1_min:= max_muV-muV+min_sV ;  sv1_max:=min_muV-muV+max_sV;
+      { sV1_min:= max_muV-muV+min_sV ;  sv1_max:=min_muV-muV+max_sV; }
+
+      sv1_max:=max_sV+iv/DISCRET_MV*(max_sV2-max_sV);
+      sv1_min:=min_sV+iv/DISCRET_MV*(min_sV2-min_sV);
+
       if DISCRET_SV>1 then DsV := (sV1_max-sV1_min)/(DISCRET_SV-1) else DsV:=1;
       for is:=0 to DISCRET_SV-1 do 
       begin 
@@ -1933,8 +1944,10 @@ begin
       getRealA(' Min. muV',min_muV,10,3,200);
       getRealA(' Max. muV',max_muV,10,3,200);
       getIntegerA('=====> DISCRET. sV ',DISCRET_SV,6,200);
-      getRealA(' Min. sV',min_sV,10,3,200);
-      getRealA(' Max. sV',max_sV,10,3,200);
+      getRealA(' Min. sV (at min. muV)',min_sV,10,3,200);
+      getRealA(' Max. sV (at min. muV)',max_sV,10,3,200);
+      getRealA(' Min. sV (at max. muV)',min_sV2,10,3,200);
+      getRealA(' Max. sV (at max. muV)',max_sV2,10,3,200);
       getIntegerA('=====> DISCRET. muG ',DISCRET_MUG,6,200);
       getRealA(' Min. Gtot/Gl',min_muGn,10,3,200);
       getRealA(' Max. Gtot/Gl',max_muGn,10,3,200);

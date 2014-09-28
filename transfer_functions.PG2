@@ -6,7 +6,7 @@
 Const
    ProtocolCount    = 9 ; 
    CONTINUOUS_TIMER = 0.5 ; {timer for Tdetect update}
-   location	    = 'Linux' ;
+   location	    = 'Notebook' ;
    
 var  { ========= COMMON VARIABLES ============ }
    protocol_choice : integer; 
@@ -450,7 +450,7 @@ var vec_fe_full,vec_fi_full : Tvector ;
 var global_step : integer ;  continu_flag : boolean ;
 var fe_min0,fe_max0,fe_min1,fe_max1,fi_min,fi_max, t0_trial, t0_full, max_authorized_time :real;
 var grid_seed : integer ; 
-var recorded_fe,recorded_fi,recorded_t : Tvector ;
+var recorded_fe,recorded_fi,recorded_t,recorded_fout : Tvector ;
 var rest_flag,jump_to_next:boolean ; // flag pour alterner de la stimulation et des periods de repos...
 
 procedure init_massivetf_const;
@@ -746,6 +746,7 @@ begin {function to change  fe, fi, Q, Ts}
    B:= (Ee-A)/(A-Ei) ; { mV/mV = [] }
    num:= ( (Ee-muV)*(Ee-muV) + B*(Ei-muV)*(Ei-muV) ) * (muG-Gl)*(muG-Gl) ; {mV**2 * nS**2}
    denom:= (1+B)*(1+B) * 2. * muG*muG * Tv * sV*sV ; {mV**2 * nS**2 * ms}
+   if denom<=0 then MessageBox('muG, muV, sV, Ts'+Rstr(muG)+'  '+Rstr(muV)+'  '+Rstr(sV)+'  '+Rstr(Ts));
    fe:= num/denom ; { 1/ms = kHz}
    fi:= B*fe ; { 1/ms = kHz}
    Q:= (muG-Gl)/Ts/(fe+fi) ; {nS /ms /kHz = nS}
@@ -1708,19 +1709,19 @@ end;
 ================================================================================ }
 
 var DISCRET_SV, DISCRET_MV, DISCRET_MUG, DISCRET_TS : integer;
-var min_muGn, max_muGn : real; 
+var min_muGn, max_muGn : real; recorded_index:Tvector;
 
 procedure init_massive_scan_const;
 begin                      
    TDBrecord('PG0.Exp_params').exp_type := 'tf_massive_mV_sV_Tv_mG';
-   min_muV:=-62; max_muV:=-54;
+   min_muV:=-63; max_muV:=-55;
    min_sV:=2; max_sV:=10;
    min_muGn:=2; max_muGn:=8;
-   min_Ts:=1; max_Ts:=7;
-   DISCRET_SV := 2;
-   DISCRET_MV := 2;
-   DISCRET_MUG:= 2 ;
-   DISCRET_TS:= 2;
+   min_Ts:=4; max_Ts:=7;
+   DISCRET_SV := 4;
+   DISCRET_MV := 3;
+   DISCRET_MUG:= 3 ;
+   DISCRET_TS:= 1;
    shift_mean :=0 ;   ratio_qe_qi := 1 ;
    GTE_point_number := 10 ;
 end;
@@ -1806,15 +1807,15 @@ begin
    openText(1,acquisition.genericfilename+'_GRID.txt',false);
    for i:=recorded_fe.Istart to recorded_fe.Iend do
    begin
-       st := Rstr(recorded_t[i], 1, 6)+Chr(9)+Rstr(recorded_fe[i], 1, 6)+Chr(9)+Rstr(recorded_fi[i], 1, 6)
+       st := Rstr(recorded_t[i], 1, 6)+Chr(9)+Rstr(recorded_index[i], 1, 6)
+      +Chr(9)+Rstr(recorded_fe[i], 1, 6)+Chr(9)+Rstr(recorded_fi[i], 1, 6)
        +Chr(9)+Rstr(recorded_q[i], 1, 6)+Chr(9)+Rstr(recorded_Ts[i], 1, 6)
-       +Chr(9)+Rstr(recorded_muV[i], 1, 6)+Chr(9)+Rstr(recorded_ts[i], 1, 6)
-      +Chr(9)+Rstr(recorded_muG[i], 1, 6);
+       +Chr(9)+Rstr(recorded_muV[i], 1, 6)+Chr(9)+Rstr(recorded_sV[i], 1, 6)
+      +Chr(9)+Rstr(recorded_muG[i], 1, 6)+Chr(9)+Rstr(recorded_Fout[i], 1, 6);
        writelnText(1,st);   // the time is actually the end of the experiment !!
    end; 
    closeText(1);
 end;
-
 
 procedure Massive_scan_EndProcess; 
 var i_rdm :  integer;
@@ -1823,13 +1824,13 @@ begin
     if continu_flag=False then rest_flag:=False; // to be sure to cancel the stimulation
     if (rest_flag=True) and (global_step<vec_fe.Iend)  then  // we are not in pause so we progress in the scan..
     begin 
+       global_step := global_step+1 ;   
        i_rdm:=Round(vec_i[global_step]); {RANDOMIZATION !!!}
-      freq_ge := vec_fe[i_rdm] ; freq_gi := vec_fi[i_rdm] ;
-      Q := vec_q[i_rdm] ;  Ts := vec_ts[i_rdm] ; 
-      muV := vec_muV[i_rdm] ; sV := vec_sV[i_rdm] ;
-      muG := vec_muG[i_rdm] ;  
-      rest_flag:=False;
-      global_step := global_step+1 ;   
+       freq_ge := vec_fe[i_rdm] ; freq_gi := vec_fi[i_rdm] ;
+       Q := vec_q[i_rdm] ;  Ts := vec_ts[i_rdm] ; 
+       muV := vec_muV[i_rdm] ; sV := vec_sV[i_rdm] ;
+       muG := vec_muG[i_rdm] ;  
+       rest_flag:=False;
     end
     else                              
     begin 
@@ -1843,14 +1844,16 @@ begin
     acquisition.InstallProcess(nil, massive_InitProcess, nil, massive_scan_endprocess);
 
    {then recordings}
-    recorded_fe.addtolist(freq_ge);
+   recorded_fe.addtolist(freq_ge);
     recorded_fi.addtolist(freq_gi);
     recorded_q.addtolist(Q);
     recorded_sV.addtolist(sV);
     recorded_muV.addtolist(muV);
     recorded_muG.addtolist(muG);
-    recorded_ts.addtolist(Ts);
-    recorded_t.addtolist(v1.Xend);
+   recorded_ts.addtolist(Ts);
+   recorded_Fout.addtolist(spiketimes.Iend/(v1.Xend-recorded_t[recorded_t.Iend]));
+   recorded_index.addtolist(vec_i[global_step]);
+   recorded_t.addtolist(v1.Xend);
 
    {No systematic recording yet}
    { recorded_fe.SaveAsObject(acquisition.genericfilename+'_fe') ; }
@@ -1875,7 +1878,7 @@ procedure Run_massive_scan;
 var i_rdm :  integer;
 begin 
    DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time} 
-   continu_flag := True ;
+   continu_flag := True ; rest_flag:=False;
    i_rdm:=Round(vec_i[global_step]);   {RANDOMIZATION}
    freq_ge := vec_fe[i_rdm] ; freq_gi := vec_fi[i_rdm] ;
    Q := vec_q[i_rdm] ;  Ts := vec_ts[i_rdm] ; 
@@ -1886,7 +1889,7 @@ begin
    // Elphy Params initialization
    acquisition.InstallProcess(my_initProcess0, massive_InitProcess, nil, massive_scan_endprocess); // initprocess0 for the first exp
 
-   write_GTE_params; // writing parameters
+      write_massive_scan_params; // writing parameters
    recorded_fe.create(t_single,0,-1);   recorded_fe.addtolist(freq_ge);
    recorded_fi.create(t_single,0,-1);   recorded_fi.addtolist(freq_gi);
    recorded_Q.create(t_single,0,-1); recorded_Q.addtolist(Q);
@@ -1895,6 +1898,8 @@ begin
    recorded_muG.create(t_single,0,-1); recorded_muG.addtolist(muG);
    recorded_ts.create(t_single,0,-1);   recorded_ts.addtolist(ts);
    recorded_t.create(t_single,0,-1);   recorded_t.addtolist(0);
+   recorded_Fout.create(t_single,0,-1);   recorded_Fout.addtolist(0);
+   recorded_index.create(t_single,0,-1); recorded_index.addtolist(vec_i[global_step]);
 
    acquisition.startandsave;
 end;
@@ -1937,9 +1942,9 @@ begin
       getRealA(' Min. Ts',min_Ts,10,3,200);
       getRealA(' Max. Ts',max_Ts,10,3,200);
       setText('=======================================');
-      getRealA(' ratio of Qi/Qe (NT WKG)',ratio_qe_qi,10,3,200);
-      getRealA(' shift resting pot. (mV) (NT WKG)',shift_mean,10,3,200);
-      setText('______________________________________');
+      //getRealA(' ratio of Qi/Qe (NT WKG)',ratio_qe_qi,10,3,200);
+      //getRealA(' shift resting pot. (mV) (NT WKG)',shift_mean,10,3,200);
+      //setText('______________________________________');
       setText('');
       getCommandA(' Generate and Shuffle the stim ',0,301); { OnEvent flag -> 201 }
       getCommandA(' Run ',0,201); { OnEvent flag -> 201 }

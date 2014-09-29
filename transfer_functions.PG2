@@ -6,7 +6,7 @@
 Const
    ProtocolCount    = 9 ; 
    CONTINUOUS_TIMER = 0.5 ; {timer for Tdetect update}
-   location	    = 'Linux' ;
+   location	    = 'Notebook' ;
    
 var  { ========= COMMON VARIABLES ============ }
    protocol_choice : integer; 
@@ -56,6 +56,7 @@ begin
   DivideWindow(1,3,1,2); // for ge and gi
   Page:=1; color:=cl_gray;
 end;
+
 
 {$EDIT Info_recording}
 { ============================================================================

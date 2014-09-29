@@ -236,6 +236,7 @@ end;
 procedure SetGain1;
 var Gain1_int:integer;
 begin
+
     gain1_int:=TDBrecord('PG0.global').Gain1_int;
     case Gain1_int of
     1: TDBrecord('PG0.global').Gain1 := 1.0; 2: TDBrecord('PG0.global').Gain1 := 2.0;

@@ -882,16 +882,23 @@ procedure write_massive_scan_infos_as_txt;
 var st : string; i : integer;
 begin
    openText(1,acquisition.genericfilename+'_GRID.txt',false);
-   for i:=recorded_fe.Istart to recorded_fe.Iend do
+   for i:=recorded_index.Istart to recorded_index.Iend do
    begin
-       st := Rstr(recorded_t[i], 1, 6)+Chr(9)+Rstr(recorded_index[i], 1, 6)
+       st := Rstr(recorded_index[i], 1, 6)
       +Chr(9)+Rstr(recorded_fe[i], 1, 6)+Chr(9)+Rstr(recorded_fi[i], 1, 6)
        +Chr(9)+Rstr(recorded_q[i], 1, 6)+Chr(9)+Rstr(recorded_Ts[i], 1, 6)
        +Chr(9)+Rstr(recorded_muV[i], 1, 6)+Chr(9)+Rstr(recorded_sV[i], 1, 6)
       +Chr(9)+Rstr(recorded_muG[i], 1, 6)+Chr(9)+Rstr(recorded_Tv[i], 1, 6)
       +Chr(9)+Rstr(recorded_Fout[i], 1, 6);
-       writelnText(1,st);   // the time is actually the end of the experiment !!
-   end; 
+       writelnText(1,st);   
+   end;
+   closeText(1);
+   openText(1,acquisition.genericfilename+'_t.txt',false);
+   for i:=recorded_t.Istart to recorded_t.Iend do
+   begin
+       st := Rstr(recorded_t[i], 1, 6);
+       writelnText(1,st);   
+   end; {the times are longer so we just finish it}
    closeText(1);
 end;
 

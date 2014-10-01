@@ -1214,7 +1214,7 @@ begin
     
    if Rm<>0 then Gl:=1000/Rm else MessageBox('Rm =0, no calculus possible !');  {nanoSiemens !!!}
 
-   mu_g0 := Gl*(1.-(El-shift_mean-clamp_mean)/(Ee-shift_mean-clamp_mean));  {minimumm conductance level to achieve the mean, nS}
+   mu_g0 := Gl*(1.-(El-shift_mean-clamp_mean)/(Ee-shift_mean-clamp_mean))+0.5;  {minimumm conductance level to achieve the mean, nS}
 
    dg_tot := (Gl*max_conductance_factor-mu_g0)/(point_number-1) ;  // nS
 

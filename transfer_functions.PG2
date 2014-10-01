@@ -1309,7 +1309,7 @@ begin
       muV := min_muV+ii*dv ; {in mV,  shuffled through vec_i}
       params_variations_calc(g_tot, muV+shift_mean, clamp_std, clamp_Ts, Ee, Ei, Rm, Cm, El, FE, FI, Q, Tv);
 
-      put_the_values_into_stimulation_vectors(g_tot, clamp_mean, shift_mean, clamp_std, clamp_Ts, Ee, Ei, Rm, Cm, El, FE, FI, Q, Tv);
+      put_the_values_into_stimulation_vectors(g_tot, muV, shift_mean, clamp_std, clamp_Ts, Ee, Ei, Rm, Cm, El, FE, FI, Q, Tv);
 
     end;
    create_and_shuffle_the_index_vector(point_number, REPETITION);

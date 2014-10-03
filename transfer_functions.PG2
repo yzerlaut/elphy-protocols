@@ -6,7 +6,7 @@
 Const
    ProtocolCount    = 9 ; 
    CONTINUOUS_TIMER = 0.5 ; {timer for Tdetect update}
-   LOCATION = 'Linux';
+   LOCATION = 'Notebook';
 
 
 var
@@ -81,7 +81,7 @@ begin
     //DB.AddField(st,jj+1);
     DB.ImplicitValue[st]:=TDBrecord('PG0.Exp_params').ImplicitValue[st] ;
   end;                                                                      
-  DB.protocol:=ProtocolName[protocol_choice];
+  //DB.protocol:=ProtocolName[protocol_choice];
   DB.Comments := comments ; {comments is a global variable }
   DB.Day := Day ; DB.Month := Month ; DB.Year := Year ;
   DB.Hour := Hour ; DB.Minute := Minute ; DB.SEcond := Second ;    

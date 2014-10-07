@@ -152,7 +152,7 @@ begin {-- we set all the variables of the acquisition class, then we create
    RTneuron.FadvanceON:=True; { in dynamic clamp -> NEURON calculus }  
    RTneuron.execute('create soma');
    RTneuron.execute('insert pas');
-   RTneuron.execute('e_pas = -65');
+   RTneuron.execute('e_pas = '+Rstr(El));
    RTneuron.execute('L=diam=79.8');
    RTneuron.Execute('g_pas = 5e-5');
    RTneuron.execute('insert WangBuszaki');
@@ -172,9 +172,11 @@ begin {-- we set all the variables of the acquisition class, then we create
    acquisition.Channels[3].NrnSymbolName:='stim.ge';
    acquisition.Channels[4].unitY:='uS'; addObject(1,4,v4); v4.title:='Gi(t)';
 	 acquisition.Channels[4].NrnSymbolName:='stim.gi';
+   acquisition.Channels[5].unitY:='nA'; addObject(1,2,v5); v5.title:='Icst';
+   acquisition.Channels[5].NrnSymbolName:='stim.Icst';
    v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ; v4.cpx:=1 ; v5.cpx:=1 ;
-   v1.cpy:=1 ; v2.cpy := 2 ; v3.cpy:=3 ;  v4.cpy:=4 ; {we set the coupling value -> to couple to future analysis} 
-   v2.color := CL_Olive ; v3.color := CL_Blue ; v4.color := CL_Red ; 
+   v1.cpy:=1 ; v2.cpy := 2 ; v5.cpy:=2 ; v3.cpy:=3 ;  v4.cpy:=4 ; {we set the coupling value -> to couple to future analysis} 
+   v2.color := CL_Olive ; v3.color := CL_Blue ; v4.color := CL_Red ; v5.color := CL_Red ; 
 end;
 
 procedure Set_DC_channels;
@@ -759,6 +761,7 @@ var Gl, R1, R2, A, B, num, denom, Tv2: real;
 begin {function to change  fe, fi, Q, Ts}
    Gl := 1000/Rm; {1000/Mohm = nS}
    if muG<=Gl then begin MessageBox('muG<=Gl, not possible !!!!'); muG:=Gl+1; end;
+   I0:=(muV-El)*muG*0.001; {mV*nS=0.001 nA}
    Tv:= Ts+Cm/muG ; {ms + pF/nS = ms}
    R1 := (Ee-El)/(El-Ei);
    if (ratio_qi_qe=-1) then R2:=(Ee-muV)/(muV-Ei) else R2:=ratio_qi_qe;
@@ -1854,7 +1857,7 @@ begin
      Hour:=Round(vec_params[10]); Minute:=Round(vec_params[11]) ; Second:=Round(vec_params[11]) ; 
      end else begin
      MessageBox('no parameters loaded !!!');
-     Rm :=100;Cm:=200;Bridge:=15;El:=-60;f_acq:=10;Holding:=0;
+     Rm :=100;Cm:=200;Bridge:=15;El:=-70;f_acq:=10;Holding:=0;
      gain1_int:=1;gain1:=1;gain2_int:=1;gain2:=1;
      end; 
      TDBrecord('PG0.global').f_acq := f_acq ; TDBrecord('PG0.global').Rm := Rm ;

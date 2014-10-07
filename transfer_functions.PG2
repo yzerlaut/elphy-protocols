@@ -6,12 +6,12 @@
 Const
    ProtocolCount    = 9 ; 
    CONTINUOUS_TIMER = 0.5 ; {timer for Tdetect update}
-   LOCATION = 'Linux';
+   LOCATION = 'Setup';
 
 
 var
    MainDialog, dialSetupog, StimDialog : Tdialog ;{ two dialogs for buttons and protocols}
-   stim, SAVING : boolean ; 
+   stim, SAVING : boolean ; protocol_choice:integer; comments:string;
    ProtocolName:array[1..protocolCount] of string; ProtoNames, ProtoNum:string;
    DB:Tdbrecord ;  {for metadata information, storing comments, ... }
    Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; {variables to fetch the date and time }
@@ -81,10 +81,10 @@ begin
     //DB.AddField(st,jj+1);
     DB.ImplicitValue[st]:=TDBrecord('PG0.Exp_params').ImplicitValue[st] ;
   end;                                                                      
-  DB.protocol:=ProtocolName[protocol_choice];
-  DB.Comments := comments ; {comments is a global variable }
-  DB.Day := Day ; DB.Month := Month ; DB.Year := Year ;
-  DB.Hour := Hour ; DB.Minute := Minute ; DB.SEcond := Second ;    
+  //DB.protocol:=ProtocolName[protocol_choice];
+  //DB.Comments := comments ; {comments is a global variable }
+  //DB.Day := Day ; DB.Month := Month ; DB.Year := Year ;
+  //DB.Hour := Hour ; DB.Minute := Minute ; DB.SEcond := Second ;    
 end;
 
 procedure save_metadata_as_txt;

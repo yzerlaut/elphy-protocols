@@ -6,7 +6,7 @@
 Const
    ProtocolCount    = 9 ; 
    CONTINUOUS_TIMER = 0.5 ; {timer for Tdetect update}
-   location	    = 'Notebook' ;
+   location   = 'Notebook' ;
    
 var  { ========= COMMON VARIABLES ============ }
    protocol_choice : integer; 

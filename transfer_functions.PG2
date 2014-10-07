@@ -734,40 +734,43 @@ end;
 
 
 {$EDIT Calculating parameters} 
-{ ==============================================================================
----- WE WILL NEED THIS FUNCTION FOR ALL THE REMAINING PROTOCOLS
-================================================================================ }
-
-procedure params_variations_calc(muG, muV, sV, Ts, Ee, Ei, Rm, Cm, El : real ; var fe, fi, Q, Tv : real);
-var Gl, A, B, num, denom, Tv2: real;
-begin {function to change  fe, fi, Q, Ts}
-   Gl := 1000/Rm; {1000/Mohm = nS}
-   Tv:= Ts+Cm/muG ; {ms + pF/nS = ms}
-   A:= (muG*muV-Gl*El)/(muG-Gl) ; {mV*nS / nS = mV}
-   B:= (Ee-A)/(A-Ei) ; { mV/mV = [] }
-   num:= ( (Ee-muV)*(Ee-muV) + B*(Ei-muV)*(Ei-muV) ) * (muG-Gl)*(muG-Gl) ; {mV**2 * nS**2}
-   denom:= (1+B)*(1+B) * 2. * muG*muG * Tv * sV*sV ; {mV**2 * nS**2 * ms}
-   if denom<=0 then MessageBox('muG, muV, sV, Ts'+Rstr(muG)+'  '+Rstr(muV)+'  '+Rstr(sV)+'  '+Rstr(Ts));
-   fe:= num/denom ; { 1/ms = kHz}
-   fi:= B*fe ; { 1/ms = kHz}
-   Q:= (muG-Gl)/Ts/(fe+fi) ; {nS /ms /kHz = nS}
-
-   {the the frequencies back to hertz !!}
-   fe:= fe*1000; fi := fi*1000;
-end;
 
 { we re-use some of the variables of the massive_TF_scan protocol : }
-var vec_q, vec_fe, vec_fi, vec_Ts, vec_Tv, vec_muG, vec_muV, vec_sV : Tvector ; {the weights will have to be changed to maintain the pot and fluctuations fixed !}
+var vec_q, vec_qe, vec_qi, vec_fe, vec_fi, vec_Ts, vec_Tv, vec_muG, vec_muV, vec_sV : Tvector ; {the weights will have to be changed to maintain the pot and fluctuations fixed !}
 var ratio_qi_qe, ratio_Ti_Te : real; {comodulation factor for the total conductance effect (G Total Effect, GTE)}
 var Q, Ts, Tv, muG, muV, sV, shift_mean, clamp_mean, clamp_std, clamp_Tv, clamp_gtotN, clamp_Ts    : real ;
 {you have the possibility to shift the mean of a shift produced by a constant current input (this allows to have lower weights) }
-var recorded_index, recorded_Q,recorded_Tv,recorded_Ts, recorded_muG, recorded_muV, recorded_sV : Tvector ; {the one for fe and fi were created above !}
+var recorded_index, recorded_I0, vec_I0, recorded_Q,recorded_Qe,recorded_Qi,recorded_Tv,recorded_Ts, recorded_muG, recorded_muV, recorded_sV : Tvector ; {the one for fe and fi were created above !}
 var point_number, REPETITION : integer; vec_i : Tvector ; 
 
 {Then protocol specific variables}
 var max_conductance_factor : real; {until how much gleak do we increase the conductance ?}
 var DISCRET_SV, DISCRET_MV, DISCRET_MUG, DISCRET_TS : integer;
-var min_sV, max_sV, min_muV, max_muV, min_muGn, max_muGn, min_sV2, max_sV2, min_Ts, max_Ts : real;
+var I0, min_sV, max_sV, min_muV, max_muV, min_muGn, max_muGn, min_sV2, max_sV2, min_Ts, max_Ts : real;
+
+
+{ ==============================================================================
+---- WE WILL NEED THIS FUNCTION FOR ALL THE REMAINING PROTOCOLS
+================================================================================ }
+
+procedure params_variations_calc(muG, muV, sV, Ts, Ee, Ei, Rm, Cm, El : real ; var I0, fe, fi, Qe, Qi, Tv : real);
+var Gl, R1, R2, A, B, num, denom, Tv2: real;
+begin {function to change  fe, fi, Q, Ts}
+   Gl := 1000/Rm; {1000/Mohm = nS}
+   if muG<=Gl then begin MessageBox('muG<=Gl, not possible !!!!'); muG:=Gl+1; end;
+   Tv:= Ts+Cm/muG ; {ms + pF/nS = ms}
+   R1 := (Ee-El)/(El-Ei);
+   if (ratio_qi_qe=-1) then R2:=(Ee-muV)/(muV-Ei) else R2:=ratio_qi_qe;
+   num := sV*sV*(1+R1)*2*muG*muG*Tv; {mV**2 * nS**2 * ms}
+   denom:= ( (Ee-muV)*(Ee-muV) + R1*R2*(Ei-muV)*(Ei-muV) ) * (muG-Gl) *Ts ; {mV**2 * nS * ms}
+   Qe := num/denom ;  {nS}
+   Qi := R2*Qe; {nS}
+   fe := (muG-Gl)/Qe/Ts/(1+R1); {kHz}
+   fi := R1/R2*fe;  {kHz}
+
+   {the the frequencies back to hertz !!}
+   fe:= fe*1000; fi := fi*1000;
+end;
 
 
 procedure write_fluct_Exp_params; {to be used by all subsequent protocols}
@@ -821,15 +824,15 @@ begin
    continu_flag :=True ;
 end;
 
-procedure Init_single_exp_fluct(f_exc, f_inh, Q, Ts : real; SEED:integer);
+procedure Init_single_exp_fluct(I0, f_exc, f_inh, Qe, Qi, Ts : real; SEED:integer);
 begin         
    {configuring the seed of the excitatory presynaptic events}
    RTneuron.execute('nsE.seed('+Istr(SEED)+')');
    RTneuron.execute('nsI.seed('+Istr(SEED+1)+')');
 
    {synaptic weights}
-   RTneuron.execute('ncE.weight = 0.001*'+Rstr(Q));
-   RTneuron.execute('ncI.weight = -0.001*'+Rstr(Q*ratio_qi_qe)); {NEGATIVE FLAG !!!}
+   RTneuron.execute('ncE.weight = 0.001*'+Rstr(Qe));
+   RTneuron.execute('ncI.weight = -0.001*'+Rstr(Qi)); {NEGATIVE FLAG !!!}
    
    {firing frequencies}
    if f_exc>0 then RTneuron.execute('nsE.interval = 1000/'+Rstr(f_exc)) else RTneuron.execute('nsE.interval = 1e30');
@@ -838,14 +841,17 @@ begin
    {then synaptic times}
    RTneuron.execute('stim.tauE = '+Rstr(Ts));
    RTneuron.execute('stim.tauI = '+Rstr(Ts*ratio_Ti_Te));
+   RTneuron.execute('stim.Icst = '+Rstr(I0)); {current to bring at mean}
    RTneuron.execute('finitialize()');
 end;
 
 procedure add_current_variables_to_vectors;
 var ff : real;
 begin
+   recorded_I0.addtolist(I0);
    recorded_fe.addtolist(freq_ge);   recorded_fi.addtolist(freq_gi);
-   recorded_q.addtolist(Q);    recorded_ts.addtolist(Ts);
+   recorded_Qe.addtolist(Qe);   recorded_Qi.addtolist(Qi);
+   recorded_ts.addtolist(Ts);
    recorded_sV.addtolist(sV);   recorded_muV.addtolist(muV);
    recorded_muG.addtolist(muG);  recorded_Tv.addtolist(Tv);
    ff:=spiketimes.Iend/(v1.Xend-recorded_t[recorded_t.Iend]);
@@ -855,9 +861,11 @@ end;
 
 procedure initialize_recording_vectors;
 begin
+   recorded_I0.create(t_single,0,-1); 
    recorded_fe.create(t_single,0,-1); 
    recorded_fi.create(t_single,0,-1);
-   recorded_Q.create(t_single,0,-1);
+   recorded_Qe.create(t_single,0,-1);
+   recorded_Qi.create(t_single,0,-1);
    recorded_ts.create(t_single,0,-1);   
    recorded_muV.create(t_single,0,-1); 
    recorded_sV.create(t_single,0,-1);
@@ -871,27 +879,17 @@ end;
 
 procedure initialize_stimulation_vectors;
 begin
+   vec_I0.create(t_single,0,-1); 
    vec_fe.create(t_single,0,-1);  vec_fi.create(t_single,0,-1);
-   vec_q.create(t_single,0,-1); vec_Ts.create(t_single,0,-1);
+   vec_Qe.create(t_single,0,-1);  vec_Qi.create(t_single,0,-1);
+   vec_Ts.create(t_single,0,-1);
    vec_muG.create(t_single,0,-1); vec_muV.create(t_single,0,-1);
    vec_sV.create(t_single,0,-1); vec_Tv.create(t_single,0,-1);
 end;
 
-procedure write_massive_scan_infos_as_txt;
-var st : string; i : integer;
+procedure write_t_vector;
+var st:string; i:integer;
 begin
-   openText(1,acquisition.genericfilename+'_GRID.txt',false);
-   for i:=recorded_index.Istart to recorded_index.Iend do
-   begin
-       st := Rstr(recorded_index[i], 1, 6)
-      +Chr(9)+Rstr(recorded_fe[i], 1, 6)+Chr(9)+Rstr(recorded_fi[i], 1, 6)
-       +Chr(9)+Rstr(recorded_q[i], 1, 6)+Chr(9)+Rstr(recorded_Ts[i], 1, 6)
-       +Chr(9)+Rstr(recorded_muV[i], 1, 6)+Chr(9)+Rstr(recorded_sV[i], 1, 6)
-      +Chr(9)+Rstr(recorded_muG[i], 1, 6)+Chr(9)+Rstr(recorded_Tv[i], 1, 6)
-      +Chr(9)+Rstr(recorded_Fout[i], 1, 6);
-       writelnText(1,st);   
-   end;
-   closeText(1);
    openText(1,acquisition.genericfilename+'_t.txt',false);
    for i:=recorded_t.Istart to recorded_t.Iend do
    begin
@@ -901,16 +899,37 @@ begin
    closeText(1);
 end;
 
-procedure put_the_values_into_stimulation_vectors(g_tot, muV,shift_mean, sV, Ts, Ee, Ei, Rm, Cm, El, FE, FI, Q, Tv :real );
+procedure write_massive_scan_infos_as_txt;
+var st : string; i : integer;
 begin
+   openText(1,acquisition.genericfilename+'_GRID.txt',false);
+   for i:=recorded_index.Istart to recorded_index.Iend do
+   begin
+       st := Rstr(recorded_index[i], 1, 6)
+      +Chr(9)+Rstr(recorded_I0[i], 1, 6)+Chr(9)+Rstr(recorded_Ts[i], 1, 6)
+      +Chr(9)+Rstr(recorded_fe[i], 1, 6)+Chr(9)+Rstr(recorded_fi[i], 1, 6)
+       +Chr(9)+Rstr(recorded_Qe[i], 1, 6)+Chr(9)+Rstr(recorded_Qi[i], 1, 6)
+       +Chr(9)+Rstr(recorded_muV[i], 1, 6)+Chr(9)+Rstr(recorded_sV[i], 1, 6)
+      +Chr(9)+Rstr(recorded_muG[i], 1, 6)+Chr(9)+Rstr(recorded_Tv[i], 1, 6)
+      +Chr(9)+Rstr(recorded_Fout[i], 1, 6);
+       writelnText(1,st);   
+   end;
+   closeText(1);
+   write_t_vector;
+end;
+
+procedure put_the_values_into_stimulation_vectors(g_tot, muV, sV, Ts, I0, FE, FI, Qe, Qi, Tv :real);
+begin
+   vec_muG.addtolist(g_tot);
    vec_muV.addtolist(muV);
    vec_sV.addtolist(sV);
-   vec_Tv.addtolist(Ts+Cm/g_tot);
-   vec_muG.addtolist(g_tot);
-   vec_Q.addtolist(Q);
+   vec_Ts.addtolist(Ts);
+   vec_I0.addtolist(I0);
    vec_fe.addtolist(FE);
    vec_fi.addtolist(FI);
-   vec_Ts.addtolist(Ts);
+   vec_Qe.addtolist(Qe);
+   vec_Qi.addtolist(Qi);
+   vec_Tv.addtolist(Ts+Cm/g_tot);
 end;
 
 procedure create_and_shuffle_the_index_vector(n_tot, REPETITION:integer );
@@ -930,8 +949,9 @@ end;
 
 procedure refill_the_fluct_variables(ii:integer);
 begin
+       I0 := vec_I0[ii];
        freq_ge := vec_fe[ii] ; freq_gi := vec_fi[ii] ;
-       Q := vec_q[ii] ;  Ts := vec_ts[ii] ; 
+       Qi := vec_qi[ii] ; Qe := vec_qe[ii] ;  Ts := vec_ts[ii] ; 
        muV := vec_muV[ii] ; sV := vec_sV[ii] ;
        muG := vec_muG[ii] ; Tv := vec_Tv[ii] ;  
 end;
@@ -955,17 +975,17 @@ begin
        {recording the previous episode quantities}
        add_current_variables_to_vectors;
        {then recordings of the future episode quantities}
-      freq_ge := 0 ; freq_gi := 0 ; 
+       freq_ge := 0 ; freq_gi := 0 ; I0:=0;
       rest_flag:=True;
       if global_step>=vec_i.Iend then continu_flag:=False;
     end;
 
-   {t has to be recorded everytime !}
+   {t has to be recorded everytime ! (to allow an analysis anyway if something fails)}
    recorded_t.addtolist(v1.Xend);
-
+   write_t_vector;
 
     // then we reinit everything
-    Init_single_exp_fluct(freq_ge, freq_gi, Q, Ts, SEED+global_step); {not to have the same seed everytime !}
+    Init_single_exp_fluct(I0, freq_ge, freq_gi, Qe, Qi, Ts, SEED+global_step); {not to have the same seed everytime !}
 
 
     acquisition.InstallProcess(nil, massive_InitProcess, nil, massive_scan_endprocess);
@@ -987,7 +1007,7 @@ begin
    i_rdm:=Round(vec_i[global_step]);   {RANDOMIZATION}
    refill_the_fluct_variables(i_rdm);
 
-   Init_single_exp_fluct(freq_ge,freq_gi, Q, Ts, SEED+global_step);
+   Init_single_exp_fluct(I0, freq_ge,freq_gi, Qe, Qi, Ts, SEED+global_step);
    // Elphy Params initialization
    acquisition.InstallProcess(my_initProcess0, massive_InitProcess, nil, massive_scan_endprocess); // initprocess0 for the first exp
 
@@ -1037,8 +1057,8 @@ begin
    for ii:=0 to point_number-1 do 
    begin
       g_tot := mu_g1+ii*dg_tot ; {in nanoSiemens}
-      params_variations_calc(g_tot, clamp_mean+shift_mean, clamp_std, clamp_Tv-Cm/g_tot, Ee, Ei, Rm, Cm, El, FE, FI, Q, Tv);
-      put_the_values_into_stimulation_vectors(g_tot, clamp_mean,shift_mean, clamp_std, clamp_Tv-Cm/g_tot, Ee, Ei, Rm, Cm, El, FE, FI, Q, Tv);
+      params_variations_calc(g_tot, clamp_mean, clamp_std, clamp_Tv-Cm/g_tot, Ee, Ei, Rm, Cm, El, I0, FE, FI, Qe,Qi, Tv);
+      put_the_values_into_stimulation_vectors(g_tot, clamp_mean, clamp_std, clamp_Tv-Cm/g_tot, I0, FE, FI, Qe, Qi, Tv);
 
     end;
 
@@ -1130,8 +1150,8 @@ begin
    begin
       Ts := min_Ts+ii*dTs ; {in ms}
 
-      params_variations_calc(g_tot, clamp_mean+shift_mean, clamp_std, Ts, Ee, Ei, Rm, Cm, El, FE, FI, Q, Tv);
-      put_the_values_into_stimulation_vectors(g_tot, clamp_mean, shift_mean, clamp_std, Ts, Ee, Ei, Rm, Cm, El, FE, FI, Q, Tv);
+      params_variations_calc(g_tot, clamp_mean, clamp_std, Ts, Ee, Ei, Rm, Cm, El, I0, FE, FI, Qe, Qi, Tv);
+      put_the_values_into_stimulation_vectors(g_tot, clamp_mean, clamp_std, Ts, I0, FE, FI, Qe,Qi, Tv);
     end;
    create_and_shuffle_the_index_vector(point_number, REPETITION);
 end;
@@ -1221,9 +1241,8 @@ begin
    begin
       g_tot := mu_g0+ii*dg_tot ; {in nanoSiemens,  shuffled through vec_i}
 
-      params_variations_calc(g_tot, clamp_mean+shift_mean, clamp_std, clamp_Ts, Ee, Ei, Rm, Cm, El, FE, FI, Q, Tv);
-
-      put_the_values_into_stimulation_vectors(g_tot, clamp_mean, shift_mean, clamp_std, clamp_Ts, Ee, Ei, Rm, Cm, El, FE, FI, Q, Tv);
+      params_variations_calc(g_tot, clamp_mean, clamp_std, clamp_Ts, Ee, Ei, Rm, Cm, El, I0, FE, FI, Qe,Qi, Tv);
+      put_the_values_into_stimulation_vectors(g_tot, clamp_mean, clamp_std, clamp_Ts, I0, FE, FI, Qe,Qi, Tv);
 
     end;
    create_and_shuffle_the_index_vector(point_number, REPETITION);
@@ -1307,9 +1326,8 @@ begin
    for ii:=0 to point_number-1 do 
    begin
       muV := min_muV+ii*dv ; {in mV,  shuffled through vec_i}
-      params_variations_calc(g_tot, muV+shift_mean, clamp_std, clamp_Ts, Ee, Ei, Rm, Cm, El, FE, FI, Q, Tv);
-
-      put_the_values_into_stimulation_vectors(g_tot, muV, shift_mean, clamp_std, clamp_Ts, Ee, Ei, Rm, Cm, El, FE, FI, Q, Tv);
+      params_variations_calc(g_tot, muV, clamp_std, clamp_Ts, Ee, Ei, Rm, Cm, El, I0, FE, FI, Qe,Qi, Tv);
+      put_the_values_into_stimulation_vectors(g_tot, muV, clamp_std, clamp_Ts, I0, FE, FI, Qe,Qi, Tv);
 
     end;
    create_and_shuffle_the_index_vector(point_number, REPETITION);
@@ -1396,8 +1414,8 @@ begin
    for ii:=0 to point_number-1 do 
    begin
       sV1 := min_sV+ii*dsv ; {in mV,  shuffled through vec_i}
-      params_variations_calc(g_tot, clamp_mean+shift_mean, sV1, clamp_Ts, Ee, Ei, Rm, Cm, El, FE, FI, Q, Tv);
-      put_the_values_into_stimulation_vectors(g_tot, clamp_mean, shift_mean, sV1, clamp_Ts, Ee, Ei, Rm, Cm, El, FE, FI, Q, Tv);
+      params_variations_calc(g_tot, clamp_mean, sV1, clamp_Ts, Ee, Ei, Rm, Cm, El, I0, FE, FI, Qe,Qi, Tv);
+      put_the_values_into_stimulation_vectors(g_tot, clamp_mean, sV1, clamp_Ts, I0, FE, FI, Qe,Qi, Tv);
     end;
    create_and_shuffle_the_index_vector(point_number, REPETITION);
 end;
@@ -1513,10 +1531,10 @@ begin
 	    begin
 	       Ts:=min_Ts +it*DTs;
 
-	       params_variations_calc(g_tot, muV+shift_mean, sV, Ts, Ee, Ei, Rm, Cm, El, FE, FI, Q, Tv);
+	       params_variations_calc(g_tot, muV, sV, Ts, Ee, Ei, Rm, Cm, El, I0, FE, FI, Qe,Qi, Tv);
 
 	       {NOW WE CAN APPEND THE VALUES TO THE VECTORS}
-	       put_the_values_into_stimulation_vectors(g_tot, muV,shift_mean, sV, Ts, Ee, Ei, Rm, Cm, El, FE, FI, Q, Tv);
+	       put_the_values_into_stimulation_vectors(g_tot, muV, sV, Ts, I0, FE, FI, Qe,Qi, Tv);
 	    end;
 	 end;
       end;

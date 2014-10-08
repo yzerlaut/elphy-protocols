@@ -28,7 +28,7 @@ PARAMETER {
 	tauI = 5 (ms) <1e-9,1e9>
 	Ei = -80 (mV)
 	startI = 0 (ms) <1e-9,1e9>
-	stopI = 0 (ms) <1e-9,1e9>
+	stopI = 1e8 (ms) <1e-9,1e9>
 	Icst = 0 (nA) : additional currrent input
 }
 

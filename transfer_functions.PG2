@@ -6,12 +6,13 @@
 Const
    ProtocolCount    = 9 ; 
    CONTINUOUS_TIMER = 0.5 ; {timer for Tdetect update}
-   LOCATION = 'Setup';
-
-
-var
-   MainDialog, dialSetupog, StimDialog : Tdialog ;{ two dialogs for buttons and protocols}
-   stim, SAVING : boolean ; protocol_choice:integer; comments:string;
+   location   = 'Setup' ;
+   
+var  { ========= COMMON VARIABLES ============ }
+   protocol_choice : integer; 
+   amplifier, comments, PathOfTheDay, root_dir : string ; 
+   MainDialog, dialog, StimDialog : Tdialog ;{ two dialogs for buttons and protocols}
+   stim, SAVING : boolean ; 
    ProtocolName:array[1..protocolCount] of string; ProtoNames, ProtoNum:string;
    DB:Tdbrecord ;  {for metadata information, storing comments, ... }
    Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; {variables to fetch the date and time }
@@ -81,10 +82,10 @@ begin
     //DB.AddField(st,jj+1);
     DB.ImplicitValue[st]:=TDBrecord('PG0.Exp_params').ImplicitValue[st] ;
   end;                                                                      
-  //DB.protocol:=ProtocolName[protocol_choice];
-  //DB.Comments := comments ; {comments is a global variable }
-  //DB.Day := Day ; DB.Month := Month ; DB.Year := Year ;
-  //DB.Hour := Hour ; DB.Minute := Minute ; DB.SEcond := Second ;    
+  DB.protocol:=ProtocolName[protocol_choice];
+  DB.Comments := comments ; {comments is a global variable }
+  DB.Day := Day ; DB.Month := Month ; DB.Year := Year ;
+  DB.Hour := Hour ; DB.Minute := Minute ; DB.SEcond := Second ;    
 end;
 
 procedure save_metadata_as_txt;
@@ -1853,7 +1854,7 @@ begin
      Hour:=Round(vec_params[10]); Minute:=Round(vec_params[11]) ; Second:=Round(vec_params[11]) ; 
      end else begin
      MessageBox('no parameters loaded !!!');
-     Rm :=400;Cm:=50;Bridge:=15;El:=-70;f_acq:=10;Holding:=0;
+     Rm :=100;Cm:=200;Bridge:=15;El:=-60;f_acq:=10;Holding:=0;
      gain1_int:=1;gain1:=1;gain2_int:=1;gain2:=1;
      end; 
      TDBrecord('PG0.global').f_acq := f_acq ; TDBrecord('PG0.global').Rm := Rm ;

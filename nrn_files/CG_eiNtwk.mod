@@ -20,7 +20,7 @@ NEURON {
     POINT_PROCESS ExpSyn_GC_eiNtwk
     RANGE Ts, Q
     RANGE muV_th, Driving_Force, Ee, Ei
-    RANGE ge_I, gi_I, ge, gi
+    RANGE geC, giC, ge, gi
     RANGE I0, I1, I2, t1, t2, Icst
     RANGE stop_flag
     NONSPECIFIC_CURRENT i
@@ -56,15 +56,15 @@ ASSIGNED {
 STATE {
     ge (uS)
     gi (uS)
-    ge_I (uS)
-    gi_I (uS)
+    geC (uS)
+    giC (uS)
 }
 
 INITIAL {
     ge=0
     gi=0
-    ge_I=0
-    gi_I=0
+    geC=0
+    giC=0
     stop_flag = 0
     Ee = muV_th+Driving_Force
     Ei =  muV_th-Driving_Force
@@ -77,19 +77,19 @@ INITIAL {
 BREAKPOINT {
     SOLVE state METHOD cnexp : exp decay for the conductances
     : stop_flag serves to shutdown the current
-    i = (1-stop_flag)*(ge*(v-Ee)+gi*(v-Ei)+(gi_I-ge_I)*Driving_Force - Icst)
+    i = (1-stop_flag)*(ge*(v-Ee)+gi*(v-Ei)+(giC-geC)*Driving_Force - Icst)
 }
 
 DERIVATIVE state {
     ge' = -ge/Ts
     gi' = -gi/Ts
-    ge_I' = -ge_I/Ts
-    gi_I' = -gi_I/Ts
+    geC' = -geC/Ts
+    giC' = -giC/Ts
 }
 
 NET_RECEIVE(weight (uS)) { 
-    if (weight==1) { ge_I = ge_I + Q  } 
-    if (weight==2) { gi_I = gi_I + Q   } 
+    if (weight==1) { geC = geC + Q  } 
+    if (weight==2) { giC = giC + Q   } 
     if (weight==3) { ge = ge + Q  } 
     if (weight==4) { gi = gi + Q } 
     if (flag==-1) { Icst = I1}

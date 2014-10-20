@@ -6,7 +6,7 @@
 Const
    ProtocolCount    = 9 ; 
    CONTINUOUS_TIMER = 0.5 ; {timer for Tdetect update}
-   location   = 'Notebook' ;
+   location   = 'Setup' ;
    
 var  { ========= COMMON VARIABLES ============ }
    protocol_choice : integer; 
@@ -779,7 +779,10 @@ end;
 
 procedure write_fluct_Exp_params; {to be used by all subsequent protocols}
 begin
-    TDBrecord('PG0.Exp_params').Ee:=Ee ; 
+   TDBrecord('PG0.global').f_acq := f_acq ; TDBrecord('PG0.global').Rm := Rm ;
+   TDBrecord('PG0.global').Cm := Cm ; TDBrecord('PG0.global').El := El ;  
+   TDBrecord('PG0.global').Bridge := Bridge ;  TDBrecord('PG0.global').Holding := Holding ; 
+   TDBrecord('PG0.Exp_params').Ee:=Ee ; 
     TDBrecord('PG0.Exp_params').seed_exc:=SEED ;
     TDBrecord('PG0.Exp_params').Ei:=Ei ; 
     TDBrecord('PG0.Exp_params').seed_inh:=SEED*SEED+1 ;
@@ -1035,7 +1038,7 @@ begin
    clamp_mean := -60; clamp_std := 4 ;
    clamp_Tv := 8 ; {ms}
    shift_mean :=0 ;
-   max_conductance_factor := 12;
+   max_conductance_factor := 10;
    point_number := 10 ;
    REPETITION := 1; {REPEATING FOR DIFFERENT SEEDS}
    ratio_Qi_Qe:=1; ratio_Ti_Te:=1;
@@ -1221,7 +1224,7 @@ begin
    TDBrecord('PG0.Exp_params').exp_type := 'tf_Gtot_and_TV_effect_on_spiking' ;
    clamp_mean := -60; clamp_std := 4 ; clamp_Ts := 3 ; {ms}
    shift_mean :=0 ;
-   max_conductance_factor := 12;
+   max_conductance_factor := 10;
    REPETITION := 1; {REPEATING FOR DIFFERENT SEEDS}
    ratio_Qi_Qe:=1; ratio_Ti_Te:=1;
    point_number := 10 ;
@@ -1860,9 +1863,6 @@ begin
      Rm :=100;Cm:=200;Bridge:=15;El:=-70;f_acq:=10;Holding:=0;
      gain1_int:=1;gain1:=1;gain2_int:=1;gain2:=1;
      end; 
-     TDBrecord('PG0.global').f_acq := f_acq ; TDBrecord('PG0.global').Rm := Rm ;
-     TDBrecord('PG0.global').Cm := Cm ; TDBrecord('PG0.global').El := El ;  
-     TDBrecord('PG0.global').Bridge := Bridge ;  TDBrecord('PG0.global').Holding := Holding ; 
      TDBrecord('PG0.global').gain1 := gain1 ;  TDBrecord('PG0.global').gain2 := gain2 ;
 end;
 

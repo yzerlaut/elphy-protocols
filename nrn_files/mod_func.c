@@ -10,6 +10,7 @@ modl_reg(){
     if (!nrn_nobanner_) if (nrnmpi_myid < 1) {
 	fprintf(stderr, "Additional mechanisms from files\n");
 
+fprintf(stderr," CG_eiNtwk.mod");
 fprintf(stderr," Exp2Syn_eiNtwk.mod");
 fprintf(stderr," ExpSyn_eiNtwk.mod");
 fprintf(stderr," IClamp_WhiteNoise.mod");
@@ -21,6 +22,7 @@ fprintf(stderr," myVClamp.mod");
 fprintf(stderr," netstim_from_self_spike.mod");
 fprintf(stderr, "\n");
     }
+_CG_eiNtwk_reg();
 _Exp2Syn_eiNtwk_reg();
 _ExpSyn_eiNtwk_reg();
 _IClamp_WhiteNoise_reg();

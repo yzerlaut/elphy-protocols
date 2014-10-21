@@ -139,7 +139,9 @@ begin {-- we set all the variables of the acquisition class, then we create
       the NEURON variables and link it to the analogous variables
        -- the NEURON files are loaded thanks to main dialog buttons}
 
-   acquisition.ChannelCount := 9; 
+
+   RTneuron.ResetParams;
+   acquisition.ChannelCount := 7; 
 
    {we delete previous graphical display}
    ClearObjects(1,1); ClearObjects(1,2);
@@ -149,19 +151,19 @@ begin {-- we set all the variables of the acquisition class, then we create
    f_acq := TDBrecord('PG0.global').f_acq ;
    acquisition.PeriodPerChannel:=1./f_acq ; { in ms }
  
-   RTneuron.FadvanceON:=True; { in dynamic clamp -> NEURON calculus }  
+   { RTneuron.FadvanceON:=True; {\ in dynamic clamp -> NEURON calculus !{\   }
    RTneuron.execute('create soma');
    RTneuron.execute('insert pas');
    RTneuron.execute('e_pas = '+Rstr(El));
    RTneuron.execute('L=diam=79.8');
    RTneuron.Execute('g_pas = 5e-5');
-   RTneuron.execute('insert WangBuszaki');
+   { RTneuron.execute('insert WangBuszaki'); }
    
    RTneuron.Execute('objref stim');
-   //RTneuron.Execute('soma stim = new ExpSyn_eiNtwk(.5)');
-   RTneuron.Execute('soma stim = new ExpSyn_GC_eiNtwk(.5)');
+   { RTneuron.Execute('soma stim = new ExpSyn_eiNtwk(.5)'); }
+   RTneuron.Execute('soma stim = new ExpSyn_GC_eiNtwk(0.5)');
 
-   for i:=1 to 9 do 
+   for i:=1 to 7 do 
    begin 
      acquisition.Channels[i].ChannelType := TI_Neuron;
      acquisition.Channels[i].DownSamplingFactor:=1;
@@ -174,15 +176,15 @@ begin {-- we set all the variables of the acquisition class, then we create
    acquisition.Channels[3].NrnSymbolName:='stim.ge';
    acquisition.Channels[4].unitY:='uS'; addObject(1,4,v4); v4.title:='Gi(t)';
    acquisition.Channels[4].NrnSymbolName:='stim.gi';
-   { acquisition.Channels[5].unitY:='uS'; addObject(1,3,v5);  v5.title:='Ge2(t)'; }
-   { acquisition.Channels[5].NrnSymbolName:='stim.ge_I'; }
-   { acquisition.Channels[6].unitY:='uS'; addObject(1,4,v6); v6.title:='Gi2(t)'; }
-   { acquisition.Channels[6].NrnSymbolName:='stim.gi_I'; }
-   { acquisition.Channels[7].unitY:='nA'; addObject(1,2,v7); v7.title:='Icst'; }
-   { acquisition.Channels[7].NrnSymbolName:='stim.Icst'; }
+   acquisition.Channels[5].unitY:='uS'; addObject(1,3,v5);  v5.title:='GeC(t)';
+   acquisition.Channels[5].NrnSymbolName:='stim.geC';
+   acquisition.Channels[6].unitY:='uS'; addObject(1,4,v6); v6.title:='GiC(t)';
+   acquisition.Channels[6].NrnSymbolName:='stim.giC';
+   acquisition.Channels[7].unitY:='nA'; //addObject(1,2,v7); v7.title:='Icst';
+   acquisition.Channels[7].NrnSymbolName:='stim.Icst';
    v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ; v4.cpx:=1 ; v5.cpx:=1 ; v6.cpx:=1 ; //v7.cpx:=1 ;
-   v1.cpy:=1 ; v2.cpy := 2 ; v3.cpy:=3 ; v5.cpy:=3;  v4.cpy:=4 ;  v6.cpy:=4 ; //v7.cpy:=2 ; 
-   v2.color := CL_Olive ; v3.color := CL_Blue ; v4.color := CL_Red ; v5.color := CL_Red ; 
+   v1.cpy:=1 ; v2.cpy := 2 ; v3.cpy:=3 ; v5.cpy:=3;  v4.cpy:=4 ;  v6.cpy:=4 ; //v7.cpy:=2 ;
+   v2.color := CL_Olive ; v3.color := CL_Blue ; v4.color := CL_Red ; v5.color := CL_Red ;
 end;
 
 
@@ -209,7 +211,7 @@ begin {-- we set all the variables of the acquisition class, then we create
 
    RTneuron.Execute('create soma');
    RTneuron.Execute('objref stim');
-   //RTneuron.Execute('soma stim = new ExpSyn_eiNtwk(.5)');
+   { RTneuron.Execute('soma stim = new ExpSyn_eiNtwk(.5)'); }
    RTneuron.Execute('soma stim = new ExpSyn_GC_eiNtwk(.5)');
    
    for i:=1 to 6 do 
@@ -286,15 +288,15 @@ begin
 RTneuron.execute('stim.stop_flag=1'); {trying to use the stop flag !!!}
 RTneuron.execute('fadvance()');
 Rtneuron.DacChan[0].HoldingValue:=0;
-Rtneuron.DacChan[0].UseHoldingValue:=True;    
+Rtneuron.DacChan[0].UseHoldingValue:=True;
 Rtneuron.DacChan[1].HoldingValue:=0;
-Rtneuron.DacChan[1].UseHoldingValue:=True;  
+Rtneuron.DacChan[1].UseHoldingValue:=True;
 with stimulator do
   begin
-    stimulator.setValue(0,0,0,0);   
-    stimulator.setValue(0,0,1,0);   
-    stimulator.setValue(0,1,0,0);  
-end; 
+    stimulator.setValue(0,0,0,0);
+    stimulator.setValue(0,0,1,0);
+    stimulator.setValue(0,1,0,0);
+end;
 end;
 
 
@@ -670,7 +672,6 @@ begin
     recorded_fe.addtolist(freq_ge);recorded_fe.SaveAsObject(acquisition.genericfilename+'_fe') ;
     recorded_fi.addtolist(freq_gi);recorded_fi.SaveAsObject(acquisition.genericfilename+'_fi') ;
     recorded_t.addtolist(v1.Xend);recorded_t.SaveAsObject(acquisition.genericfilename+'_t') ;
-    RTneuron.FadvanceON:=True;
  
     t0_trial := v1.Xend ;     // t0 setting
     TFdialog.update;TFdialog.updatevar;    
@@ -797,10 +798,7 @@ begin
    TDBrecord('PG0.global').Bridge := Bridge ;
    TDBrecord('PG0.global').Holding := Holding ; 
    TDBrecord('PG0.Exp_params').Driving_Force:=Driving_Force ; 
-    TDBrecord('PG0.Exp_params').seed_exc_C:=SEED;
-    TDBrecord('PG0.Exp_params').seed_inh_C:=SEED*(SEED+1);
-    TDBrecord('PG0.Exp_params').seed_exc_G:=SEED*SEED;
-    TDBrecord('PG0.Exp_params').seed_inh_G:=SEED*(SEED+2);
+    TDBrecord('PG0.Exp_params').seed:=SEED;
     TDBrecord('PG0.Exp_params').clamp_mean := clamp_mean;
     TDBrecord('PG0.Exp_params').clamp_std := clamp_std ;
     TDBrecord('PG0.Exp_params').clamp_Tv := clamp_Tv;
@@ -838,7 +836,7 @@ begin
    RTneuron.execute('ncCE.weight = 1'); {FLAG FOR THIS SYNAPSE!!!}
    RTneuron.execute('soma nsCI = new NetStim(.5)');
    RTneuron.execute('nsCI.start = 0'); RTneuron.execute('nsCI.number = 1e30');
-   RTneuron.execute('nsCI.noise = 1');                        
+   RTneuron.execute('nsCI.noise = 1');
    RTneuron.execute('ncCI = new NetCon(nsCI, stim)');
    RTneuron.execute('ncCI.delay = 0');
    RTneuron.execute('ncCI.weight = 2'); {FLAG FOR THIS SYNAPSE!!!}
@@ -852,7 +850,7 @@ begin
    RTneuron.execute('ncGE.weight = 3'); {FLAG FOR THIS SYNAPSE!!!}
    RTneuron.execute('soma nsGI = new NetStim(.5)');
    RTneuron.execute('nsGI.start = 0'); RTneuron.execute('nsGI.number = 1e30');
-   RTneuron.execute('nsGI.noise = 1');                        
+   RTneuron.execute('nsGI.noise = 1');
    RTneuron.execute('ncGI = new NetCon(nsGI, stim)');
    RTneuron.execute('ncGI.delay = 0');
    RTneuron.execute('ncGI.weight = 4'); {FLAG FOR THIS SYNAPSE!!!}
@@ -866,8 +864,8 @@ begin
    {configuring the seed of the excitatory presynaptic events}
    RTneuron.execute('nsCE.seed('+Istr(SEED)+')');
    RTneuron.execute('nsCI.seed('+Istr(SEED*(SEED+1))+')');
-   RTneuron.execute('nsGE.seed('+Istr(SEED*SEED)+')');
-   RTneuron.execute('nsGI.seed('+Istr(SEED*(SEED+2))+')');
+   RTneuron.execute('nsGE.seed('+Istr(SEED*(SEED+2))+')');
+   RTneuron.execute('nsGI.seed('+Istr(SEED+2)+')');
 
    {synaptic properties}
    RTneuron.execute('stim.Q = 0.001*'+Rstr(Q));
@@ -1000,7 +998,7 @@ procedure refill_the_fluct_variables(ii:integer);
 begin
        I0 := vec_I0[ii];
        freq_G:= vec_fG[ii] ; freq_I  := vec_fi[ii] ;
-       Q  := vec_q [ii] ;  Ts := vec_ts[ii] ; 
+       Q  := vec_q[ii] ;  Ts := vec_ts[ii] ; 
        muV := vec_muV[ii] ; sV := vec_sV[ii] ;
        muG := vec_muG[ii] ; Tv := vec_Tv[ii] ;  
 end;
@@ -1025,7 +1023,7 @@ begin
        add_current_variables_to_vectors;
        {then recordings of the future episode quantities}
        freq_g := 0 ; freq_i := 0 ; I0:=0;
-      rest_flag:=True;
+       rest_flag:=True;
       if global_step>=vec_i.Iend then continu_flag:=False;
     end;
 
@@ -1891,6 +1889,7 @@ Rtneuron.DacChan[0].UseHoldingValue:=True;
 }
 
 program Launch
+RTneuron.ResetParams;
 init_all_const;
 global_init ;
 read_params;

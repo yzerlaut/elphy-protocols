@@ -774,8 +774,8 @@ begin {function to change  fe, fi, Q, Ts}
    Tv:= Ts+Cm/muG ; {ms + pF/nS = ms}
 
    num := sV*sV*muG*muG*Tv; {mV**2 * nS**2 * ms}
-   denom:= Driving_Force*Driving_Force*Ts*Ts*muG*muG; {mV**2 * nS**2 * ms**2}
-   fI := num/denom ;  {kHz}
+   denom:= Driving_Force*Driving_Force*Ts*Ts*Q*Q; {mV**2 * nS**2 * ms**2}
+   fI := num/denom-fG ;  {kHz}
    if fI<0 then {NO CURRENT SYNAPSES !!!}
    begin
       num:= 2*muG*muG*sV*sV*Tv; { nS**2 * mV**2 * ms)}
@@ -859,7 +859,7 @@ begin
 end;
 
 
-procedure Init_single_exp_fluct(I0, fG, fI, Q, Ts : real; SEED:integer);
+procedure Init_single_exp_fluct(I0, fG, fI, Q, Ts,muV,Driving_Force:real;SEED:integer);
 begin         
    {configuring the seed of the excitatory presynaptic events}
    RTneuron.execute('nsCE.seed('+Istr(SEED)+')');
@@ -1032,7 +1032,7 @@ begin
    write_t_vector;
 
     // then we reinit everything
-    Init_single_exp_fluct(I0, freq_G, freq_I, Q, Ts, SEED+global_step); {not to have the same seed everytime !}
+    Init_single_exp_fluct(I0, freq_G, freq_I, Q, Ts,muV,Driving_Force, SEED+global_step); {not to have the same seed everytime !}
 
 
     acquisition.InstallProcess(nil, massive_InitProcess, nil, massive_scan_endprocess);
@@ -1054,7 +1054,7 @@ begin
    i_rdm:=Round(vec_i[global_step]);   {RANDOMIZATION}
    refill_the_fluct_variables(i_rdm);
 
-   Init_single_exp_fluct(I0, freq_G,freq_I, Q, Ts, SEED+global_step);
+   Init_single_exp_fluct(I0, freq_G,freq_I, Q, Ts,muV,Driving_Force, SEED+global_step);
    // Elphy Params initialization
    acquisition.InstallProcess(my_initProcess0, massive_InitProcess, nil, massive_scan_endprocess); // initprocess0 for the first exp
 

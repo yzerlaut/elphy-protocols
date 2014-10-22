@@ -739,16 +739,16 @@ end;
 {$EDIT Calculating parameters} 
 
 { we re-use some of the variables of the massive_TF_scan protocol : }
-var vec_q, vec_f, vec_Ts, vec_Tv, vec_muG, vec_muV, vec_sV : Tvector ; {the weights will have to be changed to maintain the pot and fluctuations fixed !}
+var vec_q, vec_f, vec_Ts, vec_Tv, vec_muGn, vec_muV, vec_sV : Tvector ; {the weights will have to be changed to maintain the pot and fluctuations fixed !}
 var Q, F, Ts, Tv, muGn, muV, sV, shift_mean, clamp_mean, clamp_std, clamp_Tv, clamp_muGn, clamp_Ts    : real ;
 {you have the possibility to shift the mean of a shift produced by a constant current input (this allows to have lower weights) }
-var recorded_index, recorded_I0, recorded_f, vec_I0, recorded_Q,recorded_Tv,recorded_Ts, recorded_muG, recorded_muV, recorded_sV : Tvector ; {the one for fe and fi were created above !}
-var point_number, REPETITION : integer; vec_i : Tvector ; 
+var recorded_index, recorded_I0, recorded_f, vec_I0, recorded_Q,recorded_Tv,recorded_Ts, recorded_muGn, recorded_muV, recorded_sV : Tvector ; {the one for fe and fi were created above !}
+var point_number, REPETITION, Driving_Force : integer; vec_i : Tvector ; 
 
 {Then protocol specific variables}
 var max_conductance_factor : real; {until how much gleak do we increase the conductance ?}
 var DISCRET_SV, DISCRET_MV, DISCRET_MUG, DISCRET_TS : integer;
-var I0, min_sV, max_sV, min_muV, max_muV, min_muGn, max_muGn, min_sV2, max_sV2, min_Ts, max_Ts : real;
+var I0, min_Ts, max_Ts, min_sV, max_sV, min_muV, max_muV, min_muGn, max_muGn, min_sV2, max_sV2 : real;
 
 
 { ==============================================================================
@@ -764,12 +764,29 @@ begin {function to change  fe, fi, Q, Ts}
    muG := muGn*Gl;
    I0:=(muV-El)*Gl*0.001; {mV*nS=0.001 nA}
    Tv:= Ts+Cm/muG ; {ms + pF/nS = ms}
-   Q := 2*muG*muG*sV*sV*Tv/(Ts*Driving_Force*Driving_Force*(muG-Gl))
+   Q := 2*muG*muG*sV*sV*Tv/(Ts*Driving_Force*Driving_Force*(muG-Gl));
    f := (muG-Gl)/2./Q/Ts; {kHz}
    {the the frequency back to hertz !!}
    f:= f*1000;
 end;
 
+procedure init_fluct_const;
+begin                     
+   Driving_Force:=30;    clamp_mean := -60; clamp_std := 4 ;
+   clamp_Tv := 6 ; {ms}
+   clamp_muGn := 4; {factor of gtot/gl}
+   clamp_Ts := 3 ; {ms}
+   REPETITION := 1; {REPEATING FOR DIFFERENT SEEDS}
+   point_number := 10 ;
+   min_Ts := 2;   max_Ts := 10;
+   min_muGn:=1.5;   max_muGn:=10;
+   min_muV := -60;  max_muV := -53 ;
+   min_sV := 3;  max_sV := 8 ;
+   min_sV2:=0.5; max_sV2:=1.7;
+   clamp_mean := -60; clamp_std := 4 ; 
+   DISCRET_SV := 3;   DISCRET_MV := 3;
+   DISCRET_MUG:= 3 ;   DISCRET_TS:= 1;
+end;
 
 procedure write_fluct_Exp_params; {to be used by all subsequent protocols}
 begin
@@ -785,7 +802,6 @@ begin
     TDBrecord('PG0.Exp_params').clamp_Ts := clamp_Ts;
     TDBrecord('PG0.Exp_params').clamp_muGn := clamp_muGn;
     TDBrecord('PG0.Exp_params').shift_mean_Vm := shift_mean ;
-    TDBrecord('PG0.Exp_params').max_conductance_factor := max_conductance_factor;
     TDBrecord('PG0.Exp_params').point_number := point_number;
     TDBrecord('PG0.Exp_params').global_step_start := global_step;
     TDBrecord('PG0.Exp_params').REPETITION := REPETITION;
@@ -837,8 +853,8 @@ begin
    RTneuron.execute('stim.Ei = '+Rstr(muV-Driving_Force));
    
    {firing frequencies}
-   if f_exc>0 then RTneuron.execute('nsE.interval = 1000/'+Rstr(freq)) else RTneuron.execute('nsE.interval = 1e30');
-   if f_inh>0 then RTneuron.execute('nsI.interval = 1000/'+Rstr(freq)) else RTneuron.execute('nsI.interval = 1e30');
+   if F>0 then RTneuron.execute('nsE.interval = 1000/'+Rstr(F)) else RTneuron.execute('nsE.interval = 1e30');
+   if F>0 then RTneuron.execute('nsI.interval = 1000/'+Rstr(F)) else RTneuron.execute('nsI.interval = 1e30');
 
    {then synaptic times}
    RTneuron.execute('stim.tauE = '+Rstr(Ts));
@@ -851,9 +867,9 @@ procedure add_current_variables_to_vectors;
 var ff : real;
 begin
    recorded_I0.addtolist(I0);  recorded_ts.addtolist(Ts);
-   recorded_f.addtolist(freq);  recorded_Q.addtolist(Q);
+   recorded_f.addtolist(F);  recorded_Q.addtolist(Q);
    recorded_sV.addtolist(sV); recorded_muV.addtolist(muV);
-   recorded_muG.addtolist(muG);  recorded_Tv.addtolist(Tv);
+   recorded_muGn.addtolist(muGn);  recorded_Tv.addtolist(Tv);
    ff:=spiketimes.Iend/(v1.Xend-recorded_t[recorded_t.Iend]);
    recorded_Fout.addtolist(ff);
    recorded_index.addtolist(vec_i[global_step]);
@@ -867,7 +883,7 @@ begin
    recorded_ts.create(t_single,0,-1);   
    recorded_muV.create(t_single,0,-1); 
    recorded_sV.create(t_single,0,-1);
-   recorded_muG.create(t_single,0,-1); 
+   recorded_muGn.create(t_single,0,-1); 
    recorded_tv.create(t_single,0,-1);   
    recorded_t.create(t_single,0,-1);   
    recorded_Fout.create(t_single,0,-1);   
@@ -879,7 +895,7 @@ procedure initialize_stimulation_vectors;
 begin
    vec_I0.create(t_single,0,-1);   vec_f.create(t_single,0,-1);  
    vec_Q.create(t_single,0,-1);   vec_Ts.create(t_single,0,-1);
-   vec_muG.create(t_single,0,-1); vec_muV.create(t_single,0,-1);
+   vec_muGn.create(t_single,0,-1); vec_muV.create(t_single,0,-1);
    vec_sV.create(t_single,0,-1); vec_Tv.create(t_single,0,-1);
 end;
 
@@ -905,7 +921,7 @@ begin
       +Chr(9)+Rstr(recorded_I0[i], 1, 6)+Chr(9)+Rstr(recorded_Ts[i], 1, 6)
       +Chr(9)+Rstr(recorded_f[i], 1, 6) +Chr(9)+Rstr(recorded_Q[i], 1, 6)
        +Chr(9)+Rstr(recorded_muV[i], 1, 6)+Chr(9)+Rstr(recorded_sV[i], 1, 6)
-      +Chr(9)+Rstr(recorded_muG[i], 1, 6)+Chr(9)+Rstr(recorded_Tv[i], 1, 6)
+      +Chr(9)+Rstr(recorded_muGn[i], 1, 6)+Chr(9)+Rstr(recorded_Tv[i], 1, 6)
       +Chr(9)+Rstr(recorded_Fout[i], 1, 6);
        writelnText(1,st);   
    end;
@@ -915,10 +931,10 @@ end;
 
 procedure put_the_values_into_stimulation_vectors(muGn, muV, sV, Ts, I0, F, Q, Tv :real);
 begin
-   vec_muG.addtolist(muGn);   vec_muV.addtolist(muV);
+   vec_muGn.addtolist(muGn);   vec_muV.addtolist(muV);
    vec_sV.addtolist(sV);  vec_Ts.addtolist(Ts);
    vec_I0.addtolist(I0);  vec_f.addtolist(F);
-   vec_Q.addtolist(Q);  vec_Tv.addtolist(Ts+Cm/g_tot);
+   vec_Q.addtolist(Q);  vec_Tv.addtolist(Tv);
 end;
 
 procedure create_and_shuffle_the_index_vector(n_tot, REPETITION:integer );
@@ -941,7 +957,7 @@ begin
        I0 := vec_I0[ii];  F := vec_f[ii] ; 
        Q := vec_q[ii] ; Ts := vec_ts[ii] ; 
        muV := vec_muV[ii] ; sV := vec_sV[ii] ;
-       muG := vec_muG[ii] ; Tv := vec_Tv[ii] ;  
+       muGn := vec_muGn[ii] ; Tv := vec_Tv[ii] ;  
 end;
 
 procedure Massive_scan_EndProcess; 
@@ -963,7 +979,7 @@ begin
        {recording the previous episode quantities}
        add_current_variables_to_vectors;
        {then recordings of the future episode quantities}
-       freq_ge := 0 ; freq_gi := 0 ; I0:=0;
+       F := 0 ; I0:=0;
       rest_flag:=True;
       if global_step>=vec_i.Iend then continu_flag:=False;
     end;
@@ -1017,16 +1033,17 @@ procedure gen_GTE_input;
 var ii : integer ; g_tot, dg_tot, mu_g0, Gl : real;
 begin
    initialize_stimulation_vectors;
+   if Rm<>0 then Gl:=1000/Rm else MessageBox('Rm =0, no calculus possible !');  {nanoSiemens !!!}
 
-   if clamp_Tv<=Ts_min then 
+   if clamp_Tv<=min_Ts then 
    begin 
-      clamp_Tv:=Ts_min+1; 
-      MessageBox('Tv was too low (compared to Ts_min), set Tv='+Rstr(clamp_Tv));
+      clamp_Tv:=min_Ts+1; 
+      MessageBox('Tv was too low (compared to min_Ts), set Tv='+Rstr(clamp_Tv));
    end;
 
-   mu_g0 := Cm/(clamp_Tv-Ts_min);  {minimumm conductance to achieve autocorrelation for a 1ms minimum time constant, pF/ms = nS}
+   mu_g0 := Cm/(clamp_Tv-min_Ts);  {minimumm conductance to achieve autocorrelation for a 1ms minimum time constant, pF/ms = nS}
 
-   dg_tot := (max_conductance_factor*Gl-mu_g0)/(point_number-1) ;  // nS
+   dg_tot := (max_muGn*Gl-mu_g0)/(point_number-1) ;  // nS
 
    for ii:=0 to point_number-1 do 
    begin
@@ -1067,8 +1084,8 @@ begin
       getRealA(' clamping the mean (mV)',clamp_mean,10,3,200);
       getRealA(' clamping the std dev. (mV)',clamp_std,10,3,200);
       getRealA(' clamping the Tv (ms)',clamp_Tv,10,3,200);
-      getRealA(' Ts minimum (ms)',Ts_min,10,3,200);
-      getRealA(' Max. Conductance factor (*Gl)',max_conductance_factor,10,3,200);
+      getRealA(' Ts minimum (ms)',min_Ts,10,3,200);
+      getRealA(' Max. Conductance factor (*Gl)',max_muGn,10,3,200);
       setText('______________________________________');
       getIntegerA('Number of points ',point_number,6,200);
       setText('');
@@ -1098,7 +1115,6 @@ var ii : integer ; Gl, dTs : real;
 begin
    initialize_stimulation_vectors;
     
-   g_tot := Gl*clamp_muGn;
    dTs := (max_Ts-min_Ts)/(point_number-1) ;  {ms}
 
    for ii:=0 to point_number-1 do 
@@ -1139,8 +1155,6 @@ begin
       getRealA(' clamping the mean (mV)',clamp_mean,10,3,200);
       getRealA(' clamping the std dev. (mV)',clamp_std,10,3,200);
       getRealA(' clamping the Gtot/gL ratio',clamp_muGn,10,3,200);
-      getRealA(' ratio of Qi/Qe ==NT WKG',ratio_qi_qe,10,3,200);
-      getRealA(' shift resting pot. (mV) ==NT WKG',shift_mean,10,3,200);
       setText('______________________________________');
       getRealA(' Minimum synaptic time (ms)',min_Ts,10,3,200);
       getRealA(' Maximum synaptic time (ms)',max_Ts,10,3,200);
@@ -1346,9 +1360,6 @@ begin
       getRealA(' Min. sV',min_sV,10,3,200);
       getRealA(' Max. sV',max_sV,10,3,200);
       setText('______________________________________');
-      getRealA(' ratio of Qi/Qe (NT WKG)',ratio_qi_qe,10,3,200);
-      getRealA(' shift resting pot. (mV) (NT WKG)',shift_mean,10,3,200);
-      setText('______________________________________');
       getIntegerA('Number of points ',point_number,6,200);
       setText('');
       getCommandA(' Generate and Shuffle the stim ',0,301); { OnEvent flag -> 201 }
@@ -1447,7 +1458,7 @@ begin
       getRealA(' Max. sV (at min. muV)',max_sV,10,3,200);
       getRealA(' Min. sV (at max. muV)',min_sV2,10,3,200);
       getRealA(' Max. sV (at max. muV)',max_sV2,10,3,200);
-      getIntegerA('=====> DISCRET. muG ',DISCRET_MUG,6,200);
+      getIntegerA('=====> DISCRET. muGn ',DISCRET_MUG,6,200);
       getRealA(' Min. Gtot/Gl',min_muGn,10,3,200);
       getRealA(' Max. Gtot/Gl',max_muGn,10,3,200);
       getIntegerA('=====> DISCRET. Ts ',DISCRET_TS,6,200);
@@ -1465,7 +1476,7 @@ begin
       begin
       getRealA(' Current muV (mV)',muV,10,3,200);
       getRealA(' Current sV (mV)',sV,10,3,200);
-      getRealA(' Current muG (nS)',muG,10,3,200);
+      getRealA(' Current muGn (nS)',muGn,10,3,200);
       getRealA(' Current Ts (ms)',Ts,10,3,200);
       setText('');
       end;
@@ -1482,117 +1493,116 @@ end;
 --- Response to a shotnoise generated by the output frequency of the neuron ------
 ================================================================================ }
 
-var I0_iss, stopI:real; Ne, Ni, spike_number_for_update:integer;
+{ var I0_iss, stopI:real; Ne, Ni, spike_number_for_update:integer; }
 
-procedure init_ISS_const;
-begin                      
-   TDBrecord('PG0.Exp_params').exp_type := 'tf_input_by_self_spikes' ;
-   I0_iss := 0.05 ; {nA}
-   stopI := 700 ; {ms}
-   Ni:=50;Ne:=200;
-   Qi:=100;Qe:=6;
-   spike_number_for_update := 10;
-end;
+{ procedure init_ISS_const; }
+{ begin                       }
+{    TDBrecord('PG0.Exp_params').exp_type := 'tf_input_by_self_spikes' ; }
+{    I0_iss := 0.05 ; {\nA!{\ }
+{    stopI := 700 ; {\ms!{\ }
+{    Ni:=50;Ne:=200; }
+{    Qi:=100;Qe:=6; }
+{    spike_number_for_update := 10; }
+{ end; }
 
 
-procedure write_ISS_params; {to be used by all subsequent protocols}
-begin
-    TDBrecord('PG0.Exp_params').Ee:=Ee ; 
-    TDBrecord('PG0.Exp_params').Ei:=Ei ; 
-    TDBrecord('PG0.Exp_params').Ne:=Ne ; 
-    TDBrecord('PG0.Exp_params').Ni:=Ni ; 
-    TDBrecord('PG0.Exp_params').seed_exc:=SEED ;
-    TDBrecord('PG0.Exp_params').seed_inh:=SEED+1 ;
-    TDBrecord('PG0.Exp_params').clamp_mean := clamp_mean;
-    TDBrecord('PG0.Exp_params').max_conductance_factor := max_conductance_factor;
-    TDBrecord('PG0.Exp_params').ratio_qi_qe := ratio_qi_qe ;
-    TDBrecord('PG0.Exp_params').point_number := point_number;
-    TDBrecord('PG0.Exp_params').global_step_start := global_step;
-end;
+{ procedure write_ISS_params; {\to be used by all subsequent protocols!{\ }
+{ begin }
+{     TDBrecord('PG0.Exp_params').Ee:=Ee ;  }
+{     TDBrecord('PG0.Exp_params').Ei:=Ei ;  }
+{     TDBrecord('PG0.Exp_params').Ne:=Ne ;  }
+{     TDBrecord('PG0.Exp_params').Ni:=Ni ;  }
+{     TDBrecord('PG0.Exp_params').seed_exc:=SEED ; }
+{     TDBrecord('PG0.Exp_params').seed_inh:=SEED+1 ; }
+{     TDBrecord('PG0.Exp_params').clamp_mean := clamp_mean; }
+{     TDBrecord('PG0.Exp_params').max_muGn := max_muGn; }
+{     TDBrecord('PG0.Exp_params').point_number := point_number; }
+{     TDBrecord('PG0.Exp_params').global_step_start := global_step; }
+{ end; }
 
-procedure Init_single_exp_ISS(SEED:integer);
-begin         
-   RTneuron.execute('objref ncE, nsE, ncI, nsI');
-   RTneuron.execute('soma nsE = new NetStim_from_self_spike(0.5)');
-   RTneuron.execute('nsE.number = 1e30');
-   RTneuron.execute('nsE.noise = 1'); // frequency and seed comes later !
-   RTneuron.execute('soma ncE = new NetCon(nsE, stim)');
-   RTneuron.execute('ncE.weight = 0.001*'+Rstr(Qe));
-   RTneuron.execute('ncE.delay = 0');
-   RTneuron.execute('nsE.synapses_number='+Istr(Ne));
-   RTneuron.execute('soma nsI = new NetStim_from_self_spike(0.5)');
-   RTneuron.execute('nsI.number = 1e30');
-   RTneuron.execute('nsI.noise = 1');                        
-   RTneuron.execute('soma ncI = new NetCon(nsI, stim)');
-   RTneuron.execute('ncI.weight = -0.001*'+Rstr(Qi));  // NEGATIVE FLAG HERE !!!!
-   RTneuron.execute('ncI.delay = 0');
-   RTneuron.execute('nsI.synapses_number='+Istr(Ni));
-   { // parameters of the synapses }
-   RTneuron.execute('stim.tauE = '+Rstr(Te));
-   RTneuron.execute('stim.tauI = '+Rstr(Ti));
-   RTneuron.execute('stim.Ee = '+Rstr(Ee));
-   RTneuron.execute('stim.Ei = '+Rstr(Ei));
+{ procedure Init_single_exp_ISS(SEED:integer); }
+{ begin          }
+{    RTneuron.execute('objref ncE, nsE, ncI, nsI'); }
+{    RTneuron.execute('soma nsE = new NetStim_from_self_spike(0.5)'); }
+{    RTneuron.execute('nsE.number = 1e30'); }
+{    RTneuron.execute('nsE.noise = 1'); // frequency and seed comes later ! }
+{    RTneuron.execute('soma ncE = new NetCon(nsE, stim)'); }
+{    RTneuron.execute('ncE.weight = 0.001*'+Rstr(Qe)); }
+{    RTneuron.execute('ncE.delay = 0'); }
+{    RTneuron.execute('nsE.synapses_number='+Istr(Ne)); }
+{    RTneuron.execute('soma nsI = new NetStim_from_self_spike(0.5)'); }
+{    RTneuron.execute('nsI.number = 1e30'); }
+{    RTneuron.execute('nsI.noise = 1');                         }
+{    RTneuron.execute('soma ncI = new NetCon(nsI, stim)'); }
+{    RTneuron.execute('ncI.weight = -0.001*'+Rstr(Qi));  // NEGATIVE FLAG HERE !!!! }
+{    RTneuron.execute('ncI.delay = 0'); }
+{    RTneuron.execute('nsI.synapses_number='+Istr(Ni)); }
+{    {\ // parameters of the synapses !{\ }
+{    RTneuron.execute('stim.tauE = '+Rstr(Te)); }
+{    RTneuron.execute('stim.tauI = '+Rstr(Ti)); }
+{    RTneuron.execute('stim.Ee = '+Rstr(Ee)); }
+{    RTneuron.execute('stim.Ei = '+Rstr(Ei)); }
 
-   {configuring the seed of the excitatory presynaptic events}
-   RTneuron.execute('nsE.seed('+Istr(SEED)+')');
-   RTneuron.execute('nsI.seed('+Istr(SEED+1)+')');
+{    {\configuring the seed of the excitatory presynaptic events!{\ }
+{    RTneuron.execute('nsE.seed('+Istr(SEED)+')'); }
+{    RTneuron.execute('nsI.seed('+Istr(SEED+1)+')'); }
    
-   {Initial current input}
-   RTneuron.execute('nsE.start = '+Rstr(stopI)); {feedback starts when current stops}
-   RTneuron.execute('nsI.start = '+Rstr(stopI)); {feedback starts when current stops}
-   RTneuron.execute('stim.stopI = '+Rstr(stopI)); {feedback starts when current stops}
-   RTneuron.execute('stim.Icst = '+Rstr(I0_Iss)); {feedback starts when current stops}
+{    {\Initial current input!{\ }
+{    RTneuron.execute('nsE.start = '+Rstr(stopI)); {\feedback starts when current stops!{\ }
+{    RTneuron.execute('nsI.start = '+Rstr(stopI)); {\feedback starts when current stops!{\ }
+{    RTneuron.execute('stim.stopI = '+Rstr(stopI)); {\feedback starts when current stops!{\ }
+{    RTneuron.execute('stim.Icst = '+Rstr(I0_Iss)); {\feedback starts when current stops!{\ }
 
-   {synaptic weights}
-   RTneuron.execute('ncE.weight = 0.001*'+Rstr(Qe));
-   RTneuron.execute('ncI.weight = -0.001*'+Rstr(Qi)); {NEGATIVE FLAG !!!}
+{    {\synaptic weights!{\ }
+{    RTneuron.execute('ncE.weight = 0.001*'+Rstr(Qe)); }
+{    RTneuron.execute('ncI.weight = -0.001*'+Rstr(Qi)); {\NEGATIVE FLAG !!!!{\ }
    
-   RTneuron.execute('finitialize()');
-end;
+{    RTneuron.execute('finitialize()'); }
+{ end; }
 
 
-procedure ISS_DialogEvent(n:integer);
-var is_already_inh : integer ; ii :integer ;
-begin
-   TFdialog.updatevar;
-   case n of
-     301 : begin InitializeChannels; Init_single_exp_ISS(SEED); end;
-     end;
-     TFdialog.update;
-end;  
+{ procedure ISS_DialogEvent(n:integer); }
+{ var is_already_inh : integer ; ii :integer ; }
+{ begin }
+{    TFdialog.updatevar; }
+{    case n of }
+{      301 : begin InitializeChannels; Init_single_exp_ISS(SEED); end; }
+{      end; }
+{      TFdialog.update; }
+{ end;   }
 
 
-procedure Init_ISS_dialog;
-begin
-   init_ISS_const;
-   with TFdialog do
-   begin
-      create;
-      OnEvent:=ISS_DialogEvent;
-      { !! Very Important : at every GUI event, we call this function}
-      setText('Firing rate determines presynaptic stimulation');
-      setText('______________________________________');
-      getIntegerA('SEED (int)',SEED,6,200);
-      setText('o==>GRID Parameters :');
-      getRealA('initial current input (nA) ',I0_iss,10,3,200);
-      getRealA('input duration (ms) ',stopI,10,3,200);
-      getIntegerA('spike number for update ',spike_number_for_update,3,200);
-      getRealA('max_authorized_time',max_authorized_time,10,3,200);
-      setText('=======================================');
-      getRealA('Qe (nS)',Qe,10,3,200);
-      getRealA('Qi (nS)',Qi,10,3,200);
-      getRealA('Te (nS)',Te,10,3,200);
-      getRealA('Ti (nS)',Ti,10,3,200);
-      getRealA(' ratio of Qi/Qe (NT WKG)',ratio_qi_qe,10,3,200);
-      getRealA(' shift resting pot. (mV) (NT WKG)',shift_mean,10,3,200);
-      setText('______________________________________');
-      setText('');
-      getCommandA(' Initialize the stim ',0,301); { OnEvent flag -> 201 }
-      setText('');
-      Caption:='Input by self spikes';
-      Show;
-   end;
-end;
+{ procedure Init_ISS_dialog; }
+{ begin }
+{    init_ISS_const; }
+{    with TFdialog do }
+{    begin }
+{       create; }
+{       OnEvent:=ISS_DialogEvent; }
+{       {\ !! Very Important : at every GUI event, we call this function!{\ }
+{       setText('Firing rate determines presynaptic stimulation'); }
+{       setText('______________________________________'); }
+{       getIntegerA('SEED (int)',SEED,6,200); }
+{       setText('o==>GRID Parameters :'); }
+{       getRealA('initial current input (nA) ',I0_iss,10,3,200); }
+{       getRealA('input duration (ms) ',stopI,10,3,200); }
+{       getIntegerA('spike number for update ',spike_number_for_update,3,200); }
+{       getRealA('max_authorized_time',max_authorized_time,10,3,200); }
+{       setText('======================================='); }
+{       getRealA('Qe (nS)',Qe,10,3,200); }
+{       getRealA('Qi (nS)',Qi,10,3,200); }
+{       getRealA('Te (nS)',Te,10,3,200); }
+{       getRealA('Ti (nS)',Ti,10,3,200); }
+{       getRealA(' ratio of Qi/Qe (NT WKG)',ratio_qi_qe,10,3,200); }
+{       getRealA(' shift resting pot. (mV) (NT WKG)',shift_mean,10,3,200); }
+{       setText('______________________________________'); }
+{       setText(''); }
+{       getCommandA(' Initialize the stim ',0,301); {\ OnEvent flag -> 201 !{\ }
+{       setText(''); }
+{       Caption:='Input by self spikes'; }
+{       Show; }
+{    end; }
+{ end; }
 
 
 
@@ -1621,7 +1631,7 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
                        6 : InitMUVEdialog;                
                        7 : InitSVEdialog;                
                        8 : Init_massive_scan_dialog;
-                       9 : Init_ISS_dialog;
+                       { 9 : Init_ISS_dialog; }
               end; 
          end;
     111 : begin SetGain1; end;
@@ -1789,6 +1799,7 @@ Rtneuron.DacChan[0].UseHoldingValue:=True;
 }
 
 program Launch
+init_fluct_const;
 global_init ;
 read_params;
 SetProtocolNames;

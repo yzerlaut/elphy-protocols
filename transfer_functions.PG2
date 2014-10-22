@@ -6,7 +6,7 @@
 Const
    ProtocolCount    = 9 ; 
    CONTINUOUS_TIMER = 0.5 ; {timer for Tdetect update}
-   location   = 'Setup' ;
+   location   = 'Notebook' ;
    
 var  { ========= COMMON VARIABLES ============ }
    protocol_choice : integer; 
@@ -739,11 +739,10 @@ end;
 {$EDIT Calculating parameters} 
 
 { we re-use some of the variables of the massive_TF_scan protocol : }
-var vec_q, vec_qe, vec_qi, vec_fe, vec_fi, vec_Ts, vec_Tv, vec_muG, vec_muV, vec_sV : Tvector ; {the weights will have to be changed to maintain the pot and fluctuations fixed !}
-var ratio_qi_qe, ratio_Ti_Te : real; {comodulation factor for the total conductance effect (G Total Effect, GTE)}
-var Q, Ts, Tv, muG, muV, sV, shift_mean, clamp_mean, clamp_std, clamp_Tv, clamp_gtotN, clamp_Ts    : real ;
+var vec_q, vec_f, vec_Ts, vec_Tv, vec_muG, vec_muV, vec_sV : Tvector ; {the weights will have to be changed to maintain the pot and fluctuations fixed !}
+var Q, F, Ts, Tv, muGn, muV, sV, shift_mean, clamp_mean, clamp_std, clamp_Tv, clamp_muGn, clamp_Ts    : real ;
 {you have the possibility to shift the mean of a shift produced by a constant current input (this allows to have lower weights) }
-var recorded_index, recorded_I0, vec_I0, recorded_Q,recorded_Qe,recorded_Qi,recorded_Tv,recorded_Ts, recorded_muG, recorded_muV, recorded_sV : Tvector ; {the one for fe and fi were created above !}
+var recorded_index, recorded_I0, recorded_f, vec_I0, recorded_Q,recorded_Tv,recorded_Ts, recorded_muG, recorded_muV, recorded_sV : Tvector ; {the one for fe and fi were created above !}
 var point_number, REPETITION : integer; vec_i : Tvector ; 
 
 {Then protocol specific variables}
@@ -756,24 +755,19 @@ var I0, min_sV, max_sV, min_muV, max_muV, min_muGn, max_muGn, min_sV2, max_sV2, 
 ---- WE WILL NEED THIS FUNCTION FOR ALL THE REMAINING PROTOCOLS
 ================================================================================ }
 
-procedure params_variations_calc(muG, muV, sV, Ts, Ee, Ei, Rm, Cm, El : real ; var I0, fe, fi, Qe, Qi, Tv : real);
-var Gl, R1, R2, A, B, num, denom, Tv2: real;
+procedure params_variations_calc(muGn, muV, sV, Ts, Driving_Force, Rm, Cm, El : real ; var I0, f, Q, Tv : real);
+var Gl, muG: real;
 begin {function to change  fe, fi, Q, Ts}
-   Gl := 1000/Rm; {1000/Mohm = nS}
-   if muG<=Gl then begin MessageBox('muG<=Gl, not possible !!!!'); muG:=Gl+1; end;
-   I0:=(muV-El)*muG*0.001; {mV*nS=0.001 nA}
+   if Rm<>0 then Gl:=1000/Rm else MessageBox('Rm =0, no calculus possible !');  {nanoSiemens !!!}
+   Gl := 1000.0/Rm; {1000/Mohm = nS}
+   if muGn<=1 then begin MessageBox('muG<=Gl, not possible !!!!'); end;
+   muG := muGn*Gl;
+   I0:=(muV-El)*Gl*0.001; {mV*nS=0.001 nA}
    Tv:= Ts+Cm/muG ; {ms + pF/nS = ms}
-   R1 := (Ee-El)/(El-Ei);
-   if (ratio_qi_qe=-1) then R2:=(Ee-muV)/(muV-Ei) else R2:=ratio_qi_qe;
-   num := sV*sV*(1+R1)*2*muG*muG*Tv; {mV**2 * nS**2 * ms}
-   denom:= ( (Ee-muV)*(Ee-muV) + R1*R2*(Ei-muV)*(Ei-muV) ) * (muG-Gl) *Ts ; {mV**2 * nS * ms}
-   Qe := num/denom ;  {nS}
-   Qi := R2*Qe; {nS}
-   fe := (muG-Gl)/Qe/Ts/(1+R1); {kHz}
-   fi := R1/R2*fe;  {kHz}
-
-   {the the frequencies back to hertz !!}
-   fe:= fe*1000; fi := fi*1000;
+   Q := 2*muG*muG*sV*sV*Tv/(Ts*Driving_Force*Driving_Force*(muG-Gl))
+   f := (muG-Gl)/2./Q/Ts; {kHz}
+   {the the frequency back to hertz !!}
+   f:= f*1000;
 end;
 
 
@@ -782,19 +776,16 @@ begin
    TDBrecord('PG0.global').f_acq := f_acq ; TDBrecord('PG0.global').Rm := Rm ;
    TDBrecord('PG0.global').Cm := Cm ; TDBrecord('PG0.global').El := El ;  
    TDBrecord('PG0.global').Bridge := Bridge ;  TDBrecord('PG0.global').Holding := Holding ; 
-   TDBrecord('PG0.Exp_params').Ee:=Ee ; 
-    TDBrecord('PG0.Exp_params').seed_exc:=SEED ;
-    TDBrecord('PG0.Exp_params').Ei:=Ei ; 
-    TDBrecord('PG0.Exp_params').seed_inh:=SEED*SEED+1 ;
+   TDBrecord('PG0.Exp_params').Ee:=muV+Driving_Force ; 
+    TDBrecord('PG0.Exp_params').Ei:=muV-Driving_Force ; 
+    TDBrecord('PG0.Exp_params').seed:=SEED ;
     TDBrecord('PG0.Exp_params').clamp_mean := clamp_mean;
     TDBrecord('PG0.Exp_params').clamp_std := clamp_std ;
     TDBrecord('PG0.Exp_params').clamp_Tv := clamp_Tv;
     TDBrecord('PG0.Exp_params').clamp_Ts := clamp_Ts;
-    TDBrecord('PG0.Exp_params').clamp_gtotN := clamp_gtotN;
+    TDBrecord('PG0.Exp_params').clamp_muGn := clamp_muGn;
     TDBrecord('PG0.Exp_params').shift_mean_Vm := shift_mean ;
     TDBrecord('PG0.Exp_params').max_conductance_factor := max_conductance_factor;
-    TDBrecord('PG0.Exp_params').ratio_qi_qe := ratio_qi_qe ;
-    TDBrecord('PG0.Exp_params').ratio_Ti_Te := ratio_Ti_Te ;
     TDBrecord('PG0.Exp_params').point_number := point_number;
     TDBrecord('PG0.Exp_params').global_step_start := global_step;
     TDBrecord('PG0.Exp_params').REPETITION := REPETITION;
@@ -807,6 +798,7 @@ begin
     TDBrecord('PG0.Exp_params').min_muGn:=min_muGn; 
     TDBrecord('PG0.Exp_params').max_muGn:=max_muGn; 
     TDBrecord('PG0.Exp_params').max_Ts:=max_Ts; 
+    TDBrecord('PG0.Exp_params').min_Ts:=min_Ts; 
     TDBrecord('PG0.Exp_params').DISCRET_SV := DISCRET_SV;
     TDBrecord('PG0.Exp_params').DISCRET_MV := DISCRET_MV;
     TDBrecord('PG0.Exp_params').DISCRET_MUG := DISCRET_MUG;
@@ -831,23 +823,26 @@ begin
    continu_flag :=True ;
 end;
 
-procedure Init_single_exp_fluct(I0, f_exc, f_inh, Qe, Qi, Ts : real; SEED:integer);
+procedure Init_single_exp_fluct(I0, freq, Q, Ts, muV : real; SEED:integer);
 begin         
    {configuring the seed of the excitatory presynaptic events}
    RTneuron.execute('nsE.seed('+Istr(SEED)+')');
-   RTneuron.execute('nsI.seed('+Istr(SEED+1)+')');
+   RTneuron.execute('nsI.seed('+Istr(SEED*SEED+3)+')');
 
    {synaptic weights}
-   RTneuron.execute('ncE.weight = 0.001*'+Rstr(Qe));
-   RTneuron.execute('ncI.weight = -0.001*'+Rstr(Qi)); {NEGATIVE FLAG !!!}
+   RTneuron.execute('ncE.weight = 0.001*'+Rstr(Q));
+   RTneuron.execute('ncI.weight = -0.001*'+Rstr(Q)); {NEGATIVE FLAG !!!}
+   {synaptic reversal potential}
+   RTneuron.execute('stim.Ee = '+Rstr(muV+Driving_Force));
+   RTneuron.execute('stim.Ei = '+Rstr(muV-Driving_Force));
    
    {firing frequencies}
-   if f_exc>0 then RTneuron.execute('nsE.interval = 1000/'+Rstr(f_exc)) else RTneuron.execute('nsE.interval = 1e30');
-   if f_inh>0 then RTneuron.execute('nsI.interval = 1000/'+Rstr(f_inh)) else RTneuron.execute('nsI.interval = 1e30');
+   if f_exc>0 then RTneuron.execute('nsE.interval = 1000/'+Rstr(freq)) else RTneuron.execute('nsE.interval = 1e30');
+   if f_inh>0 then RTneuron.execute('nsI.interval = 1000/'+Rstr(freq)) else RTneuron.execute('nsI.interval = 1e30');
 
    {then synaptic times}
    RTneuron.execute('stim.tauE = '+Rstr(Ts));
-   RTneuron.execute('stim.tauI = '+Rstr(Ts*ratio_Ti_Te));
+   RTneuron.execute('stim.tauI = '+Rstr(Ts));
    RTneuron.execute('stim.Icst = '+Rstr(I0)); {current to bring at mean}
    RTneuron.execute('finitialize()');
 end;
@@ -855,11 +850,9 @@ end;
 procedure add_current_variables_to_vectors;
 var ff : real;
 begin
-   recorded_I0.addtolist(I0);
-   recorded_fe.addtolist(freq_ge);   recorded_fi.addtolist(freq_gi);
-   recorded_Qe.addtolist(Qe);   recorded_Qi.addtolist(Qi);
-   recorded_ts.addtolist(Ts);
-   recorded_sV.addtolist(sV);   recorded_muV.addtolist(muV);
+   recorded_I0.addtolist(I0);  recorded_ts.addtolist(Ts);
+   recorded_f.addtolist(freq);  recorded_Q.addtolist(Q);
+   recorded_sV.addtolist(sV); recorded_muV.addtolist(muV);
    recorded_muG.addtolist(muG);  recorded_Tv.addtolist(Tv);
    ff:=spiketimes.Iend/(v1.Xend-recorded_t[recorded_t.Iend]);
    recorded_Fout.addtolist(ff);
@@ -869,10 +862,8 @@ end;
 procedure initialize_recording_vectors;
 begin
    recorded_I0.create(t_single,0,-1); 
-   recorded_fe.create(t_single,0,-1); 
-   recorded_fi.create(t_single,0,-1);
-   recorded_Qe.create(t_single,0,-1);
-   recorded_Qi.create(t_single,0,-1);
+   recorded_f.create(t_single,0,-1); 
+   recorded_Q.create(t_single,0,-1);
    recorded_ts.create(t_single,0,-1);   
    recorded_muV.create(t_single,0,-1); 
    recorded_sV.create(t_single,0,-1);
@@ -886,10 +877,8 @@ end;
 
 procedure initialize_stimulation_vectors;
 begin
-   vec_I0.create(t_single,0,-1); 
-   vec_fe.create(t_single,0,-1);  vec_fi.create(t_single,0,-1);
-   vec_Qe.create(t_single,0,-1);  vec_Qi.create(t_single,0,-1);
-   vec_Ts.create(t_single,0,-1);
+   vec_I0.create(t_single,0,-1);   vec_f.create(t_single,0,-1);  
+   vec_Q.create(t_single,0,-1);   vec_Ts.create(t_single,0,-1);
    vec_muG.create(t_single,0,-1); vec_muV.create(t_single,0,-1);
    vec_sV.create(t_single,0,-1); vec_Tv.create(t_single,0,-1);
 end;
@@ -914,8 +903,7 @@ begin
    begin
        st := Rstr(recorded_index[i], 1, 6)
       +Chr(9)+Rstr(recorded_I0[i], 1, 6)+Chr(9)+Rstr(recorded_Ts[i], 1, 6)
-      +Chr(9)+Rstr(recorded_fe[i], 1, 6)+Chr(9)+Rstr(recorded_fi[i], 1, 6)
-       +Chr(9)+Rstr(recorded_Qe[i], 1, 6)+Chr(9)+Rstr(recorded_Qi[i], 1, 6)
+      +Chr(9)+Rstr(recorded_f[i], 1, 6) +Chr(9)+Rstr(recorded_Q[i], 1, 6)
        +Chr(9)+Rstr(recorded_muV[i], 1, 6)+Chr(9)+Rstr(recorded_sV[i], 1, 6)
       +Chr(9)+Rstr(recorded_muG[i], 1, 6)+Chr(9)+Rstr(recorded_Tv[i], 1, 6)
       +Chr(9)+Rstr(recorded_Fout[i], 1, 6);
@@ -925,18 +913,12 @@ begin
    write_t_vector;
 end;
 
-procedure put_the_values_into_stimulation_vectors(g_tot, muV, sV, Ts, I0, FE, FI, Qe, Qi, Tv :real);
+procedure put_the_values_into_stimulation_vectors(muGn, muV, sV, Ts, I0, F, Q, Tv :real);
 begin
-   vec_muG.addtolist(g_tot);
-   vec_muV.addtolist(muV);
-   vec_sV.addtolist(sV);
-   vec_Ts.addtolist(Ts);
-   vec_I0.addtolist(I0);
-   vec_fe.addtolist(FE);
-   vec_fi.addtolist(FI);
-   vec_Qe.addtolist(Qe);
-   vec_Qi.addtolist(Qi);
-   vec_Tv.addtolist(Ts+Cm/g_tot);
+   vec_muG.addtolist(muGn);   vec_muV.addtolist(muV);
+   vec_sV.addtolist(sV);  vec_Ts.addtolist(Ts);
+   vec_I0.addtolist(I0);  vec_f.addtolist(F);
+   vec_Q.addtolist(Q);  vec_Tv.addtolist(Ts+Cm/g_tot);
 end;
 
 procedure create_and_shuffle_the_index_vector(n_tot, REPETITION:integer );
@@ -956,9 +938,8 @@ end;
 
 procedure refill_the_fluct_variables(ii:integer);
 begin
-       I0 := vec_I0[ii];
-       freq_ge := vec_fe[ii] ; freq_gi := vec_fi[ii] ;
-       Qi := vec_qi[ii] ; Qe := vec_qe[ii] ;  Ts := vec_ts[ii] ; 
+       I0 := vec_I0[ii];  F := vec_f[ii] ; 
+       Q := vec_q[ii] ; Ts := vec_ts[ii] ; 
        muV := vec_muV[ii] ; sV := vec_sV[ii] ;
        muG := vec_muG[ii] ; Tv := vec_Tv[ii] ;  
 end;
@@ -992,8 +973,7 @@ begin
    write_t_vector;
 
     // then we reinit everything
-    Init_single_exp_fluct(I0, freq_ge, freq_gi, Qe, Qi, Ts, SEED+global_step); {not to have the same seed everytime !}
-
+    Init_single_exp_fluct(I0, F, Q, Ts, muV, SEED+global_step); {not to have the same seed everytime !}
 
     acquisition.InstallProcess(nil, massive_InitProcess, nil, massive_scan_endprocess);
 
@@ -1014,7 +994,7 @@ begin
    i_rdm:=Round(vec_i[global_step]);   {RANDOMIZATION}
    refill_the_fluct_variables(i_rdm);
 
-   Init_single_exp_fluct(I0, freq_ge,freq_gi, Qe, Qi, Ts, SEED+global_step);
+   Init_single_exp_fluct(I0, F, Q, Ts, muV, SEED+global_step);
    // Elphy Params initialization
    acquisition.InstallProcess(my_initProcess0, massive_InitProcess, nil, massive_scan_endprocess); // initprocess0 for the first exp
 
@@ -1032,41 +1012,27 @@ end;
 ================================================================================ }
 
 
-procedure init_gtot_effect_const;
-begin                      
-   TDBrecord('PG0.Exp_params').exp_type := 'tf_Gtot_effect_on_spiking' ;
-   clamp_mean := -60; clamp_std := 4 ;
-   clamp_Tv := 8 ; {ms}
-   shift_mean :=0 ;
-   max_conductance_factor := 10;
-   point_number := 10 ;
-   REPETITION := 1; {REPEATING FOR DIFFERENT SEEDS}
-   ratio_Qi_Qe:=1; ratio_Ti_Te:=1;
-end;
-
 
 procedure gen_GTE_input; 
-var ii,jj : integer ; FE, FI, g_tot, dg_tot, mu_g1, mu_g0, Gl : real;
+var ii : integer ; g_tot, dg_tot, mu_g0, Gl : real;
 begin
    initialize_stimulation_vectors;
 
-   if Rm<>0 then Gl:=1000/Rm else MessageBox('Rm =0, no calculus possible !');  {nanoSiemens !!!}
+   if clamp_Tv<=Ts_min then 
+   begin 
+      clamp_Tv:=Ts_min+1; 
+      MessageBox('Tv was too low (compared to Ts_min), set Tv='+Rstr(clamp_Tv));
+   end;
 
-   mu_g0 := Gl*(1.-(El-shift_mean-clamp_mean)/(Ee-shift_mean-clamp_mean));  {minimumm conductance level to achieve the mean, nS}
-   mu_g1 := Cm/(clamp_Tv-1);  {minimumm conductance to achieve autocorrelation for a 1ms minimum time constant, pF/ms = nS}
-   if mu_g1<mu_g0 then begin clamp_Tv:=Cm/mu_g0+1; mu_g1:=mu_g0; MessageBox('Tv too high, changed to Tv = '+Rstr(clamp_Tv)+'ms'); end;
+   mu_g0 := Cm/(clamp_Tv-Ts_min);  {minimumm conductance to achieve autocorrelation for a 1ms minimum time constant, pF/ms = nS}
 
-   dg_tot := (Gl*max_conductance_factor-mu_g1)/(point_number-1) ;  // nS
-
-   {actually the expression gives weird results for some this stimulation paradigm, so we restrict the input range to 
-   the stable parameter space, this is the procedure to perform this :}
+   dg_tot := (max_conductance_factor*Gl-mu_g0)/(point_number-1) ;  // nS
 
    for ii:=0 to point_number-1 do 
    begin
-      g_tot := mu_g1+ii*dg_tot ; {in nanoSiemens}
-      params_variations_calc(g_tot, clamp_mean, clamp_std, clamp_Tv-Cm/g_tot, Ee, Ei, Rm, Cm, El, I0, FE, FI, Qe,Qi, Tv);
-      put_the_values_into_stimulation_vectors(g_tot, clamp_mean, clamp_std, clamp_Tv-Cm/g_tot, I0, FE, FI, Qe, Qi, Tv);
-
+      g_tot := mu_g0+ii*dg_tot ; {in nanoSiemens}
+      params_variations_calc(g_tot/Gl, clamp_mean, clamp_std, clamp_Tv-Cm/g_tot, Driving_Force, Rm, Cm, El, I0, F, Q, Tv);
+      put_the_values_into_stimulation_vectors(g_tot/Gl, clamp_mean, clamp_std, clamp_Tv-Cm/g_tot, I0, F, Q, Tv);
     end;
 
    create_and_shuffle_the_index_vector(point_number, REPETITION);
@@ -1087,7 +1053,7 @@ end;
 
 procedure InitGTEdialog;
 begin
-   init_gtot_effect_const;
+   TDBrecord('PG0.Exp_params').exp_type := 'tf_Gtot_effect_on_spiking' ;
    with TFdialog do
    begin
       create;
@@ -1101,10 +1067,8 @@ begin
       getRealA(' clamping the mean (mV)',clamp_mean,10,3,200);
       getRealA(' clamping the std dev. (mV)',clamp_std,10,3,200);
       getRealA(' clamping the Tv (ms)',clamp_Tv,10,3,200);
+      getRealA(' Ts minimum (ms)',Ts_min,10,3,200);
       getRealA(' Max. Conductance factor (*Gl)',max_conductance_factor,10,3,200);
-      getRealA(' shift resting pot. (mV) (NT WKG)',shift_mean,10,3,200);
-      getRealA(' ratio of Qi/Qe (NT WKG)',ratio_qi_qe,10,3,200);
-      getRealA(' ratio of Ti/Te (NT WKG)',ratio_ti_te,10,3,200);
       setText('______________________________________');
       getIntegerA('Number of points ',point_number,6,200);
       setText('');
@@ -1128,37 +1092,20 @@ end;
 ---- How much does the mean somatic conductance might have an influence on the firing freq ---
 ================================================================================ }
 
-procedure init_Tv_effect_const;	
-begin                      
-   TDBrecord('PG0.Exp_params').exp_type := 'tf_Tv_effect_on_spiking' ;
-   clamp_mean := -60; clamp_std := 4 ;
-   clamp_gtotN := 4; {factor of gtot/gl}
-   shift_mean :=0 ;
-   ratio_qi_qe := 1 ; 
-   point_number := 10 ;
-   min_Ts :=1;
-   max_Ts := 10;
-   REPETITION := 1; {REPEATING FOR DIFFERENT SEEDS}
-   ratio_Qi_Qe:=1; ratio_Ti_Te:=1;
-end;
-
 
 procedure gen_TVE_input; 
-var ii : integer ; FE, FI, g_tot, Gl, Dts : real;
+var ii : integer ; Gl, dTs : real;
 begin
    initialize_stimulation_vectors;
     
-   if Rm<>0 then Gl:=1000/Rm else MessageBox('Rm =0, no calculus possible !');  {nanoSiemens !!!}
-   g_tot := Gl*clamp_gtotN;
-
+   g_tot := Gl*clamp_muGn;
    dTs := (max_Ts-min_Ts)/(point_number-1) ;  {ms}
 
    for ii:=0 to point_number-1 do 
    begin
       Ts := min_Ts+ii*dTs ; {in ms}
-
-      params_variations_calc(g_tot, clamp_mean, clamp_std, Ts, Ee, Ei, Rm, Cm, El, I0, FE, FI, Qe, Qi, Tv);
-      put_the_values_into_stimulation_vectors(g_tot, clamp_mean, clamp_std, Ts, I0, FE, FI, Qe,Qi, Tv);
+      params_variations_calc(clamp_muGn, clamp_mean, clamp_std, Ts, Driving_Force, Rm, Cm, El, I0, F, Q, Tv);
+      put_the_values_into_stimulation_vectors(clamp_muGn, clamp_mean, clamp_std, Ts, I0, F, Q, Tv);
     end;
    create_and_shuffle_the_index_vector(point_number, REPETITION);
 end;
@@ -1178,7 +1125,7 @@ end;
 
 procedure InitTvEdialog;
 begin
-   init_Tv_effect_const;	
+   TDBrecord('PG0.Exp_params').exp_type := 'tf_Tv_effect_on_spiking' ;
    with TFdialog do
    begin
       create;
@@ -1191,7 +1138,7 @@ begin
       setText('o==>Stimulation Parameters :');
       getRealA(' clamping the mean (mV)',clamp_mean,10,3,200);
       getRealA(' clamping the std dev. (mV)',clamp_std,10,3,200);
-      getRealA(' clamping the Gtot/gL ratio',clamp_gtotN,10,3,200);
+      getRealA(' clamping the Gtot/gL ratio',clamp_muGn,10,3,200);
       getRealA(' ratio of Qi/Qe ==NT WKG',ratio_qi_qe,10,3,200);
       getRealA(' shift resting pot. (mV) ==NT WKG',shift_mean,10,3,200);
       setText('______________________________________');
@@ -1219,38 +1166,19 @@ end;
 ---- How much does the mean somatic conductance might have an influence on the firing freq ---
 ================================================================================ }
 
-procedure init_GTVE_effect_const;
-begin                      
-   TDBrecord('PG0.Exp_params').exp_type := 'tf_Gtot_and_TV_effect_on_spiking' ;
-   clamp_mean := -60; clamp_std := 4 ; clamp_Ts := 3 ; {ms}
-   shift_mean :=0 ;
-   max_conductance_factor := 10;
-   REPETITION := 1; {REPEATING FOR DIFFERENT SEEDS}
-   ratio_Qi_Qe:=1; ratio_Ti_Te:=1;
-   point_number := 10 ;
-end;
-
-
-
 procedure gen_GTVE_input; 
-var ii : integer ; FE, FI, g_tot, dg_tot, mu_g1, mu_g0, Gl : real;
+var ii : integer ; g_totN, dg_totN, Gl : real;
 begin
 
    initialize_stimulation_vectors;
     
-   if Rm<>0 then Gl:=1000/Rm else MessageBox('Rm =0, no calculus possible !');  {nanoSiemens !!!}
-
-   mu_g0 := Gl*(1.-(El-shift_mean-clamp_mean)/(Ee-shift_mean-clamp_mean))+0.5;  {minimumm conductance level to achieve the mean, nS}
-
-   dg_tot := (Gl*max_conductance_factor-mu_g0)/(point_number-1) ;  // nS
-
+   dg_totN := (max_muGn-min_muGn)/(point_number-1) ;  // nS
    for ii:=0 to point_number-1 do 
    begin
-      g_tot := mu_g0+ii*dg_tot ; {in nanoSiemens,  shuffled through vec_i}
+      g_totN := min_muGn+ii*dg_totN ; {in nanoSiemens,  shuffled through vec_i}
 
-      params_variations_calc(g_tot, clamp_mean, clamp_std, clamp_Ts, Ee, Ei, Rm, Cm, El, I0, FE, FI, Qe,Qi, Tv);
-      put_the_values_into_stimulation_vectors(g_tot, clamp_mean, clamp_std, clamp_Ts, I0, FE, FI, Qe,Qi, Tv);
-
+      params_variations_calc(g_totN, clamp_mean, clamp_std, clamp_Ts, Driving_Force, Rm, Cm, El, I0, F, Q, Tv);
+      put_the_values_into_stimulation_vectors(g_totN, clamp_mean, clamp_std, clamp_Ts, I0, F, Q, Tv);
     end;
    create_and_shuffle_the_index_vector(point_number, REPETITION);
 end;
@@ -1270,7 +1198,7 @@ end;
 
 procedure InitGTVEdialog;
 begin
-   init_GTVE_effect_const;
+   TDBrecord('PG0.Exp_params').exp_type := 'tf_Gtot_and_TV_effect_on_spiking' ;
    with TFdialog do
    begin
       create;
@@ -1284,9 +1212,8 @@ begin
       getRealA(' clamping the mean (mV)',clamp_mean,10,3,200);
       getRealA(' clamping the std dev. (mV)',clamp_std,10,3,200);
       getRealA(' clamping the synaptic time (ms)',clamp_Ts,10,3,200);
-      getRealA(' Max. Conductance factor (*Gl)',max_conductance_factor,10,3,200);
-      getRealA(' shift resting pot. (mV) ==NT WKG',shift_mean,10,3,200);
-      getRealA(' ratio of Qi/Qe ==NT WKG',ratio_qi_qe,10,3,200);
+      getRealA(' Min. muG factor (muG/Gl)',min_muGn,10,3,200);
+      getRealA(' Max. muG factor (muG/Gl)',max_muGn,10,3,200);
       setText('______________________________________');
       getIntegerA('Number of points ',point_number,6,200);
       setText('');
@@ -1306,36 +1233,16 @@ end;
 
 {$EDIT muV_Effect} 
 
-procedure init_muV_effect_const;
-begin                      
-   TDBrecord('PG0.Exp_params').exp_type := 'tf_muV_effect_on_spiking';
-   clamp_Ts := 3; clamp_std := 4 ;
-   clamp_gtotN := 8 ; {muG/Gl}
-   shift_mean :=0 ;   ratio_qi_qe := 1 ;
-   REPETITION := 1; {REPEATING FOR DIFFERENT SEEDS}
-   ratio_Qi_Qe:=1; ratio_Ti_Te:=1;
-   point_number := 10 ;
-   min_muV := -60;
-   max_muV := -53 ;
-end;
-
 procedure gen_MUVE_input; 
 var ii : integer ; FE, FI, g_tot, Gl, dv : real;
 begin
    initialize_stimulation_vectors;
-    
-   if Rm<>0 then Gl:=1000/Rm else MessageBox('Rm =0, no calculus possible !');  {nanoSiemens !!!}
-
-   g_tot := Gl*clamp_gtotN ;  // nS
-
    dv := (max_muV-min_muV)/(point_number-1) ; {mV}
-
    for ii:=0 to point_number-1 do 
    begin
       muV := min_muV+ii*dv ; {in mV,  shuffled through vec_i}
-      params_variations_calc(g_tot, muV, clamp_std, clamp_Ts, Ee, Ei, Rm, Cm, El, I0, FE, FI, Qe,Qi, Tv);
-      put_the_values_into_stimulation_vectors(g_tot, muV, clamp_std, clamp_Ts, I0, FE, FI, Qe,Qi, Tv);
-
+      params_variations_calc(clamp_muGn, muV, clamp_std, clamp_Ts, Driving_Force, Rm, Cm, El, I0, F, Q, Tv);
+      put_the_values_into_stimulation_vectors(clamp_muGn, muV, clamp_std, clamp_Ts, I0, F, Q, Tv);
     end;
    create_and_shuffle_the_index_vector(point_number, REPETITION);
 end;
@@ -1355,7 +1262,7 @@ end;
 
 procedure InitMUVEdialog;
 begin
-   init_muV_effect_const;
+   TDBrecord('PG0.Exp_params').exp_type := 'tf_muV_effect_on_spiking';
    with TFdialog do
    begin
       create;
@@ -1366,15 +1273,12 @@ begin
       getIntegerA('SEED (int)',SEED,6,200);
       getIntegerA('REPETITION of SEED (int)',REPETITION,6,200);
       setText('o==>Stimulation Parameters :');
-      getRealA(' clamping the std dev. (mV)',clamp_std,10,3,200);
-      getRealA(' clamping the syn. time (ms)',clamp_Ts,10,3,200);
-      getRealA(' clamping muG/Gl ([])',clamp_gtotN, 10,3,200);
+      getRealA(' clamping the sV (mV)',clamp_std,10,3,200);
+      getRealA(' clamping the Ts (ms)',clamp_Ts,10,3,200);
+      getRealA(' clamping muG/Gl ([])',clamp_muGn, 10,3,200);
       setText('______________________________________');
       getRealA(' Min. muV',min_muV,10,3,200);
       getRealA(' Max. muV',max_muV,10,3,200);
-      setText('______________________________________');
-      getRealA(' ratio of Qi/Qe (NT WKG)',ratio_qi_qe,10,3,200);
-      getRealA(' shift resting pot. (mV) (NT WKG)',shift_mean,10,3,200);
       setText('______________________________________');
       getIntegerA('Number of points ',point_number,6,200);
       setText('');
@@ -1395,34 +1299,16 @@ end;
 
 {$EDIT sV_Effect} 
 
-procedure init_sV_effect_const;
-begin                      
-   TDBrecord('PG0.Exp_params').exp_type := 'tf_SV_effect_on_spiking';
-   clamp_Ts := 3; clamp_mean := -58 ;
-   clamp_gtotN := 8 ; {muG/Gl}
-   shift_mean :=0 ;   ratio_qi_qe := 1 ;
-   REPETITION := 1; {REPEATING FOR DIFFERENT SEEDS}
-   ratio_Qi_Qe:=1; ratio_Ti_Te:=1;
-   point_number := 10 ;
-   min_sV := 3;   max_sV := 8 ;
-end;
-
 procedure gen_sVE_input; 
-var ii : integer ; FE, FI, g_tot, Gl, dsv, sv1 : real;
+var ii : integer ; Gl, dsv, sv1 : real;
 begin
    initialize_stimulation_vectors;
-
-   if Rm<>0 then Gl:=1000/Rm else MessageBox('Rm =0, no calculus possible !');  {nanoSiemens !!!}
-
-   g_tot := Gl*clamp_gtotN ;  // nS
-
    dsv := (max_sV-min_sV)/(point_number-1) ; {mV}
-
    for ii:=0 to point_number-1 do 
    begin
       sV1 := min_sV+ii*dsv ; {in mV,  shuffled through vec_i}
-      params_variations_calc(g_tot, clamp_mean, sV1, clamp_Ts, Ee, Ei, Rm, Cm, El, I0, FE, FI, Qe,Qi, Tv);
-      put_the_values_into_stimulation_vectors(g_tot, clamp_mean, sV1, clamp_Ts, I0, FE, FI, Qe,Qi, Tv);
+      params_variations_calc(clamp_muGn, clamp_mean, sV1, clamp_Ts, Driving_Force, Rm, Cm, El, I0, F, Q, Tv);
+      put_the_values_into_stimulation_vectors(clamp_muGn, clamp_mean, sV1, clamp_Ts, I0, F, Q, Tv);
     end;
    create_and_shuffle_the_index_vector(point_number, REPETITION);
 end;
@@ -1442,7 +1328,7 @@ end;
 
 procedure InitSVEdialog;
 begin
-   init_sV_effect_const;
+   TDBrecord('PG0.Exp_params').exp_type := 'tf_SV_effect_on_spiking';
    with TFdialog do
    begin
       create;
@@ -1455,7 +1341,7 @@ begin
       setText('o==>Stimulation Parameters :');
       getRealA(' clamping the mean (mV)',clamp_mean,10,3,200);
       getRealA(' clamping the syn. time (ms)',clamp_Ts,10,3,200);
-      getRealA(' clamping muG/Gl ([])',clamp_gtotN, 10,3,200);
+      getRealA(' clamping muG/Gl ([])',clamp_muGn, 10,3,200);
       setText('______________________________________');
       getRealA(' Min. sV',min_sV,10,3,200);
       getRealA(' Max. sV',max_sV,10,3,200);
@@ -1485,33 +1371,13 @@ end;
 --------------------------------- Scanning the mV_sV_Tv_mG space ---------------------------------------
 ================================================================================ }
 
-procedure init_massive_scan_const;
-begin                      
-   TDBrecord('PG0.Exp_params').exp_type := 'tf_massive_mV_sV_Tv_mG';
-   min_muV:=-65; max_muV:=-58;
-   min_sV:=3; max_sV:=10;
-   min_sV2:=0.5; max_sV2:=1.7;
-   min_muGn:=2; max_muGn:=8;
-   min_Ts:=4; max_Ts:=7;
-   DISCRET_SV := 3;
-   DISCRET_MV := 3;
-   DISCRET_MUG:= 3 ;
-   DISCRET_TS:= 1;
-   shift_mean :=0 ; 
-   REPETITION:=1;
-   ratio_Qi_Qe:=1; ratio_Ti_Te:=1;
-end;
-
 
 procedure gen_massive_scan_input; 
-var iv, is, it, ig, n_tot : integer ; 
-fe, fi, q, muGn, DmuG, DmV, DsV, sV1_min, sv1_max, DTs, Gl, g_tot, compress : real; 
+var iv, is, it, ig, n_tot : integer ;  DmuG, DmV, DsV, sV1_min, sv1_max, DTs, Gl, g_tot, compress : real; 
 vec_ts1:Tvector;
 begin
    n_tot := DISCRET_SV*DISCRET_MV*DISCRET_MUG*DISCRET_TS; {total number of points}
    initialize_stimulation_vectors;
-
-   if Rm<>0 then Gl:=1000/Rm else MessageBox('Rm =0, no calculus possible !');  {nanoSiemens !!!}
 
    if DISCRET_MV>1 then DmV := (max_muV-min_muV)/(DISCRET_MV-1) else DmV:=1;
    if DISCRET_TS>1 then DTs := (max_Ts-min_Ts)/(DISCRET_TS-1) else DTs:=1;
@@ -1521,7 +1387,6 @@ begin
    begin
       muV := min_muV + iv*DmV;
       {here we construct the triangle for the mean and variance}
-      { sV1_min:= max_muV-muV+min_sV ;  sv1_max:=min_muV-muV+max_sV; }
 
       sv1_max:=max_sV+iv/DISCRET_MV*(max_sV2-max_sV);
       sv1_min:=min_sV+iv/DISCRET_MV*(min_sV2-min_sV);
@@ -1533,15 +1398,12 @@ begin
 	 for ig:=0 to DISCRET_MUG-1 do 
 	 begin
 	    muGn:=min_muGn +ig*DmuG;
-	    g_tot := Gl*muGn;
 	    for it:=0 to DISCRET_TS-1 do 
 	    begin
 	       Ts:=min_Ts +it*DTs;
-
-	       params_variations_calc(g_tot, muV, sV, Ts, Ee, Ei, Rm, Cm, El, I0, FE, FI, Qe,Qi, Tv);
-
+	       params_variations_calc(muGn, muV, sV, Ts, Driving_Force, Rm, Cm, El, I0, F, Q, Tv);
 	       {NOW WE CAN APPEND THE VALUES TO THE VECTORS}
-	       put_the_values_into_stimulation_vectors(g_tot, muV, sV, Ts, I0, FE, FI, Qe,Qi, Tv);
+	       put_the_values_into_stimulation_vectors(muGn, muV, sV, Ts, I0, F, Q, Tv);
 	    end;
 	 end;
       end;
@@ -1564,7 +1426,8 @@ end;
 
 procedure Init_massive_scan_dialog;
 begin
-   init_massive_scan_const;
+   TDBrecord('PG0.Exp_params').exp_type := 'tf_massive_mV_sV_Tv_mG';
+   min_Ts:=3; max_Ts:=5; {different than for Tv scan}
    with TFdialog do
    begin
       create;
@@ -1590,8 +1453,6 @@ begin
       getIntegerA('=====> DISCRET. Ts ',DISCRET_TS,6,200);
       getRealA(' Min. Ts',min_Ts,10,3,200);
       getRealA(' Max. Ts',max_Ts,10,3,200);
-      { getRealA(' ratio of Qi/Qe (NT WKG)',ratio_qi_qe,10,3,200); }
-      { getRealA(' ratio of Ti/Te (NT WKG)',ratio_qi_qe,10,3,200); }
       setText('');
       getIntegerA('MAX spikes number',max_spikes_number,6,200);
       getRealA('max_authorized_time)',max_authorized_time,10,3,200);

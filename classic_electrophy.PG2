@@ -829,7 +829,8 @@ procedure IC_RmCm(var vec:Tvector;var rm,cm:real;with_cursor : Boolean);
     ICMT_fit.execute; ICMT_fit.refresh ;
     {Model : a1*exp(a2*x)+a3 ---> a1=Rm*I0, a3=El+Rm*I0, a2=-1/(Rm*Cm)}
     tau:=ICMT_fit.Param['a2'];  if tau<0 then tau:=-1/tau else tau:=1E9;
-    if ICMT_fit.Param['a1']<>0 then ICMT_fit.Param['a1']/ICMT_amp*1000 else Rm:=1e9;
+    Vs:=ICMT_fit.Param['a1'];
+    if Vs<>0 then Rm:=-Vs/ICMT_amp*1000 else Rm:=1e9;
     Cm:=tau/Rm*1000; { pF }
 
     with ICMT_memo do

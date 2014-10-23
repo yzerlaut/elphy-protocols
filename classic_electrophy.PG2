@@ -821,19 +821,15 @@ procedure IC_RmCm(var vec:Tvector;var rm,cm:real;with_cursor : Boolean);
     {version valable uniquement pour un pulse n?gatif }
   begin
     V0:=vec.mean(1,ICMT_t1-2);  El :=V0 ;
-    Vjump:=vec.mean(ICMT_t2-20,ICMT_t2-2)-V0;
     ICMT_fit.Xorigin:=ICMT_t1;
 
     if with_cursor then begin ICMT_fit.xstartFit:=ICMT_cursor.position[1]; ICMT_fit.XendFit:=ICMT_cursor.position[2]; end 
     else begin ICMT_fit.xstartFit:=ICMT_t1; ICMT_fit.XendFit:=ICMT_t2;end;
 
     ICMT_fit.execute; ICMT_fit.refresh ;
-
-    tau:=ICMT_fit.Param['a2'];
-    if tau<0 then tau:=-1/tau else tau:=1E9;
-    Vs:=ICMT_fit.Param['a3']-V0;
-    Vbase:=ICMT_fit.Param['a1']+Vs;
-    if Vs<>0 then Rm:=Vs/ICMT_amp*1000 else Rm:=1E6; { Mohm }
+    {Model : a1*exp(a2*x)+a3 ---> a1=Rm*I0, a3=El+Rm*I0, a2=-1/(Rm*Cm)}
+    tau:=ICMT_fit.Param['a2'];  if tau<0 then tau:=-1/tau else tau:=1E9;
+    if ICMT_fit.Param['a1']<>0 then ICMT_fit.Param['a1']/ICMT_amp*1000 else Rm:=1e9;
     Cm:=tau/Rm*1000; { pF }
 
     with ICMT_memo do
@@ -859,7 +855,7 @@ begin
   ICMT_fit.standardModel:=fm_expC1 {fm_poly5};
   ICMT_fit.initialize:=true;  ICMT_fit.reset;  ICMT_fit.setYdata(ICMT_moy);  ICMT_fit.MaxIt:=30;
 
-  ICMT_fit.setWorld(ICMT_moy.xmin,ICMT_moy.ymin,ICMT_moy.xmax,ICMT_moy.ymax);
+  { ICMT_fit.setWorld(ICMT_moy.xmin,ICMT_moy.ymin,ICMT_moy.xmax,ICMT_moy.ymax); }
   ICMT_fit.cpx:=1;  ICMT_fit.cpy:=1;  ICMT_fit.matchVector(v1);  ICMT_fit.color:=cl_red;
   addObject(1,1,ICMT_fit);
 
@@ -947,7 +943,7 @@ begin
   DIvideWindow(1,3,3,1);
   color:=cl_gray;
 
-   ICMT_amp:=50; ICMT_t1:=200; ICMT_t2:=500; ICMT_interStim:=1 ; // params
+   ICMT_amp:=20; ICMT_t1:=200; ICMT_t2:=500; ICMT_interStim:=1 ; // params
    {then we display the channels}
    addObject(1,1,v1);  addObject(1,2,v2);   addObject(1,2,v3);   
    

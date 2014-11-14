@@ -80,7 +80,7 @@ LOCAL alpha, beta, sum
 TABLE minf, mtau, hinf, htau, ninf, ntau DEPEND celsius FROM -100 TO 100 WITH 200
  
 UNITSOFF
-q10 = 5 :no temperature dependence
+q10 = 1 :no temperature dependence
 :"m" sodium activation system
 alpha = .1 * vtrap(-(v+35),10)
 beta = 4 * exp(-(v+60)/18)

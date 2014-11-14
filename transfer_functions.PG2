@@ -163,7 +163,7 @@ begin {-- we set all the variables of the acquisition class, then we create
    
    RTneuron.Execute('objref stim');
    RTneuron.Execute('soma stim = new cExpSyn_with_static_cond(.5)');
-   for i:=1 to 6 do 
+   for i:=1 to 3 do 
    begin 
      acquisition.Channels[i].ChannelType := TI_Neuron;
      acquisition.Channels[i].DownSamplingFactor:=1;
@@ -204,7 +204,7 @@ begin {-- we set all the variables of the acquisition class, then we create
    RTneuron.Execute('objref stim');
    RTneuron.Execute('soma stim = new cExpSyn_with_static_cond(.5)');
    
-   for i:=1 to 6 do 
+   for i:=1 to 3 do 
    begin 
      acquisition.Channels[i].ChannelType := TI_Neuron;
      acquisition.Channels[i].DownSamplingFactor:=1;
@@ -223,7 +223,7 @@ begin {-- we set all the variables of the acquisition class, then we create
    // For real data, 2-> real current, 3 -> theoretical current
    acquisition.Channels[3].unitY:='nA'; v3.title:='Ith(t)';
    acquisition.Channels[3].NrnSymbolName:='stim.i';
-   addObject(1,2,v3);
+   addObject(1,2,v2);
    v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ;
    v1.cpy:=1 ; v2.cpy := 2 ; v3.cpy:=3 ; {we set the coupling value -> to couple to future analysis} 
 end;
@@ -406,6 +406,7 @@ procedure IC_RmCm(var vec:Tvector;var rm,cm:real;with_cursor : Boolean);
       lines[8]:='El= '+Rstr(El,12,3)+' mV';
     end;
     ICMT_memo.refresh;
+  MainDialog.update;
   end;                                           
 
 { ------------- then, Procedures of the Acquisition Processes (see doc) ----------}   
@@ -494,7 +495,6 @@ begin
    TFdialog.setText('');
    TFdialog.getRealA(' Bridge  (Mohm) ',bridge,3,1,99);
    TFdialog.getRealA(' Holding (pA) ',holding,3,1,99);
-   TFdialog.getCommandA(' Write membrane parameters ',0,997);
    TFdialog.OnEvent:=ICMT_event ;
    TFdialog.show;
 
@@ -515,19 +515,6 @@ begin
    if n>max_spikes_number then acquisition.stop;
 end;
 
-
-procedure tf_InitProcess; {executer avec acquisition.start, mais apres tout, ici tous les objets ont ete initialises, donc on peut les utiliser}
-var 
-threshold : real ;refrac : real ; yinit : real;
-begin
-   spiketimes.create(t_single,0,-1);
-   threshold := -30.0 ; // threshold at : ... mV 
-   refrac := 0.003 ; // at least ... s between two events
-   yinit := -80.0 ;
-   detector.create;
-   detector.InitCrossings(v1,spiketimes,TRUE,FALSE,threshold,threshold,refrac,yinit,FALSE);
-   detector.addevent(At_threshold_event,0);
-end;
 
 
 procedure tf_EndProcess; 
@@ -849,7 +836,7 @@ begin
        {then recordings of the future episode quantities}
        F := 0 ; Gs :=0 ;
        startI := 1000 ; stopI := 1500 ; {in ms}
-       I0 := -5/Rm ; {5mV/MOhm->nA to get a small depolarization}
+       I0 := -expected_DV_for_cond/Rm ; {mV/MOhm->nA to get a small depolarization}      
        rest_flag:=True;
       if global_step>=vec_i.Iend then continu_flag:=False;
     end;
@@ -962,7 +949,6 @@ begin
       getRealA(' Driving Force (mV)',Driving_Force,10,3,200);
       getIntegerA('Number of points ',point_number,6,200);
       getboolean('Checking the conductance ??', check_for_conductance);
-      getRealA('expected DV for cond (mV)',expected_DV_for_cond,10,3,200);
       setText('');
       getCommandA(' Generate and Shuffle the stim ',0,301); { OnEvent flag -> 201 }
       getCommandA(' Run ',0,201); { OnEvent flag -> 201 }
@@ -1437,6 +1423,7 @@ protocol_choice := 0;
       getRealA('Ih -- Holding current (pA)',Holding,4,2,785);
       setText('Last measured at : '+Istr(Hour)+'h '+Istr(Minute)+'m '+Istr(Second)+'s');
       setText('|--------------------------------------------------------|');
+      getRealA('desired DV for Rinput  (mV)',expected_DV_for_cond,10,3,200);
       setText('');
       OnEvent := MainDialog_update;
    
@@ -1495,7 +1482,6 @@ begin
      // now the time at which they have been calculated !
      Hour:=Round(vec_params[10]); Minute:=Round(vec_params[11]) ; Second:=Round(vec_params[11]) ; 
      end else begin
-     MessageBox('no parameters loaded !!!');
      Rm :=100;Cm:=200;Bridge:=15;El:=-70;f_acq:=10;Holding:=0;
      gain1_int:=1;gain1:=1;gain2_int:=1;gain2:=1;
      end; 

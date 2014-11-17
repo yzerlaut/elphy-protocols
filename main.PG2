@@ -9,93 +9,82 @@
 { -----------------------------------------------  2013-[...] -------- }
 
 
-var global_dialog : Tdialog ;
-    location_int, amplifier_int, experiment_int : integer ;// ==> amplifier, location and experiment flag
-    global : TDBrecord ; // ==> Stores the global variables !! 
-    Exp_Params : TDBrecord ; // ==> Stores the parameters specific to each experience !!
+const 
+   location= 'Patch Setup'; {'Notebook' or 'Patch Setup'}
+   amplifier= 'multiclamp'; {'nrn_simulation' or 'multiclamp' or 'NPI'}
+
+
+var 
+    global : TDBrecord ;  {     = => Stores the global variables !! }
+    Exp_Params : TDBrecord ; { = => Stores the parameters specific to each experience !!}
     {variables to fetch the date and time }
-    Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; 
-    pathOfTheDay, root_path : string ;
-    main_protocol : string ; 
-    already_initiated : boolean ;
+    root_path : string ; 
 
 {Tmacro object, see doc\, specifically loads only one file}
 var 
-t_classic_electrophy, field_effects, t_transfer_functions : Tmacro ;
 t_macro : Tmacro ;
 
 procedure classic_electrophy;
 begin
 global.experiment_type:='classic_electrophy';
-//t_classic_electrophy.create(root_path+'classic_electrophy.PG2');
-//t_classic_electrophy.ExecuteCommand('Launch_from_Tmacro');
 t_macro.create(root_path+'classic_electrophy.PG2');
+t_macro.ExecuteCommand('Launch_from_Tmacro');
+end;
+
+procedure AdExp_charact;
+begin
+global.experiment_type:='AdExp_charact';
+t_macro.create(root_path+'AdExp_charact.PG2');
+t_macro.ExecuteCommand('Launch_from_Tmacro');
+end;
+ 
+procedure fluctuation_driven_regime;
+begin
+global.experiment_type:='fluctuation_driven_regime';
+t_macro.create(root_path+'fluctuation_driven_regime.PG2');
+t_macro.ExecuteCommand('Launch_from_Tmacro');
+end;
+
+procedure transfer_functions;
+begin
+global.experiment_type:='transfer_functions';
+t_macro.create(root_path+'transfer_functions.PG2');
 t_macro.ExecuteCommand('Launch_from_Tmacro');
 end;
 
 procedure Efield_effects;
 begin
 global.experiment_type:='field_effects';
-//field_effects.create(root_path+'field_effects.PG2');
-//field_effects.ExecuteCommand('Launch_from_Tmacro');
-t_macro.create('field_effects.PG2');
-//t_macro.ExecuteCommand('Launch_from_Tmacro');
-end;
- 
-              
-procedure transfer_functions;
-begin
-global.experiment_type:='transfer_functions';
-t_transfer_functions.create(root_path+'transfer_functions.PG2');
-t_transfer_functions.ExecuteCommand('Launch_from_Tmacro');
+t_macro.create(root_path+'field_effects.PG2');
+t_macro.ExecuteCommand('Launch_from_Tmacro');
 end;
 
-
-procedure global_event(n:integer);
+procedure setup_init;
 begin
-    global_dialog.updatevar;
-     case n of
-       100 : begin
-             if location_int=2 then   // MSwin + Bal's Setup
-                 begin
-                    global.location  := 'Patch Setup'  ;
-                    global.data_Path := 'D:\yann\DATA\' ;
-                    global.loadnrnPath := 'D:/yann/myelphy/nrn_files/' ;
-                    root_path := 'D:\yann\myelphy\' ;
-                    global.root_path:= root_path ;
-                    global.sep:='\_';
-                 end;
-             if location_int=1 then   // MSWin + Notebook
-                 begin
-                    global.location := 'Notebook' ;
-                    global.data_Path:='D:\home\yann\files\DATA\';
-                    global.loadnrnPath:='D:/home/yann/work/elphy_code/nrn_files/';
-                    root_path:= 'D:\home\yann\work\elphy_code\';
-                    global.root_path:=root_path ;
-                    global.sep:='/_'; {N.B. linux computers have different separators, see above paths}
-                 end;
-                 PathOfTheDay := global.data_Path;
-                 PathOfTheDay := PathOfTheDay+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'/' ;
-                 global.PathOfTheDay := PathOfTheDay ;
-             case amplifier_int of
-             1 : global.amplifier := 'nrn_simulation' ;
-             2 : global.amplifier := 'multiclamp' ;
-             end;
-             case experiment_int of
-              1 : classic_electrophy;
-              2 : field_effects ;
-              3 : transfer_functions ;
-             end;
-       end;
-     end;   
-    global_dialog.update;
+   if location='Notebook' then
+   begin
+      global.location := 'Notebook' ;
+      global.data_Path:='D:\home\yann\files\DATA\';
+      global.loadnrnPath:='D:/home/yann/work/elphy_code/nrn_files/';
+      root_path:= 'D:\home\yann\work\elphy_code\';
+      global.root_path:=root_path ;
+      global.sep:='/_'; {N.B. linux computers have different separators, see above paths}
+   end
+   else if location='Patch Setup' then
+   begin
+      global.location  := 'Patch Setup'  ;
+      global.data_Path := 'D:\yann\DATA\' ;
+      global.loadnrnPath := 'D:/yann/elphy_code/nrn_files/' ;
+      root_path := 'D:\yann\elphy_code\' ;
+      global.root_path:= root_path ;
+      global.sep:='\_';
+   end;
+   if not DirectoryExists(root_path) then MessageBox('Problem with the Setup Initialisation, check the path !');
+   global.amplifier := amplifier;
 end;
 
-procedure init_global_dialog;
+procedure init_global;
 begin
-    location_int :=1;
-    amplifier_int := 1;
-    experiment_int := 1;
     global.create;
     // we initialize some recording quantities
     
@@ -108,34 +97,12 @@ begin
     global.cont_choice := True; // if True -> continus mode, else episode
     global.stim := False;  // if True acquisition.Fstimulate := True
     global.max_EP_num := 0 ;
-    global.f_acq := 10 ;  // in kHz
-    global.episode_duration := 2000 ;
+    global.episode_duration := 20 ;
     global.acquisitionISI := 1;  
     
     Exp_Params.create;
-    already_initiated :=True;
     InsertPage(1,'fake');DeleteAllPages('fake');InsertPage(1,'default');DeleteAllPages('default');
     Color := cl_gray ;
-
-  {----- Path for file saving ------- }
-  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
-  
-  with global_dialog do
-  begin
-  create;
-  OnEvent := global_event ;
-  getStringList(' Device  : ',' | Notebook | Bal Setup ','0|1|2',location_int,101);  { Onevent flag ->199}
-  setText(' ================================= ');
-  getStringList(' Amplifier : ',' | RTneuron-Simulation | MultiClamp | NPI | AxoClamp ','0|1|2|3|4',amplifier_int,102);  { Onevent flag ->199}
-  setText(' ================================= ');
-  setText(' today is :'+Istr(Day)+'/'+Istr(Month)+'/'+Istr(Year)+' ');
-  setText(' (important for data saving) ');
-  setText(' ================================= ');
-  getStringList(' Experiment Type : ',' | Classic Electrophy| Field Effect  | Transfer Function ','0|1|2|3',experiment_int,1003);  { Onevent flag ->199}
-  setText(' ================================= ');
-  getCommandA(' ----------------LAUNCH----------------- ', 0,100);
-  caption := 'Global' ;
-  end;
 end;
 
 
@@ -153,10 +120,26 @@ e.g. the membrane resistance -> experimental value
 ===============================================================================}
 
 
+program initialisation
+init_global;
+setup_init;
 
-program Experiments
-init_global_dialog; 
-global_dialog.show;                                                     
+program classic_electrophy
+init_global;
+setup_init;
+classic_electrophy;
+
+program AdExp_charact
+AdExp_charact;
+
+program fluctuation_driven_regime
+fluctuation_driven_regime;
+
+program transfer_functions
+transfer_functions;
+
+program Efield_effects
+Efield_effects;
 
 
 

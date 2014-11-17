@@ -15,7 +15,7 @@ var  { ========= COMMON VARIABLES ============ }
    ProtocolName:array[1..protocolCount] of string; ProtoNames:string;
    DB:Tdbrecord ;  {for metadata information, storing comments, ... }
    Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; {variables to fetch the date and time }
-   gain1,gain2 : real; gain1_int,gain2_int,clamp_int:integer;cont_choice:boolean;  
+   gain1,gain2,f_acq : real; gain1_int,gain2_int,clamp_int:integer;cont_choice:boolean;  
    dll_load : string ;
    detector : Tdetector; // detector use througout the protocols in cqse of continuous mode for online analysis
 
@@ -105,6 +105,7 @@ begin
     st2:=TDBrecord('PG0.Exp_params').Valstring[jj];
     writelnText(1,'"'+st+'":"'+st2+'",');
   end;        
+  for jj:=1 to ChannelCount do WriteLnText(1, '"DY'+Istr(jj)+'" : "'+Rstr(v[jj].dY)+'",');
   writelnText(1,'"lastline":"no_value"');
   writelnText(1,'}');
   closeText(1);                                                              
@@ -244,14 +245,16 @@ begin {-- we set all the variables of the acquisition class, then we create
     if Clamp_int=1 then { IF CURRENT-CLAMP }
     begin { we link the analogous signal to the NEURON variables with the right gain }
       RTneuron.AdcChan[0].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[0].NrnSymbolName:='Vm';    // primary     
-      RTneuron.AdcChan[1].setScale(0,32767,0,20000.0/gain2); RTneuron.AdcChan[1].NrnSymbolName:='Iinj'; // secondary 
+      RTneuron.AdcChan[1].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[1].NrnSymbolName:='Vm_filtered'; // primary filtered
+      RTneuron.AdcChan[2].setScale(0,32767,0,20000.0/gain2); RTneuron.AdcChan[2].NrnSymbolName:='Iinj'; // secondary 
       acquisition.Channels[1].NrnSymbolName:='Vm'; acquisition.Channels[1].unitY:='mV' ;
       acquisition.Channels[2].NrnSymbolName:='Iinj'; acquisition.Channels[2].unitY:='pA' ;
     end;                                                                                                        
     if Clamp_int=2 then { IF VOLTAGE CLAMP }
     begin
       RTneuron.AdcChan[0].setScale(0,32767,0,20000.0/gain1); RTneuron.AdcChan[0].NrnSymbolName:='Iinj';         
-      RTneuron.AdcChan[1].setScale(0,32767,0,1000.0/gain2); RTneuron.AdcChan[1].NrnSymbolName:='Vm';  
+      RTneuron.AdcChan[1].setScale(0,32767,0,20000.0/gain1); RTneuron.AdcChan[1].NrnSymbolName:='Iinj_filtered';         
+      RTneuron.AdcChan[2].setScale(0,32767,0,1000.0/gain2); RTneuron.AdcChan[2].NrnSymbolName:='Vm';  
       acquisition.Channels[1].NrnSymbolName:='Iinj'; acquisition.Channels[1].unitY:='pA' ;
       acquisition.Channels[2].NrnSymbolName:='Vm'; acquisition.Channels[2].unitY:='mV' ;
     end; { we will call this function each time we modify a gain }
@@ -802,6 +805,7 @@ var
   ICMT_amp, ICMT_t1, ICMT_t2, ICMT_interStim : real ;
   ICMT_dialog : Tdialog ; ICMT_moy : Taverage ; ICMT_fit : TcurveFitting ;
   ICMT_cursor : Tcursor ; ICMT_memo : Tmemo ;
+  bridge, El, holding : real ;
   
 
 procedure Build_ICMTstim(seq:longint;var vec:Tvector);  {pulse procedure called at each buildep}
@@ -817,22 +821,17 @@ procedure IC_RmCm(var vec:Tvector;var rm,cm:real;with_cursor : Boolean);
     x0:real; x,xa,xb:real; xorg:real; 
     {version valable uniquement pour un pulse n?gatif }
   begin
-    V0:=vec.mean(1,ICMT_t1-2);
-    Vjump:=vec.mean(ICMT_t2-20,ICMT_t2-2)-V0;
-    x0:=miniX(vec,ICMT_t1,ICMT_t1+5);
-    xorg:=FirstCrossing(vec,ICMT_t1-5,ICMT_t1+5,V0+Vjump/2,false);
-    ICMT_fit.Xorigin:=xorg;
+    V0:=vec.mean(1,ICMT_t1-2);  El :=V0 ;
+    ICMT_fit.Xorigin:=ICMT_t1;
 
     if with_cursor then begin ICMT_fit.xstartFit:=ICMT_cursor.position[1]; ICMT_fit.XendFit:=ICMT_cursor.position[2]; end 
-    else begin ICMT_fit.xstartFit:=x0+v1.convX(1); ICMT_fit.XendFit:=ICMT_t2-1;end;
+    else begin ICMT_fit.xstartFit:=ICMT_t1; ICMT_fit.XendFit:=ICMT_t2;end;
 
     ICMT_fit.execute; ICMT_fit.refresh ;
-
-    tau:=ICMT_fit.Param['a2'];
-    if tau<0 then tau:=-1/tau else tau:=1E9;
-    Vs:=ICMT_fit.Param['a3']-V0;
-    Vbase:=ICMT_fit.Param['a1']+Vs;
-    if Vs<>0 then Rm:=Vs/ICMT_amp*1000 else Rm:=1E6; { Mohm }
+    {Model : a1*exp(a2*x)+a3 ---> a1=-Rm*I0, a3=El+Rm*I0, a2=-1/(Rm*Cm)}
+    tau:=ICMT_fit.Param['a2'];  if tau<0 then tau:=-1/tau else tau:=1E9;
+    Vs:=ICMT_fit.Param['a1'];
+    if Vs<>0 then Rm:=-Vs/ICMT_amp*1000 else Rm:=1e9;
     Cm:=tau/Rm*1000; { pF }
 
     with ICMT_memo do
@@ -840,6 +839,7 @@ procedure IC_RmCm(var vec:Tvector;var rm,cm:real;with_cursor : Boolean);
       lines[3]:='tau='+Rstr(tau,12,3)+' ms';
       lines[5]:='rm= '+Rstr(rm,12,3)+' Mohm';
       lines[6]:='Cm= '+Rstr(Cm,12,3)+' pF';
+      lines[8]:='El= '+Rstr(El,12,3)+' mV';
     end;
     ICMT_memo.refresh;
   end;                                           
@@ -850,19 +850,17 @@ procedure IC_RmCm(var vec:Tvector;var rm,cm:real;with_cursor : Boolean);
 
 procedure mtic_initprocess;
 begin
-  ICMT_moy.create(t_single,0,0);//v1.Istart,v1.Iend);
+  ICMT_moy.create(t_single,v1.Istart,v1.Iend);
   ICMT_moy.cpx:=1;  ICMT_moy.cpy:=1;  ICMT_moy.color:=cl_blue;
-  //ICMT_moy.setWorld(ICMT_t1-5,v1.Ymin,ICMT_t2,v1.Ymax);
-  addObject(1,1,ICMT_moy);
-
+  
   ICMT_fit.create('');
   ICMT_fit.standardModel:=fm_expC1 {fm_poly5};
   ICMT_fit.initialize:=true;  ICMT_fit.reset;  ICMT_fit.setYdata(ICMT_moy);  ICMT_fit.MaxIt:=30;
 
-  ICMT_fit.setWorld(ICMT_moy.xmin,ICMT_moy.ymin,ICMT_moy.xmax,ICMT_moy.ymax);
-  ICMT_fit.cpx:=1;  ICMT_fit.cpy:=1;  //ICMT_fit.matchVector(v1); 
-  ICMT_fit.color:=cl_red;
+  { ICMT_fit.setWorld(ICMT_moy.xmin,ICMT_moy.ymin,ICMT_moy.xmax,ICMT_moy.ymax); }
+  ICMT_fit.cpx:=1;  ICMT_fit.cpy:=1;  ICMT_fit.matchVector(v1);  ICMT_fit.color:=cl_red;
   addObject(1,1,ICMT_fit);
+
 end;
 
 procedure mtic_process;
@@ -872,6 +870,8 @@ end;
 
 procedure mtic_endprocess;
 begin
+  addObject(1,1,ICMT_moy);
+ 
   IC_RmCm(ICMT_moy,rm,cm,False); { and we process the analysis}
   rm_vec.addtolist(rs); rm_vec.refresh;
   DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
@@ -904,11 +904,24 @@ begin
          acquisition.InstallProcess(my_initprocess0, mtic_initprocess, mtic_process, mtic_endprocess);
 end;
 
+var vec_params : Tvector;
+
+// writing the membrane parameters as a Tvector that will be loaded by other programs
 procedure Set_global_RmCm;
 begin
-     TDBrecord('PG0.Exp_Params').Rm := Rm ;
-     TDBrecord('PG0.Exp_Params').Cm := Cm ;
-end;
+     vec_params.create(t_single,0,-1); // YOU SHOULD REMMEBER THE ORDER FOR THE OTHER PROTOCOLS
+     vec_params.Addtolist(f_acq);
+     TDBrecord('PG0.global').Rm := Rm ; vec_params.Addtolist(Rm) ;
+     TDBrecord('PG0.global').Cm := Cm ; vec_params.Addtolist(Cm) ;
+     TDBrecord('PG0.global').El := El ; vec_params.Addtolist(El) ;
+     TDBrecord('PG0.global').Bridge := Bridge ;  vec_params.Addtolist(Bridge) ;
+     TDBrecord('PG0.global').Holding := Holding ; vec_params.Addtolist(Holding) ;
+     vec_params.Addtolist(gain1_int) ; vec_params.Addtolist(gain1) ;
+     vec_params.Addtolist(gain2_int) ; vec_params.Addtolist(gain2) ;
+     // now the time at which they have been calculated !
+     vec_params.Addtolist(Hour);vec_params.Addtolist(Minute);vec_params.Addtolist(Second) ;
+     vec_params.SaveAsObject(PathOfTheDay+'cell_params');
+end;               
          
 procedure ICMT_Event(n:integer);
 var amplifier : string ; 
@@ -932,7 +945,7 @@ begin
   DIvideWindow(1,3,3,1);
   color:=cl_gray;
 
-   ICMT_amp:=50; ICMT_t1:=500; ICMT_t2:=1500; ICMT_interStim:=0.2 ; // params
+   ICMT_amp:=20; ICMT_t1:=200; ICMT_t2:=500; ICMT_interStim:=1 ; // params
    {then we display the channels}
    addObject(1,1,v1);  addObject(1,2,v2);   addObject(1,2,v3);   
    
@@ -947,12 +960,16 @@ begin
    ICMT_amp := ICMT_amp;
    ICMT_dialog.create ;
    ICMT_dialog.getRealA(' Pulse size (pA)',ICMT_amp,3,1,99);
+   ICMT_dialog.getRealA(' Interstim (s)  ',ICMT_interstim,3,1,99);
    ICMT_dialog.getRealA(' t1  ',ICMT_t1,3,1,99);
    ICMT_dialog.getRealA(' t2  ',ICMT_t2,3,1,99);
    ICMT_dialog.getCommandA('  init() ',0,999);
    ICMT_dialog.setText('');
    ICMT_dialog.getCommandA(' Fit with cursors ',0,998);
-   ICMT_dialog.getCommandA(' Set Global Rm & Cm ',0,997);
+   ICMT_dialog.setText('');
+   ICMT_dialog.getRealA(' Bridge  (Mohm) ',bridge,3,1,99);
+   ICMT_dialog.getRealA(' Holding (pA) ',holding,3,1,99);
+   ICMT_dialog.getCommandA(' Write membrane parameters ',0,997);
    ICMT_dialog.OnEvent:=ICMT_event ;
    AddDialog(1,5,ICMT_dialog); 
 
@@ -1403,8 +1420,8 @@ begin
     DivideWindow(1,3,3,1);
 
     amp_sin := 40 ;  freq_sin := 10 ;  phase_sin := 0 ; // for single sin
-    freq_start := 0.1 ;  freq_end := 200 ; freq_step_num := 10 ; // for multiple sin
-    min_amp_sin := 40 ; max_amp_sin := 40 ;
+    freq_start := 0.1 ;  freq_end := 1000 ; freq_step_num := 30 ; // for multiple sin
+    min_amp_sin := 30 ; max_amp_sin := 200 ;
     chirp_freq_start := 0.001 ;  chirp_freq_end := 100 ; chirp_amp := 40 ; chirp_duration := 10000 ; // for multiple sin
     
    with singlesin_dialog do
@@ -2089,6 +2106,7 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
   TDBrecord('PG0.global').Gain1_int:=gain1_int;
   TDBrecord('PG0.global').Gain2_int:=gain2_int;
   TDBrecord('PG0.global').clamp_int := clamp_int; 
+  TDBrecord('PG0.global').f_acq := f_acq; 
   
   case n of
     101: begin 
@@ -2122,7 +2140,8 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
     282 : RTneuron.Restart;
   end;
   gain1:=TDBrecord('PG0.global').Gain1;gain2:=TDBrecord('PG0.global').Gain2;    
-  clamp_int:=TDBrecord('PG0.global').clamp_int ;      
+  clamp_int:=TDBrecord('PG0.global').clamp_int ;   
+  f_acq := TDBrecord('PG0.global').f_acq ;   
   MainDialog.update;
 end;    
 
@@ -2141,7 +2160,8 @@ protocol_choice := 1;
    begin
    create;
    OnEvent := MainDialog_update;
-   
+   getRealA(' Acquisition Freq. (kHz) ',f_acq,3,1,99);
+  
    if amplifier='nrn_simulation' then 
      begin 
              getCommandA(' restart NEURON ',0,282);
@@ -2182,7 +2202,7 @@ end;
 
 var 
     already_initiated : boolean ; // to know if we need to reinitialize the TDBrecord
-    global, Exp_params : TDBrecord ;
+    global, Exp_params : TDBrecord ;   // THOSE TWO OBJECTS ARE THE ONLY TWO TO BE DELETED WHEN USED WITH TMACRO !!!!
 
 procedure global_init;
 var PathOfTheDay : string ;
@@ -2190,7 +2210,11 @@ begin
 
 RTneuron.resetParams;
 
-global.create;
+// THOSE TWO OBJECTS ARE THE ONLY TWO TO BE DELETED WHEN USED WITH TMACRO !!!!
+global.create;  // TDBrecord('PG0.global').create ; INSTEAD
+Exp_Params.create;  // TDBrecord('PG0.Exp_Params').create ; INSTEAD
+
+
 DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
 /// ---- CASE ON LAPTOP
 {
@@ -2199,46 +2223,44 @@ PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Is
 global.loadnrnPath := 'Z:/home/yann/work/elphy_code/nrn_files/' ;
 }
 /// ---- CASE ON MULTICLAMP
-global.amplifier:='multiclamp';
+TDBrecord('PG0.global').amplifier:='multiclamp';
 PathOfTheDay := 'D:\yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
-global.loadnrnPath := 'D:/yann/elphy_code/nrn_files/' ; 
+TDBrecord('PG0.global').loadnrnPath := 'D:/yann/elphy_code/nrn_files/' ; 
+
+f_acq:=10;
+TDBrecord('PG0.global').f_acq:=f_acq; // in kHz
 
 if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);
-global.PathOfTheDay := PathOfTheDay ;
-global.f_acq:=10; // in kHz
-global.gain1:=1; // gain of the first channel
-global.int_gain1:=1; // integer coding for this gain
-global.gain2:=1; // gain of the second channel
-global.int_gain2:=1; //
-global.clamp_int := 1; // integer that code for 1:IC, 2: VC
-global.cont_choice := True; // if True -> continus mode, else episode
-global.stim := False;  // if True acquisition.Fstimulate := True
-global.main_protocol:='classic_electrophy';
-global.protocol:='';
-global.saving := False ;
-global.Rs := 0;
-global.Rm := 0;
-global.Cm :=0;
-global.episode_duration := 0 ;
-global.max_EP_num :=0 ;
-global.acquisitionISI:=0. ; 
-global.FadvanceON := False ;
+TDBrecord('PG0.global').PathOfTheDay := PathOfTheDay ;
+TDBrecord('PG0.global').gain1:=1; // gain of the first channel
+TDBrecord('PG0.global').int_gain1:=1; // integer coding for this gain
+TDBrecord('PG0.global').gain2:=1; // gain of the second channel
+TDBrecord('PG0.global').int_gain2:=1; //
+TDBrecord('PG0.global').clamp_int := 1; // integer that code for 1:IC, 2: VC
+TDBrecord('PG0.global').cont_choice := True; // if True -> continus mode, else episode
+TDBrecord('PG0.global').stim := False;  // if True acquisition.Fstimulate := True
+TDBrecord('PG0.global').main_protocol:='classic_electrophy';
+TDBrecord('PG0.global').protocol:='';
+TDBrecord('PG0.global').saving := False ;
+TDBrecord('PG0.global').episode_duration := 0 ;
+TDBrecord('PG0.global').max_EP_num :=0 ;
+TDBrecord('PG0.global').acquisitionISI:=1. ; 
+TDBrecord('PG0.global').FadvanceON := False ;
 
 
-Exp_Params.create;
 already_initiated :=True;
 InsertPage(1,'fake');DeleteAllPages('fake');InsertPage(1,'default');DeleteAllPages('default');
 Color := cl_gray ;
 end;
 
-program Launch_from_file
+program Launch
 global_init ;
 SetProtocolNames;
 init_windows;
 Init_Main_Dialog;
 passive_recording_init;
 
-
+{
 program set_to_zero
 Rtneuron.DacChan[0].HoldingValue:=0;
 Rtneuron.DacChan[0].UseHoldingValue:=True;    
@@ -2252,9 +2274,10 @@ with stimulator do
 end; 
 
 program Launch_from_Tmacro
+MessageBox('working ?');
+global_init ;
 SetProtocolNames;
 init_windows;
 Init_Main_Dialog;
-//passive_recording_init;
-//MessageBox('working ?');
-
+passive_recording_init;
+}

@@ -811,7 +811,7 @@ begin
        Q := vec_q[ii] ; Ts := vec_ts[ii] ; 
        Gs := vec_Gs[ii] ; 
        muV := vec_muV[ii] ; sV := vec_sV[ii] ;
-       muGn := vec_muGn[ii] ; Tv := vec_Tv_ratio[ii] ;  
+       muGn := vec_muGn[ii] ; Tv_ratio := vec_Tv_ratio[ii] ;  
 end;
 
 procedure Massive_scan_EndProcess; 

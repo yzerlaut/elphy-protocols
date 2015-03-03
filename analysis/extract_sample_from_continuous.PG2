@@ -1,5 +1,5 @@
 const 
-   sample_path = 'Z:\media\DATA_EqAlain\files\DATA\sample.txt';
+   sample_path = 'Z:\home\yann\Desktop\sample.txt';
 
 var cursor : Tcursor;
     dialog : Tdialog ;

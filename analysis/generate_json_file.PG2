@@ -56,6 +56,7 @@ begin
     st:= db_info.Names[jj] ;
     st2:=db_info.Valstring[jj];
     if st<>'s' then writelnText(1,'"'+st+'":"'+st2+'",');
+    //MessageBox(st);
   end;        
 
    for ii:=1 to datafile.ChannelCount do

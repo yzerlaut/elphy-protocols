@@ -21,7 +21,7 @@ begin
      st := Rstr(v1.ConvX(j),1, 6) ;
      for ch:=1 to channel_number do 
       begin
-        st := st+Chr(9)+Rstr(v[ch].Yvalue[j],1,6);
+        st := st+Chr(9)+Rstr(v[ch].Yvalue[j],1,4);
       end;  
       writelnText(1,st);
   end; 

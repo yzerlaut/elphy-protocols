@@ -4,7 +4,7 @@
 ========================================================================}
 
 Const
-   ProtocolCount = 12 ; 
+   ProtocolCount = 13 ; 
    CONTINUOUS_TIMER = 0.5 ; 
 
 var  { ========= COMMON VARIABLES ============ }
@@ -40,7 +40,8 @@ begin
   ProtocolName[9]:= 'Stochastic_Stim'; 
   ProtocolName[10]:= 'fancy_Ramps-Pulses'; 
   ProtocolName[11]:= 'F-I curve'; 
-  ProtocolName[12]:= 'Vclamp P-over-N'; 
+  ProtocolName[12]:= 'Vclamp P-over-N';        
+  ProtocolName[13]:= 'Vary-Pre-Pulse-After'; 
   ProtoNames:=ProtocolName[1];
   for i:=2 to ProtocolCount do ProtoNames:=ProtoNames+'|'+ProtocolName[i];
 end;    
@@ -2223,6 +2224,194 @@ begin
 end;
 
 
+{$EDIT Vary-Prepulse-Pulse-Afterpulse}
+{ ==============================================================================
+-- BUILDING THE PROTOCOL VARYING PREPULSE, PULSE AND AFTERPULSE with P over N  --
+================================================================================ }
+
+var
+   n_afterpulse, n_pulse, n_prepulse: integer ; { index for the number of steps }
+   v_prepulse_min, v_prepulse_max   :  real ;
+   v_pulse_min, v_pulse_max   :  real ;
+   v_afterpulse_min, v_afterpulse_max   :  real ;
+   VPPA_dialog1, VPPA_dialog2, VPPA_dialog3 : Tdialog;
+   
+procedure ProcessVPPA(seq:longint;var vec:Tvector);
+var new_v_pulse, new_v_prepulse, new_v_afterpulse : real;
+   k_pulse, k_prepulse, k_afterpulse, step : integer ;
+begin
+   step:=seq-1 ; // just to have it from 0 to 
+   vec.fill(0);
+   
+   {total number of trials: (1+n_repeat_blank)*n_prepulse*n_pulse*n_afterpulse}
+   
+   // ---- we start by varying the prepulse...
+   k_prepulse := Floor(step/((1+n_repeat_blank)*n_pulse*n_afterpulse));
+   if n_prepulse>0 then new_v_prepulse := v_prepulse_min + k_prepulse*(v_prepulse_max-v_prepulse_min)/(n_prepulse-1)
+      else new_v_prepulse := v_prepulse_min;
+   
+   // ---- then the middle  pulse...
+   step := (step MOD k_prepulse) ; // belongs to n_pulse*n_afterpulse*(1+n_repeat_blank)
+   k_pulse := Floor(step/((1+n_repeat_blank)*n_afterpulse));
+   if n_pulse>0 then new_v_pulse := v_pulse_min + k_pulse*(v_pulse_max-v_pulse_min)/(n_pulse-1)
+      else new_v_pulse := v_pulse_min;
+
+   // ---- finally the after pulse...
+   step := (step MOD k_pulse) ; // belongs to n_afterpulse*(1+n_repeat_blank)
+   k_afterpulse := Floor(step/(1+n_repeat_blank));
+   if n_afterpulse>0 then new_v_afterpulse := v_afterpulse_min + k_afterpulse*(v_afterpulse_max-v_afterpulse_min)/(n_afterpulse-1)
+      else new_v_afterpulse := v_afterpulse_min;
+   
+   // now we put the protocol or the p over xx dependeing on the trial !!
+   if (step MOD n_afterpulse)=0 then   
+   begin {filling the scanned pulse}
+   vec.fill1(new_v_prepulse,del_prepulse+vec.Istart,del_prepulse+dur_prepulse+vec.Istart);  {filling the pre-pulse}
+   vec.fill1(new_v_pulse,del_prepulse+dur_prepulse+vec.Istart,del_prepulse+dur_prepulse+dur_pulse+vec.Istart);  {filling the pre-pulse}
+   vec.fill1(new_v_afterpulse,del_prepulse+dur_prepulse+dur_pulse+vec.Istart,del_prepulse+dur_prepulse+dur_pulse+dur_afterpulse+vec.Istart);  {filling the pre-pulse}
+   end
+   else
+   begin {filling the scanned pulse over N times MINUS 1}
+   vec.fill1(-new_v_prepulse/n_repeat_blank,del_prepulse+vec.Istart,del_prepulse+dur_prepulse+vec.Istart);  {filling the pre-pulse}
+   vec.fill1(-new_v_pulse/n_repeat_blank,del_prepulse+dur_prepulse+vec.Istart,del_prepulse+dur_prepulse+dur_pulse+vec.Istart);  {filling the pre-pulse}
+   vec.fill1(-new_v_afterpulse/n_repeat_blank,del_prepulse+dur_prepulse+dur_pulse+vec.Istart,del_prepulse+dur_prepulse+dur_pulse+dur_afterpulse+vec.Istart);  {filling the pre-pulse}
+   end;   
+end;
+
+procedure prepare_VPPA;
+begin
+         {we write all the relevant global informations}
+         amplifier := TDBrecord('PG0.global').amplifier ;
+         TDBrecord('PG0.global').clamp_int := clamp_int ; // IC or VC possible for this protocol !!
+         TDBrecord('PG0.global').cont_choice := False ;
+         TDBrecord('PG0.global').episode_duration := 2*del_prepulse+dur_prepulse+dur_pulse+dur_afterpulse ;
+         TDBrecord('PG0.global').max_EP_num := (n_repeat_blank+1)*n_prepulse*n_pulse*n_afterpulse ;
+         TDBrecord('PG0.global').stim := True ;
+         TDBrecord('PG0.global').acquisitionISI:= interstim_iv ;  // small beak between the stims
+         if amplifier='nrn_simulation' then TDBrecord('PG0.global').FadvanceON := True else TDBrecord('PG0.global').FadvanceON := False;
+         TDBrecord('PG0.Exp_Params').clear;
+         TDBrecord('PG0.Exp_Params').exp_type:='Vary_Prepulse_Pulse_Afterpulse';
+         {=== protocols parameters === }
+         TDBrecord('PG0.Exp_params').del_prepulse:=del_prepulse  ; // initial delay
+         {--- prepulse parameters}
+         TDBrecord('PG0.Exp_params').n_prepulse:=n_prepulse;
+         TDBrecord('PG0.Exp_params').v_prepulse_min:=v_prepulse_min;
+         TDBrecord('PG0.Exp_params').v_prepulse_max:=v_prepulse_max;
+         TDBrecord('PG0.Exp_params').dur_prepulse:=dur_prepulse ;
+         {--- pulse parameters}
+         TDBrecord('PG0.Exp_params').n_pulse:=n_pulse;
+         TDBrecord('PG0.Exp_params').v_pulse_min:=v_pulse_min;
+         TDBrecord('PG0.Exp_params').v_pulse_max:=v_pulse_max;
+         TDBrecord('PG0.Exp_params').dur_pulse:=dur_pulse ;
+         {--- afterpulse parameters}
+         TDBrecord('PG0.Exp_params').n_afterpulse:=n_afterpulse;
+         TDBrecord('PG0.Exp_params').v_afterpulse_min:=v_afterpulse_min;
+         TDBrecord('PG0.Exp_params').v_afterpulse_max:=v_afterpulse_max;
+         TDBrecord('PG0.Exp_params').dur_afterpulse:=dur_afterpulse ;
+         {--- P over N parameters}
+         TDBrecord('PG0.Exp_params').n_repeat_blank:= n_repeat_blank ;
+   
+         {then we initialize the stimulation}
+         InitializeChannels; // we can initialize the channels
+         stimulator.Channels[1].BuildEp := ProcessVPPA ;
+         stimulator.initVectors;
+         acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
+end;
+
+procedure VPPA_Event(n:integer);
+var amplifier : string ;
+begin
+   VPPA_dialog1.updatevar;
+   VPPA_dialog2.updatevar;
+   VPPA_dialog3.updatevar;
+   case n of
+   201 : 
+   begin
+   if n_repeat_signal<1 then n_repeat_signal:=1;
+   if max_step<2 then max_step:=2;
+   prepare_VPPA ;
+   end;
+   end;
+end;
+
+procedure VPPA_initprocess;
+begin
+  global_step :=0; {global step flag}
+end;
+
+procedure VPPA_process;
+var substep : integer ;
+begin
+   substep := (global_step MOD (n_repeat_blank+1));
+   {=== POTENTIALLY ADDING GRAPHICAL ANALYSIS HERE !!!! ====}
+   global_step :=global_step+1;
+end;
+
+
+procedure VPPA_Init;
+begin
+  DestroyAllWindows(1);
+  Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
+  Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
+  Definewindow(1, 0, Round(PageHeight*2/3), PageWidth, PageHeight);
+  DIvideWindow(1,3,3,1);
+  color:=cl_gray;
+
+
+   interstim_iv := 0.5 ; {interstimulus}
+   
+   del_prepulse :=30 ;
+   n_repeat_blank := 4; {P over N}
+   { prepulse parameters}
+   n_prepulse := 5 ; v_prepulse_min := 10; v_prepulse_max := 40; dur_prepulse := 20 ;
+   { pulse parameters}
+   n_pulse := 1 ; v_pulse_min := 0; v_pulse_max := 40; dur_pulse := 4 ;
+   { afterpulse parameters}
+   n_afterpulse := 10 ; v_afterpulse_min := 15; v_afterpulse_max := 50; dur_afterpulse := 40 ;
+   
+   with VPPA_dialog1 do
+   begin
+      create;
+      OnEvent :=VPPA_Event ;
+      getRealA('delay before stim (ms)',del_prepulse,10,3,200);
+      getRealA('interstim (s)',interstim_iv,10,3,200);
+      setText('');
+      setText(' ==<| PREPULSE Parameters |>==');
+      getIntegerA('Number of scanned values ?', n_prepulse,10,200);
+      getRealA('minimum value (mV)',v_prepulse_min,10,3,200);
+      getRealA('maximum value (mV)',v_prepulse_max,10,3,200);
+      getRealA('Duration (ms)',dur_prepulse,10,3,200);
+   end;
+   AddDialog(1,3,VPPA_dialog1);
+   with VPPA_dialog2 do
+   begin
+      create;
+      OnEvent :=VPPA_Event ;
+      setText('');
+      setText(' ==<| PULSE Parameters |>==');
+      getIntegerA('Number of scanned values ?', n_pulse,10,200);
+      getRealA('minimum value (mV)',v_pulse_min,10,3,200);
+      getRealA('maximum value (mV)',v_pulse_max,10,3,200);
+      getRealA('Duration (ms)',dur_pulse,10,3,200);
+   end;
+   AddDialog(1,4,VPPA_dialog2);
+   with VPPA_dialog3 do
+   begin
+      create;
+      OnEvent :=VPPA_Event ;
+      setText(' ==<| AFTERPULSE Parameters |>==');
+      getIntegerA('Number of scanned values ?', n_afterpulse,10,200);
+      getRealA('minimum value (mV)',v_afterpulse_min,10,3,200);
+      getRealA('maximum value (mV)',v_afterpulse_max,10,3,200);
+      getRealA('Duration (ms)',dur_afterpulse,10,3,200);
+      setText('');
+      getIntegerA('Protocol P over ?? ', n_repeat_blank,10,200);
+      getCommandA('init protocol',0,201);
+   end;
+   AddDialog(1,5,VPPA_dialog3);
+   prepare_VPPA;
+end;
+
+
 
 {$EDIT main_dialog}
 { ==============================================================================
@@ -2287,6 +2476,7 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
                        10 : Init_FancyRamp;
                        11 : Init_FIcurve;
                        12 : VcPN_Init;
+                       13 : VPPA_Init;
                        
               end;
          end;
@@ -2331,7 +2521,7 @@ protocol_choice := 1;
    setText(' ================================= ');
    setText(' ---------------< Protocol Selection >----------------- ');
    setText('');
-   getStringList('  PROTOCOL  ',ProtoNames,'0|1|2|3|4|5|6|7|8|9|10|11|12',protocol_choice,101);  { Onevent flag ->199}
+   getStringList('  PROTOCOL  ',ProtoNames,'0|1|2|3|4|5|6|7|8|9|10|11|12|13',protocol_choice,101);  { Onevent flag ->199}
    setText(' ================================= ');
    getStringList(' IC / VC  ','  Iclamp  |  Vclamp ','1|2',clamp_int,102);  { Onevent flag ->199}
    setText('');

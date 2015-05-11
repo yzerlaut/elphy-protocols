@@ -87,6 +87,7 @@ procedure init_global;
 begin
     global.create;
     // we initialize some recording quantities
+    
     global.f_acq:=10; // in kHz
     global.gain1:=1; // gain of the first channel
     global.int_gain1:=1; // integer coding for this gain

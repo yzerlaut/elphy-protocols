@@ -359,7 +359,7 @@ Cell[BoxData["|"], "Input",
  CellChangeTimes->{3.622365774445025*^9}]
 },
 WindowSize->{969, 855},
-WindowMargins->{{140, Automatic}, {Automatic, 24}},
+WindowMargins->{{130, Automatic}, {Automatic, 14}},
 FrontEndVersion->"8.0 for Linux x86 (64-bit) (October 10, 2011)",
 StyleDefinitions->"Default.nb"
 ]
@@ -382,7 +382,7 @@ Cell[5570, 167, 767, 20, 47, "Output"]
 }, Open  ]],
 Cell[CellGroupData[{
 Cell[6374, 192, 2359, 61, 164, "Input"],
-Cell[8736, 255, 5028, 99, 1035, "Output"]
+Cell[8736, 255, 5028, 99, 1022, "Output"]
 }, Open  ]],
 Cell[13779, 357, 69, 1, 30, "Input"]
 }
@@ -390,4 +390,3 @@ Cell[13779, 357, 69, 1, 30, "Input"]
 *)
 
 (* End of internal cache information *)
-

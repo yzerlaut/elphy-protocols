@@ -2075,10 +2075,10 @@ var
    v_end : real ; {step parameters }
    n_repeat_blank,n_repeat_signal, global_step : integer ; { index for the number of steps }
    del_prepulse, v_prepulse, dur_prepulse, v_afterpulse, dur_afterpulse, dur_pulse, v_blank : real ;
-   VcPN_dialog : Tdialog;
-   //iNa : Array[1:100] of Tvector ;  {max 100 traces}
-   Vscan, Imax : Tvector; {array of scanned V vlaues and observed max current}
-   //iNa_graph : Array[1:100] of Tgraph ; imax_graph : Tgraph ;
+   VcPN_dialog1, VcPN_dialog2, VcPN_dialog3 : Tdialog;
+   iNa_vec : Array[1..200] of Tvector ;  {max 200 traces}
+   Vscan, Imax, tscan : Tvector; {array of scanned V vlaues and observed max current}
+   subtracted_current_graph : Tmultigraph ;
    
 procedure ProcessVcPN(seq:longint;var vec:Tvector);
 var new_v : real; nstep, step : integer ;
@@ -2100,6 +2100,42 @@ begin
    vec.fill1(-new_v/n_repeat_blank,del_prepulse+dur_prepulse+vec.Istart,del_prepulse+dur_prepulse+dur_pulse+vec.Istart); {filling the pulse}
    vec.fill1(-v_afterpulse,del_prepulse+dur_prepulse+dur_pulse+vec.Istart,del_prepulse+dur_prepulse+dur_pulse+vec.Istart+dur_afterpulse); {filling the pulse}
    end;   
+end;
+
+
+procedure VcPN_initprocess;
+var ii : integer ;
+begin
+  if (n_repeat_blank+n_repeat_signal)*max_step>200 then MessageBox('More than 200 points ! the last ones wont be displayed here ! (though recorded anyway)'); 
+  tscan.create(t_single,v1.Istart, v1.Iend);
+  for ii:=v1.Istart to v1.Iend do tscan[ii]:= v1.X0+ii*v1.DX ;
+  global_step :=0; {global step flag}
+end;
+
+procedure VcPN_process;
+var substep, mainstep, ii : integer ;
+begin
+   mainstep := floor(global_step/(n_repeat_blank+n_repeat_signal)) ;
+   substep := (global_step MOD (n_repeat_blank+n_repeat_signal));
+   //MessageBox('main:'+Istr(mainstep)+', sub:'+Istr(substep));
+   if substep=0 then 
+   begin
+   iNa_vec[mainstep+1].create(t_single, v1.Istart, v1.Iend);
+   iNa_vec[mainstep+1].fill1(0, v1.Istart, v1.Iend);
+   iNa_vec[mainstep+1].X0 := v1.X0 ; iNa_vec[mainstep+1].DX := v1.DX;
+   iNa_vec[mainstep+1].cpx:=1;  iNa_vec[mainstep+1].cpy:=1;
+   iNa_vec[mainstep+1].color:= cl_blue;
+   end; // we create it
+   // then we add the (potentially weighted) vector, we fill it one by one :(
+   if substep<n_repeat_signal then 
+   begin for ii:=v1.Istart to v1.Iend do iNa_vec[mainstep+1][ii] := iNa_vec[mainstep+1][ii]+v1[ii]/n_repeat_signal; end
+   else begin for ii:=v1.Istart to v1.Iend do iNa_vec[mainstep+1][ii] := iNa_vec[mainstep+1][ii]+v1[ii]; end ;
+                
+   if substep=(n_repeat_blank+n_repeat_signal-1) then 
+   begin subtracted_current_graph.addobject(1,1,iNa_vec[mainstep+1]) ;
+   end;
+
+   global_step :=global_step+1;
 end;
 
 procedure prepare_VcPN;
@@ -2132,13 +2168,13 @@ begin
          InitializeChannels; // we can initialize the channels
          stimulator.Channels[1].BuildEp := ProcessVcPN ;
          stimulator.initVectors;
-         acquisition.InstallProcess(my_initprocess0, nil, nil, set_dac_to_zero);
+         acquisition.InstallProcess(my_initprocess0, VcPN_initprocess, VcPN_process, set_dac_to_zero);
 end;
 
 procedure VcPN_Event(n:integer);
 var amplifier : string ;
 begin
-   VcPN_dialog.updatevar;
+   VcPN_dialog1.updatevar; VcPN_dialog2.updatevar;VcPN_dialog3.updatevar;
    case n of
    201 : 
    begin
@@ -2147,36 +2183,6 @@ begin
    prepare_VcPN ;
    end;
    end;
-end;
-
-procedure VcPN_initprocess;
-begin
-  global_step :=0; {global step flag}
-end;
-
-procedure VcPN_process;
-var substep : integer ;
-begin
-   substep := (global_step MOD (n_repeat_blank+n_repeat_signal));
-   if substep<n_repeat_signal then   
-   begin {filling the scanned pulse}
-       substep := substep;
-//  iNa[global_step+1].clone(v1); {filling the pulse}
-   end
-   else
-   begin {filling the scanned pulse over N times MINUS 1}
-      //iNa[global_step+1].add(v1); {filling the pulse}
-      if substep=(n_repeat_blank+n_repeat_signal-1) then {we add the curve}
-      begin
-      substep := substep;
-      //iNa_graph.create(tseal_vec,rseal_vec,0,0); rseal_graph.Mode := DM_LINE_DIAMOND ; {graph initialisation }
-      //iseal_graph.create(tseal_vec,iseal_vec,0,0); iseal_graph.Mode := DM_LINE_DIAMOND ;
-  //addobject(1,3,rseal_graph);  {then we plot the vector}
-  //addobject(1,4,iseal_graph);  {then we plot the vector} 
-    
-      end;
-   end;   
-   global_step :=global_step+1;
 end;
 
 
@@ -2188,10 +2194,11 @@ begin
   Definewindow(1, 0, Round(PageHeight*2/3), PageWidth, PageHeight);
   DIvideWindow(1,3,3,1);
   color:=cl_gray;
+  subtracted_current_graph.create; subtracted_current_graph.newwindow(1,0,0); subtracted_current_graph.show;
 
-   v_start := -20; v_end := 60 ;  int_repet:=0 ; max_step := 8 ;
+   v_start := -20; v_end := 60 ;  int_repet:=0 ; max_step := 2 ;
    interstim_iv := 1 ; del_iv := 40 ; dur_iv := 70 ;
-   n_repeat_blank := 4;
+   n_repeat_blank := 2;
    n_repeat_signal :=1 ;
    del_prepulse :=50 ;
    v_prepulse :=-30      ;
@@ -2200,26 +2207,40 @@ begin
    dur_afterpulse := 20    ;
    dur_pulse := 50;
 
-   with VcPN_dialog do
+   with VcPN_dialog1 do
    begin
       create;
       OnEvent :=VcPN_Event ;
-      setText(' ==<| Parameters |> ');
+      setText(' ==<| Prepulse Parameters |> ');
+     getRealA('Pre-Pulse start at (ms)',del_prepulse,10,3,200);
+      getRealA('Pre-Pulse value (mV)',v_prepulse,10,3,200);
+      getRealA('Pre-Pulse Duration (ms)',dur_prepulse,10,3,200);
+   end;
+   AddDialog(1,3,VcPN_dialog1);
+   with VcPN_dialog2 do
+   begin
+      create;
+      OnEvent :=VcPN_Event ;
+      setText(' ==<| Varying Pulses Parameters (x*P/N) |> ');
       getRealA('starting value (mV)',v_start,10,3,200);
       getRealA('ending value (mV)',v_end,10,3,200);
       getRealA('pulse duration',dur_pulse,10,3,200);
       getIntegerA('Number of Steps',max_step,10,200);
-      getIntegerA('n_repeat_blank ', n_repeat_blank,10,200);
-      getIntegerA('n_repeat_signal ', n_repeat_signal,10,200);
-      getRealA('Pre-Pulse start at (ms)',del_prepulse,10,3,200);
-      getRealA('Pre-Pulse value (mV)',v_prepulse,10,3,200);
-      getRealA('Pre-Pulse Duration (ms)',dur_prepulse,10,3,200);
+      getIntegerA('n_repeat_blank (N) ', n_repeat_blank,10,200);
+      getIntegerA('n_repeat_signal (x)', n_repeat_signal,10,200);
+   end;
+   AddDialog(1,4,VcPN_dialog2);
+   with VcPN_dialog3 do
+   begin
+      create;
+      OnEvent :=VcPN_Event ;
+      setText(' ==<| Afterpulse Parameters |> ');
       getRealA('After-Pulse duration(ms)',dur_afterpulse,10,3,200);
       getRealA('After-Pulse value (mV)',v_afterpulse,10,3,200);
       getRealA('interstim (s)',interstim_iv,10,3,200);
       getCommandA('init protocol',0,201);
    end;
-   AddDialog(1,4,VcPN_dialog);
+   AddDialog(1,5,VcPN_dialog3);
    prepare_VcPN;
 end;
 
@@ -2240,30 +2261,33 @@ procedure ProcessVPPA(seq:longint;var vec:Tvector);
 var new_v_pulse, new_v_prepulse, new_v_afterpulse : real;
    k_pulse, k_prepulse, k_afterpulse, step : integer ;
 begin
+   {security . number of steps has to be gretaer than 1}
+   //if n_prepulse<1 then n_prepulse :=1 ; if n_pulse<1 then n_pulse :=1 ; if n_afterpulse<1 then n_afterpulse :=1 ;
+   
    step:=seq-1 ; // just to have it from 0 to 
    vec.fill(0);
    
    {total number of trials: (1+n_repeat_blank)*n_prepulse*n_pulse*n_afterpulse}
    
    // ---- we start by varying the prepulse...
-   k_prepulse := Floor(step/((1+n_repeat_blank)*n_pulse*n_afterpulse));
-   if n_prepulse>0 then new_v_prepulse := v_prepulse_min + k_prepulse*(v_prepulse_max-v_prepulse_min)/(n_prepulse-1)
-      else new_v_prepulse := v_prepulse_min;
+   k_prepulse := Floor(step/((1+n_repeat_blank)*n_pulse*n_afterpulse)); // belongs to [0,n_prepulse-1]
+   if n_prepulse<1 then new_v_prepulse := v_prepulse_min + k_prepulse*(v_prepulse_max-v_prepulse_min)/(n_prepulse-1)
+    else new_v_prepulse := v_prepulse_min;
    
    // ---- then the middle  pulse...
-   step := (step MOD k_prepulse) ; // belongs to n_pulse*n_afterpulse*(1+n_repeat_blank)
-   k_pulse := Floor(step/((1+n_repeat_blank)*n_afterpulse));
-   if n_pulse>0 then new_v_pulse := v_pulse_min + k_pulse*(v_pulse_max-v_pulse_min)/(n_pulse-1)
-      else new_v_pulse := v_pulse_min;
+   step:= (step MOD n_pulse*n_afterpulse*(1+n_repeat_blank)); // belongs to [0,n_pulse*n_afterpulse*(1+n_repeat_blank)-1]
+   k_pulse := Floor(step/((1+n_repeat_blank)*n_afterpulse)); // belongs to [0,n_pulse-1]
+   if n_pulse<1 then new_v_pulse := v_pulse_min + k_pulse*(v_pulse_max-v_pulse_min)/(n_pulse-1) 
+    else new_v_pulse := v_pulse_min ;
 
    // ---- finally the after pulse...
-   step := (step MOD k_pulse) ; // belongs to n_afterpulse*(1+n_repeat_blank)
-   k_afterpulse := Floor(step/(1+n_repeat_blank));
-   if n_afterpulse>0 then new_v_afterpulse := v_afterpulse_min + k_afterpulse*(v_afterpulse_max-v_afterpulse_min)/(n_afterpulse-1)
-      else new_v_afterpulse := v_afterpulse_min;
+   step:= (step MOD n_afterpulse*(1+n_repeat_blank)); // belongs to [0,n_afterpulse*(1+n_repeat_blank)-1]
+   k_afterpulse := Floor(step/((1+n_repeat_blank))); // belongs to [0,n_pulse-1]
+   if n_afterpulse<1 then new_v_afterpulse := v_afterpulse_min + k_afterpulse*(v_afterpulse_max-v_afterpulse_min)/(n_afterpulse-1)
+    else new_v_afterpulse := v_afterpulse_min;
    
    // now we put the protocol or the p over xx dependeing on the trial !!
-   if (step MOD n_afterpulse)=0 then   
+   if (step MOD (1+n_repeat_blank))=0 then   
    begin {filling the scanned pulse}
    vec.fill1(new_v_prepulse,del_prepulse+vec.Istart,del_prepulse+dur_prepulse+vec.Istart);  {filling the pre-pulse}
    vec.fill1(new_v_pulse,del_prepulse+dur_prepulse+vec.Istart,del_prepulse+dur_prepulse+dur_pulse+vec.Istart);  {filling the pre-pulse}
@@ -2341,7 +2365,7 @@ end;
 procedure VPPA_process;
 var substep : integer ;
 begin
-   substep := (global_step MOD (n_repeat_blank+1));
+   //substep := (global_step MOD (n_repeat_blank+1));
    {=== POTENTIALLY ADDING GRAPHICAL ANALYSIS HERE !!!! ====}
    global_step :=global_step+1;
 end;
@@ -2360,13 +2384,13 @@ begin
    interstim_iv := 0.5 ; {interstimulus}
    
    del_prepulse :=30 ;
-   n_repeat_blank := 4; {P over N}
+   n_repeat_blank := 2; {P over N}
    { prepulse parameters}
-   n_prepulse := 5 ; v_prepulse_min := 10; v_prepulse_max := 40; dur_prepulse := 20 ;
+   n_prepulse := 1 ; v_prepulse_min := 10; v_prepulse_max := 40; dur_prepulse := 20 ;
    { pulse parameters}
    n_pulse := 1 ; v_pulse_min := 0; v_pulse_max := 40; dur_pulse := 4 ;
    { afterpulse parameters}
-   n_afterpulse := 10 ; v_afterpulse_min := 15; v_afterpulse_max := 50; dur_afterpulse := 40 ;
+   n_afterpulse := 4 ; v_afterpulse_min := 15; v_afterpulse_max := 50; dur_afterpulse := 40 ;
    
    with VPPA_dialog1 do
    begin

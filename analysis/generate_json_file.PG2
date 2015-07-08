@@ -1,6 +1,7 @@
 const
 explorDir = True; // do you want to recursively execute the procedure over your whole tree
 Default_Dir = 'Z:\media\DATA_EqAlain\files\DATA'; // just the value for the starting directory
+Binary_Dir = 'Z:\media\DATA_EqAlain\files\DATA_binary'; // just the value for the starting directory
 
 var initial_directory : string ;
 

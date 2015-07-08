@@ -2098,7 +2098,7 @@ begin
    begin {filling the scanned pulse over N times MINUS 1}
    vec.fill1(-v_prepulse/n_repeat_blank,del_prepulse+vec.Istart,del_prepulse+dur_prepulse+vec.Istart);  {filling the pre-pulse}
    vec.fill1(-new_v/n_repeat_blank,del_prepulse+dur_prepulse+vec.Istart,del_prepulse+dur_prepulse+dur_pulse+vec.Istart); {filling the pulse}
-   vec.fill1(-v_afterpulse,del_prepulse+dur_prepulse+dur_pulse+vec.Istart,del_prepulse+dur_prepulse+dur_pulse+vec.Istart+dur_afterpulse); {filling the pulse}
+   vec.fill1(-v_afterpulse/n_repeat_blank,del_prepulse+dur_prepulse+dur_pulse+vec.Istart,del_prepulse+dur_prepulse+dur_pulse+vec.Istart+dur_afterpulse); {filling the pulse}
    end;   
 end;
 

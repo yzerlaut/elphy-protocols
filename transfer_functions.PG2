@@ -1083,18 +1083,21 @@ begin
 end;
 
 procedure create_and_shuffle_the_index_vector(n_tot, REPETITION:integer );
-var it,is,ig : integer;
+var it,is,ig : integer; vec0 : Tvector;
 begin
-   vec_i.create(t_smallint,0,n_tot*REPETITION-1); 
-   for it:=0 to n_tot-1 do 
+   vec_i.create(t_smallint,0,n_tot*REPETITION-1); {total vector}
+   {we generate a vector with the size of the space, without the seed change}
+   vec0.create(t_smallint,0,n_tot-1);
+   for it:=0 to n_tot-1 do vec0[it]:=it;
+   {then we will fill the final vector, repetition after repetition, with randomization}
+   for is:=1 to REPETITION do 
+   begin
+      shuffle_vector(vec0); {new shuffle each time}
+      for it:=0 to n_tot-1 do
       begin
-	 for is:=1 to REPETITION do 
-	    begin
-	       ig := it+(is-1)*n_tot;
-	       vec_i[ig]:=it;
-	    end;
+         vec_i[it+(is-1)*n_tot]:=vec0[it];
       end;
-   shuffle_vector(vec_i);  {SHUFFLED !!!!!}
+   end;
 end;
 
 procedure refill_the_fluct_variables(ii:integer);

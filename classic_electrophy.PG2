@@ -2594,17 +2594,17 @@ Exp_Params.create;  // TDBrecord('PG0.Exp_Params').create ; INSTEAD
 
 DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
 /// ---- CASE ON LAPTOP
-
+{
 global.amplifier:='nrn_simulation'; // choice of the amplifier
 PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
 global.loadnrnPath := 'Z:/home/yann/work/elphy_code/nrn_files/' ;
-
+}
 /// ---- CASE ON MULTICLAMP
-{
+
 TDBrecord('PG0.global').amplifier:='multiclamp';
 PathOfTheDay := 'D:\yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
 TDBrecord('PG0.global').loadnrnPath := 'D:/yann/elphy_code/nrn_files/' ; 
- }
+
 f_acq:=10;
 TDBrecord('PG0.global').f_acq:=f_acq; // in kHz
 

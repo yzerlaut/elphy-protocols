@@ -4,14 +4,15 @@
   Simple current step injection into a single compartment neuron  --------------}
   
   
-const load_nrn_path = 'Z:/home/yann/experiments/myelphy/nrn_files/' ;
+const load_nrn_path = 'D:/yann/elphy_code/nrn_files/' ;
 
-var main_dialog : Tdialog ;  amp,  t0_trial : real ;
+var main_dialog : Tdialog ;  amp,  t0_trial : real ; flag : boolean ;
 
 
 procedure my_InitProcess; {executer avec acquisition.start, mais apres tout, ici tous les objets ont ete initialises, donc on peut les utiliser}
 begin
    t0_trial := v1.Xend ; // to get the time that has last since the experiment start
+   RTneuron.Execute('finitialize(soma.e_pas)') ;
 end;
 
 procedure my_processcont;
@@ -19,8 +20,14 @@ begin
     if (v1.Xend-t0_trial)<1.2 then acquisition.stop;
 end;
 
+procedure my_EndProcess; {executer avec acquisition.start, mais apres tout, ici tous les objets ont ete initialises, donc on peut les utiliser}
+begin
+   t0_trial := v1.Xend ; // to get the time that has last since the experiment start
+   RTneuron.Execute('finitialize(soma.e_pas)') ;
+end;
 
-procedure init_artificial_cell(stim_with_elphy:boolean);
+
+procedure init_artificial_cell;
 var i : integer ;
 begin
    RTneuron.Execute('create soma') ;
@@ -28,15 +35,27 @@ begin
    // ----------- inserting passive properties (~RC circuit)
    RTneuron.Execute('soma insert pas') ; 
    RTneuron.Execute('g_pas = 5e-5');
+   RTneuron.Execute('e_pas = -65');
    RTneuron.Execute('cm=1');
    // ------------ inserting hodgkin huxley mechanism
-   RTneuron.Execute('soma insert hh') ; 
+   RTneuron.Execute('soma insert hh') ;
+end;
+
+
+procedure setup_channels_and_stimulation(stim_with_elphy:boolean);
+var i : integer ;
+begin
+   
+   init_artificial_cell;
+   
    RTneuron.FadvanceON:=True;  // so that NEURON calculates
 
-   acquisition.PeriodPerChannel := 0.1 ; {ms} //acquisition frequency
-   acquisition.Fcontinuous:=true;
+   acquisition.PeriodPerChannel := 0.025 ; {ms} //acquisition frequency
+   acquisition.Fcontinuous:=False;
    acquisition.ChannelCount := 2;
    acquisition.TriggerMode:= TM_immediate;
+   acquisition.MaxEpCount := 2 ;
+   acquisition.EpDuration := 2000 ;
    
    for i:=1 to acquisition.ChannelCount do 
    begin 
@@ -62,7 +81,8 @@ begin
    addObject(1,2,v2); v1.title:='Iinj(t)'; // graphical sttings
    acquisition.Channels[2].NrnSymbolName:='stim.i';
    v1.cpx:=1 ; v2.cpx:=1;
-   acquisition.InstallProcess(nil, nil, my_processcont, nil);
+   //acquisition.InstallProcess(nil, nil, my_processcont, nil);
+   acquisition.InstallProcess(nil, my_initprocess, my_endprocess, nil);
 end;
 
 
@@ -71,14 +91,13 @@ begin
    RTneuron.Execute('stim.amp = '+Rstr(Istim/1000.)); // pA -> nA
    RTneuron.Execute('stim.del = 500'); //ms
    RTneuron.Execute('stim.dur = 300'); //ms
-   RTneuron.Execute('finitialize(e_pas)');
 end;
 
 procedure Build_Pulse(seq:longint;var vec:Tvector);
 var choice, rdm : real;
 begin
    vec.fill(0); 
-   vec.fill1(amp,vec.Xstart+0.5, vec.Xstart+0.8);
+   vec.fill1(amp,vec.Xstart+500, vec.Xstart+800);
 end;
 
 procedure set_stimulation_with_Elphy(Istim:real);
@@ -98,16 +117,17 @@ begin
    case n of
      122 : RTneuron.Restart;
      123 : RTneuron.execute('nrn_load_dll("'+load_nrn_path+'nrnmech.dll")');
-     201 : begin init_artificial_cell(False); set_stimulation_with_NEURON(amp); end;
-     2011 : begin init_artificial_cell(True); set_stimulation_with_Elphy(amp); end;
+     201 : begin setup_channels_and_stimulation(False); set_stimulation_with_NEURON(amp); end;
+     2011 : begin setup_channels_and_stimulation(True); set_stimulation_with_Elphy(amp); end;
      210 : acquisition.start;
      211 : acquisition.stop;
    end;
 end;
 
 
+
 program LAUNCH
-amp:=300 ;
+amp:=600 ;
 with main_dialog do
 begin
       create;

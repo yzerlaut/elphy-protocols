@@ -131,7 +131,6 @@ end;
 {$EDIT channels_settings} 
 { Acquisition + Stimulation + Gain settings }
 
-
 { ==============================================================================
 --------- Setting the Acquisition channels -------------------------------------
 ================================================================================ }
@@ -380,33 +379,15 @@ begin
   end;
 end;
 
-
-procedure Build_Set0(seq:longint;var vec:Tvector); 
-begin  
-vec.fill(0); 
-end;
- 
 procedure set_dac_to_zero;
 begin
 Rtneuron.DacChan[0].HoldingValue:=0;
 Rtneuron.DacChan[0].UseHoldingValue:=True;    
 Rtneuron.DacChan[1].HoldingValue:=0;
 Rtneuron.DacChan[1].UseHoldingValue:=True; 
-with stimulator do
-  begin
-    stimulator.setValue(0,0,0,0);
-    stimulator.setValue(0,0,1,0);
-    stimulator.setValue(0,1,0,0);
-end;
-if (acquisition.Fcontinuous=True) and (acquisition.Fstimulate=True) then  // well... i think there is no other way to set the output to 0.... ;(
-begin   // if continuous qnd not pqssive recording
-acquisition.Fcontinuous :=False;
-acquisition.MaxEpCount :=1;
-stimulator.Channels[1].BuildEp := Build_Set0 ; 
-TDBrecord('PG0.global').max_EP_num :=1;
-stimulator.initVectors;
-acquisition.start;
-end;    
+stimulator.setValue(0,0,0,0);
+stimulator.setValue(0,0,1,0);
+stimulator.setValue(0,1,0,0);
 end;
 
 ProcessCont  { COMMON to all continuous processes }
@@ -1296,8 +1277,8 @@ var exp_freq_vec, exp_time_vec, exp_amp_vec : Tvector; // for saving freq and ti
 
 procedure check_for_stop_acq(n:integer);
 begin
-    if not continu_flag then acquisition.stop;
-    if n>current_stop_value then acquisition.stop ;
+   if not continu_flag then begin acquisition.stop; set_dac_to_zero; end;
+   if n>current_stop_value then begin acquisition.stop; set_dac_to_zero; end;
 
 end;
 
@@ -1337,6 +1318,7 @@ begin
       exp_time_vec.SaveAsObject(acquisition.genericfilename+'_time');
       exp_amp_vec.SaveAsObject(acquisition.genericfilename+'_amp');
    end;
+   set_dac_to_zero;
 end;
 
 
@@ -1404,6 +1386,7 @@ begin {when we modify the dialog, we adjust the stimulation params}
    case n of 
    201 : prepare_multiplesin;
    301 : launch_multiple_sim;
+   401 : set_dac_to_zero;
    end;
    multiplesin_dialog.update;
    maindialog.update;
@@ -1449,6 +1432,8 @@ begin
       getRealA('frequency end (Hz)',chirp_freq_end,10,3,200);
       getRealA('duration (ms)',chirp_duration,10,3,200);
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
+      setText(' ===========================================');
+      getCommandA(' set_dac_to_zero ',0,401); { OnEvent flag -> 301 }
    end;
    AddDialog(1, 4, chirp_dialog);
    with multiplesin_dialog do
@@ -2581,8 +2566,8 @@ var
     already_initiated : boolean ; // to know if we need to reinitialize the TDBrecord
     global, Exp_params : TDBrecord ;   // THOSE TWO OBJECTS ARE THE ONLY TWO TO BE DELETED WHEN USED WITH TMACRO !!!!
 
-procedure global_init;
-var PathOfTheDay : string ;
+procedure global_init(var flag :integer );
+var PathOfTheDay	       : string ;
 begin
 
 RTneuron.resetParams;
@@ -2591,20 +2576,28 @@ RTneuron.resetParams;
 global.create;  // TDBrecord('PG0.global').create ; INSTEAD
 Exp_Params.create;  // TDBrecord('PG0.Exp_Params').create ; INSTEAD
 
-
 DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
-/// ---- CASE ON LAPTOP
-{
-global.amplifier:='nrn_simulation'; // choice of the amplifier
-PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
-global.loadnrnPath := 'Z:/home/yann/work/elphy_code/nrn_files/' ;
-}
-/// ---- CASE ON MULTICLAMP
 
-TDBrecord('PG0.global').amplifier:='multiclamp';
-PathOfTheDay := 'D:\yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
-TDBrecord('PG0.global').loadnrnPath := 'D:/yann/elphy_code/nrn_files/' ; 
-
+case flag of
+  1: begin {means on the Bal setup with the multiclamp amplifier}
+	TDBrecord('PG0.global').amplifier:='multiclamp';
+	PathOfTheDay := 'D:\yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
+	TDBrecord('PG0.global').loadnrnPath := 'D:/yann/elphy_code/nrn_files/' ; 
+     end;
+  2: begin {means on the Bal setup with the RTneuron-simulation mode}
+	global.amplifier:='nrn_simulation'; // choice of the amplifier
+	PathOfTheDay := 'D:\yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
+	TDBrecord('PG0.global').loadnrnPath := 'D:/yann/elphy_code/nrn_files/' ; 
+	RTneuron.execute('nrn_load_dll("'+TDBrecord('PG0.global').load_nrn_path+'nrnmech.dll")');
+     end;
+  3: begin {means on a linux computer with the RTneuron-simulation mode}
+	global.amplifier:='nrn_simulation'; // choice of the amplifier
+	PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
+	global.loadnrnPath := 'Z:/home/yann/work/elphy_code/nrn_files/' ;
+	RTneuron.execute('nrn_load_dll("'+TDBrecord('PG0.global').load_nrn_path+'nrnmech.dll")');
+     end;
+end;
+   
 f_acq:=10;
 TDBrecord('PG0.global').f_acq:=f_acq; // in kHz
 
@@ -2625,37 +2618,23 @@ TDBrecord('PG0.global').max_EP_num :=0 ;
 TDBrecord('PG0.global').acquisitionISI:=1. ; 
 TDBrecord('PG0.global').FadvanceON := False ;
 
-
 already_initiated :=True;
 InsertPage(1,'fake');DeleteAllPages('fake');InsertPage(1,'default');DeleteAllPages('default');
 Color := cl_gray ;
+SetProtocolNames;
+init_windows;
+Init_Main_Dialog;
+passive_recording_init;
 end;
 
-program Launch
-global_init ;
-SetProtocolNames;
-init_windows;
-Init_Main_Dialog;
-passive_recording_init;
+var flag:integer;
+program Setup_and_Multiclamp
+flag:=1;
+global_init(flag);
+program Setup_and_RTneuron_Simulation
+flag:=2;
+global_init(flag);
+program Linux_and_RTneuron_Simulation
+flag:=3;
+global_init(flag);
 
-{
-program set_to_zero
-Rtneuron.DacChan[0].HoldingValue:=0;
-Rtneuron.DacChan[0].UseHoldingValue:=True;    
-Rtneuron.DacChan[1].HoldingValue:=0;
-Rtneuron.DacChan[1].UseHoldingValue:=True;    
-with stimulator do
-  begin
-    stimulator.setValue(0,0,0,0);   
-    stimulator.setValue(0,0,1,0);   
-    stimulator.setValue(0,1,0,0);  
-end; 
-
-program Launch_from_Tmacro
-MessageBox('working ?');
-global_init ;
-SetProtocolNames;
-init_windows;
-Init_Main_Dialog;
-passive_recording_init;
-}

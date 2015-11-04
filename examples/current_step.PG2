@@ -4,7 +4,8 @@
   Simple current step injection into a single compartment neuron  --------------}
   
   
-const load_nrn_path = 'D:/yann/elphy_code/nrn_files/' ;
+//const load_nrn_path = 'D:/yann/elphy_code/nrn_files/' ;
+const load_nrn_path = 'Z:/home/yann/work/elphy_code/nrn_files/' ;
 
 var main_dialog : Tdialog ;  amp,  t0_trial : real ; flag : boolean ;
 
@@ -50,7 +51,7 @@ begin
    
    RTneuron.FadvanceON:=True;  // so that NEURON calculates
 
-   acquisition.PeriodPerChannel := 0.025 ; {ms} //acquisition frequency
+   acquisition.PeriodPerChannel := 0.1 ; {ms} //acquisition frequency
    acquisition.Fcontinuous:=False;
    acquisition.ChannelCount := 2;
    acquisition.TriggerMode:= TM_immediate;

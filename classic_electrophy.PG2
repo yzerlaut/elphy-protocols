@@ -135,69 +135,98 @@ end;
 --------- Setting the Acquisition channels -------------------------------------
 ================================================================================ }
 
+procedure finitialize_in_NEURON;
+begin
+   RTneuron.Execute('finitialize(soma.e_pas)') ;
+   RTneuron.Execute('fcurrent()') ;
+end;
 
-procedure Init_AcqChannels_DEMO; { setting the channels for the RTneuron-simulation mode}
+procedure Init_AcqChannels_NEURON_sim; { setting the channels for the RTneuron-simulation mode}
 var 
    gain1, gain2, epdur, f_acq, acquisitionISI :real;
    Continu, stim :boolean;
-   Clamp_int, max_ep_num :integer;
+   Clamp_int, max_ep_num, i :integer;
 begin {-- we set all the variables of the acquisition class, then we create 
       the NEURON variables and link it to the analogous variables
        -- the NEURON files are loaded thanks to main dialog buttons}
 
-   acquisition.ChannelCount := 2; // for the whole classic_electrophy protocols
    {we load the informations from the global TDBrecord }
    Clamp_int:=TDBrecord('PG0.global').clamp_int;
    stim:=TDBrecord('PG0.global').stim;
    Continu:=TDBrecord('PG0.global').cont_choice;
+   max_ep_num := TDBrecord('PG0.global').max_EP_num ;
+   f_acq := TDBrecord('PG0.global').f_acq ;
+   epdur := TDBrecord('PG0.global').episode_duration;
    {we delete previous graphical display}
    ClearObjects(1,1);
    ClearObjects(1,2);
 
+   acquisition.Fcontinuous:=Continu; {boolean true ->continuous acquisition, False -> episode mode}
+   
    { see the documentation, for the details of the acquisition and RTneuron functions }
    RTneuron.ResetParams;
     
-   acquisition.Fcontinuous:=True; {continuous by force with RTneuron, else only one episode}
-   acquisition.PeriodPerChannel:= 0.1 ; {in ms}
+   acquisition.PeriodPerChannel:=1./f_acq ; { in ms }
 
     if stim then acquisition.Fstimulate := True
     else acquisition.Fstimulate:=False;  { we stimulate or not }
     
-    acquisition.TriggerMode:= TM_internal;
-    
-    acquisition.Channels[1].ChannelType:= TI_Neuron; { here we set that we read the acquisition from NEURON }
-    acquisition.Channels[2].ChannelType:= TI_Neuron;
-    acquisition.Channels[3].ChannelType:= TI_Neuron; { we also set up here the visualisation of the command }
-    acquisition.Channels[1].DownSamplingFactor:=1;
-    acquisition.Channels[2].DownSamplingFactor:=1;
-    acquisition.Channels[3].DownSamplingFactor:=1;
+    acquisition.TriggerMode:= TM_immediate;
 
-    RTneuron.execute('create soma') ;
-    RTneuron.execute('soma insert pas');
-    RTneuron.execute('soma insert hh_hippoc');
+    RTneuron.Execute('create soma') ;
+    RTneuron.Execute('L=diam=79.8') ;  // single compartment neuron of 20000 um2 surface
+    // ----------- inserting passive properties (~RC circuit)
+    RTneuron.Execute('soma insert pas') ; 
+    RTneuron.Execute('g_pas = 5e-5');
+    RTneuron.Execute('e_pas = -65');
+    RTneuron.Execute('cm=1');
+    // ------------ inserting hodgkin huxley mechanism
+    RTneuron.Execute('soma insert hh') ;
+    // RTneuron.execute('soma insert hh_hippoc'); {HH for CA1 hippocampal neurons}
     RTneuron.execute('objref stim');
    
     if Clamp_int=1 then { IF CURRENT-CLAMP }
     begin { we link the analogous signal to the NEURON variables with the right gain }
+       acquisition.ChannelCount := 2; // for the whole classic_electrophy protocols
+       for i:=1 to acquisition.ChannelCount do 
+       begin 
+	  acquisition.Channels[i].ChannelType := TI_Neuron;
+	  acquisition.Channels[i].DownSamplingFactor:=1;
+       end;
        RTneuron.execute('stim = new myIClamp(.5)');
-       acquisition.Channels[1].NrnSymbolName:='soma.v(.5)'; acquisition.Channels[1].unitY:='mV' ;
-       acquisition.Channels[2].NrnSymbolName:='stim.Ipico'; acquisition.Channels[2].unitY:='pA' ;
+       acquisition.Channels[1].NrnSymbolName:='soma.v(.5)';
+       acquisition.Channels[1].unitY:='mV' ;
+       v1.title:='Vm';v2.title:='Icmd';
+       acquisition.Channels[2].NrnSymbolName:='stim.i';
+       acquisition.Channels[2].unitY:='nA' ;
        v1.cpx:=1 ; v2.cpx:=1 ; v1.cpy := 1 ; v2.cpy:= 2; {we set the coupling value -> to couple to future analysis}
-       addObject(1,1,v1);
-       addObject(1,2,v2);
+       addObject(1,1,v1); addObject(1,2,v2);
     end;                         
                                                                                    
     if Clamp_int=2 then { IF VOLTAGE CLAMP }
     begin
-       RTneuron.execute('stim = new myVClamp(.5)');
-       acquisition.Channels[1].NrnSymbolName:='stim.Ipico'; acquisition.Channels[1].unitY:='pA' ;
-       acquisition.Channels[2].NrnSymbolName:='soma.v(.5)'; acquisition.Channels[2].unitY:='mV' ;
-       v1.cpx:=1 ; v2.cpx:=1 ; v1.cpy := 1 ; v2.cpy:= 2;  {we set the coupling value -> to couple to future analysis}
-       addObject(1,1,v1);
-       addObject(1,2,v2);
+       acquisition.ChannelCount := 3; // for the whole classic_electrophy protocols
+       for i:=1 to acquisition.ChannelCount do 
+       begin 
+	  acquisition.Channels[i].ChannelType := TI_Neuron;
+	  acquisition.Channels[i].DownSamplingFactor:=1;
+       end;
+      RTneuron.Execute('stim = new myVClamp(.5)') ;   
+      RTneuron.Execute('stim.V0 = soma.e_pas') ;
+      acquisition.Channels[1].unitY:='nA';
+      acquisition.Channels[2].unitY:='mV';
+      acquisition.Channels[3].unitY:='mV';
+      addObject(1,1,v1); v1.title:='Iinj(t)'; // graphical sttings
+      addObject(1,2,v2); v2.title:='Vcmd(t)'; // graphical settings
+      addObject(1,2,v3); v3.title:='Vm(t)'; // graphical settings
+      acquisition.Channels[1].NrnSymbolName:='stim.i';
+      acquisition.Channels[2].NrnSymbolName:='stim.vc';
+      acquisition.Channels[3].NrnSymbolName:='soma.v(.5)';
+      v1.cpx:=1 ; v2.cpx:=1; v3.cpx:=1; v2.cpy:=2; v3.cpy:=12;
     end; { we will call this function each time we modify a gain }
-
     //if continu then begin detector.create; detector.InitTimer(v1, CONTINUOUS_TIMER); end;  // period between analysis to adjust !!
+   RTneuron.FadvanceON:=True;  // so that NEURON calculates
+   finitialize_in_NEURON; {we finish by an initialization}
 end;
 
 
@@ -274,26 +303,20 @@ end;
 --------- Setting the Stimulation channels -------------------------------------
 ================================================================================ }
 
-procedure Init_StimChannels_DEMO; { initializa the stimulator object, see doc}
+procedure Init_StimChannels_NEURON_sim; { initializa the stimulator object, see doc}
 var Continu, fadvanceon :boolean;Clamp_int:integer; acquisitionISI : real;
 begin { We link the Elphy stimulation to the NEURON variable, then the NEURON variable to the analogous command }
                                            
    Clamp_int:=TDBrecord('PG0.global').clamp_int;
    acquisitionISI := TDBrecord('PG0.global').acquisitionISI ;  
+   acquisition.ISI := acquisitionISI;
    stimulator.ChannelCount:=1;
    stimulator.setByProg:=true; { mais on met le build ep plus loin }
    stimulator.Channels[1].ChannelType:=TO_Neuron;
-   fadvanceon := True ; // to make NEURON calculate or not !
    //if not Continu then acquisition.ISI := acquisitionISI;
-  
-   if Clamp_int=1 then { IF CURRENT CLAMP }
-   begin
-      stimulator.Channels[1].NrnSymbolName:='stim.Ipico';
-   end;
-   if Clamp_int=2 then { IF VOLTAGE CLAMP }
-   begin
-      stimulator.Channels[1].NrnSymbolName:='stim.Vamp';
-   end;
+   if Clamp_int=1 then stimulator.Channels[1].NrnSymbolName := 'stim.Ipico'; // in pA
+   if Clamp_int=2 then stimulator.Channels[1].NrnSymbolName := 'stim.Vcmd'; // in pA
+   finitialize_in_NEURON; {we finish by an initialization}
 end;
 
 
@@ -369,8 +392,8 @@ begin
   amplifier := TDBrecord('PG0.global').amplifier ;
   if amplifier='nrn_simulation' then
   begin
-    Init_AcqChannels_DEMO;
-    if acquisition.Fstimulate then Init_StimChannels_DEMO;
+    Init_AcqChannels_NEURON_sim;
+    if acquisition.Fstimulate then Init_StimChannels_NEURON_sim;
   end;
   if amplifier='multiclamp' then
   begin
@@ -429,7 +452,7 @@ begin { we fill of 0, except between the t0+delay and t0+delay+duration }
 end;
 
 procedure seal_process;
-var tt : Tvector ;
+var tt : Tvector ; amplifier : string ;
 begin
     DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
 
@@ -450,6 +473,8 @@ begin
     seal_memo.lines[3]:='Rseal= '+Rstr(Rseal,6,3)+' Mohm';
     seal_memo.lines[5]:='I baseline= '+Rstr(i_baseline,6,3)+' pA';
     seal_memo.refresh;
+    amplifier := TDBrecord('PG0.global').amplifier ;
+    if amplifier='nrn_simulation' then finitialize_in_NEURON;
 end;
 
 procedure Prepare_SealTest;
@@ -472,7 +497,7 @@ begin
          InitializeChannels; // we can initialize the channels
          stimulator.Channels[1].BuildEp := Build_SealPulse ; 
          stimulator.initVectors;
-         acquisition.InstallProcess(my_initprocess0, nil, seal_process, set_dac_to_zero);
+	 acquisition.InstallProcess(my_initprocess0, nil, seal_process, set_dac_to_zero);
 end;
 
 procedure SealTest_Event(n:integer);
@@ -2430,12 +2455,7 @@ end;
 ================================================================================ }
 
 procedure launch_exp;
-var amplifier: string ; init : boolean ;
 begin
- 
-  amplifier := TDBrecord('PG0.global').amplifier ;
-  if amplifier='nrn_simulation' then acquisition.Fcontinuous:=True ; // NEURON doesn;t support well episodes
-
   if SAVING then acquisition.startandsave else acquisition.start;
 end;
  
@@ -2561,7 +2581,6 @@ end;
 -------------------- initialisation from file ----------------------------------
 -------------------------------------------------------------------------------}
 
-
 var 
     already_initiated : boolean ; // to know if we need to reinitialize the TDBrecord
     global, Exp_params : TDBrecord ;   // THOSE TWO OBJECTS ARE THE ONLY TWO TO BE DELETED WHEN USED WITH TMACRO !!!!
@@ -2588,13 +2607,13 @@ case flag of
 	global.amplifier:='nrn_simulation'; // choice of the amplifier
 	PathOfTheDay := 'D:\yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
 	TDBrecord('PG0.global').loadnrnPath := 'D:/yann/elphy_code/nrn_files/' ; 
-	RTneuron.execute('nrn_load_dll("'+TDBrecord('PG0.global').load_nrn_path+'nrnmech.dll")');
+	RTneuron.execute('nrn_load_dll("'+TDBrecord('PG0.global').loadnrnPath+'nrnmech.dll")');
      end;
-  3: begin {means on a linux computer with the RTneuron-simulation mode}
+  3: begin {means on a Linux Desktop computer with the RTneuron-simulation mode}
 	global.amplifier:='nrn_simulation'; // choice of the amplifier
 	PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
 	global.loadnrnPath := 'Z:/home/yann/work/elphy_code/nrn_files/' ;
-	RTneuron.execute('nrn_load_dll("'+TDBrecord('PG0.global').load_nrn_path+'nrnmech.dll")');
+	RTneuron.execute('nrn_load_dll("'+TDBrecord('PG0.global').loadnrnPath+'nrnmech.dll")');
      end;
 end;
    

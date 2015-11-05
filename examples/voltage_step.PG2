@@ -49,15 +49,14 @@ var i : integer ;
 begin
    
    init_artificial_cell;
-   
    RTneuron.FadvanceON:=True;  // so that NEURON calculates
 
    acquisition.PeriodPerChannel := 0.025 ; {ms} //acquisition frequency
    acquisition.Fcontinuous:=False;
-   acquisition.ChannelCount := 2;
+   acquisition.ChannelCount := 3;
    acquisition.TriggerMode:= TM_internal;
-   acquisition.ISI:= 0.1;
-   acquisition.MaxEpCount := 2 ;
+   acquisition.ISI:= 0.5;
+   acquisition.MaxEpCount := 10 ;
    acquisition.EpDuration := 100 ;
    
    for i:=1 to acquisition.ChannelCount do 
@@ -86,7 +85,7 @@ begin
    acquisition.Channels[1].NrnSymbolName:='stim.i';
    acquisition.Channels[2].NrnSymbolName:='stim.vc';
    acquisition.Channels[3].NrnSymbolName:='soma.v(.5)';
-   v1.cpx:=1 ; v2.cpx:=1; v3.cpx:=1; v2.cpy:=2; v3.cpy:=12;
+   v1.cpx:=1 ; v2.cpx:=1; v3.cpx:=1; v1.cpy:=3; v2.cpy:=2; v3.cpy:=2;
    acquisition.InstallProcess(nil, my_initprocess, my_endprocess, nil);
 end;
 
@@ -121,7 +120,6 @@ begin
    main_dialog.updatevar;
    case n of
      122 : RTneuron.Restart;
-     123 : RTneuron.execute('nrn_load_dll("'+load_nrn_path+'nrnmech.dll")');
      201 : begin setup_channels_and_stimulation(False); set_stimulation_with_NEURON(amp); end;
      2011 : begin setup_channels_and_stimulation(True); set_stimulation_with_Elphy(amp); end;
      210 : acquisition.start;
@@ -130,8 +128,35 @@ begin
 end;
 
 
+procedure LoadNeuronFiles;
+begin
+  if assigned(RTneuron) and RTNeuron.StartFlag then
+  begin    
+    RTneuron.execute('nrn_load_dll("'+load_nrn_path+'nrnmech.dll")');
+    RTNeuron.StartFlag:=false;        
+  end;  
+end; 
+
+   
+InitProcess
+if assigned(RTneuron) then RTneuron.execute('finitialize()');
+
+ 
 
 program LAUNCH
+RTneuron.Restart;
+LoadNeuronFiles;
+acquisition.PeriodPerChannel := 0.1 ; {ms} //acquisition frequency
+acquisition.Fcontinuous:=True;
+acquisition.ChannelCount := 9;
+acquisition.TriggerMode:= TM_internal;
+acquisition.ISI:= 0.5;
+acquisition.MaxEpCount := 0 ;
+acquisition.EpDuration := 100 ;
+acquisition.MaxDuration := 0 ;
+acquisition.Fprocess:=True;
+
+
 amp:=40 ;
 with main_dialog do
 begin
@@ -141,7 +166,6 @@ begin
       setText('single comp. Hodgkin Huxley ');
       setText('______________________________________');
       getCommandA('restart NEURON',0,122); 
-      getCommandA('load NEURON mechanisms',0,123); 
       setText('');
       getRealA('Amplitude (pA)', amp, 6, 2, 200) ;
       getCommandA(' Init() Elphy stim',0,2011); { OnEvent flag -> 201 }
@@ -149,6 +173,7 @@ begin
       getCommandA(' Stop the acquisition ',0,211); { OnEvent flag -> 201 }
       show;
 end;
+
 
 
 // in case you do not have any window preconfigured

@@ -2601,18 +2601,18 @@ case flag of
   1: begin {means on the Bal setup with the multiclamp amplifier}
 	TDBrecord('PG0.global').amplifier:='multiclamp';
 	PathOfTheDay := 'D:\yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
-	TDBrecord('PG0.global').loadnrnPath := 'D:/yann/elphy_code/nrn_files/' ; 
+	TDBrecord('PG0.global').loadnrnPath := 'D:/yann/elphy/nrn_files/' ; 
      end;
   2: begin {means on the Bal setup with the RTneuron-simulation mode}
 	global.amplifier:='nrn_simulation'; // choice of the amplifier
 	PathOfTheDay := 'D:\yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
-	TDBrecord('PG0.global').loadnrnPath := 'D:/yann/elphy_code/nrn_files/' ; 
+	TDBrecord('PG0.global').loadnrnPath := 'D:/yann/elphy/nrn_files/' ; 
 	RTneuron.execute('nrn_load_dll("'+TDBrecord('PG0.global').loadnrnPath+'nrnmech.dll")');
      end;
   3: begin {means on a Linux Desktop computer with the RTneuron-simulation mode}
 	global.amplifier:='nrn_simulation'; // choice of the amplifier
 	PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
-	global.loadnrnPath := 'Z:/home/yann/work/elphy_code/nrn_files/' ;
+	global.loadnrnPath := 'Z:/home/yann/work/elphy/nrn_files/' ;
 	RTneuron.execute('nrn_load_dll("'+TDBrecord('PG0.global').loadnrnPath+'nrnmech.dll")');
      end;
 end;

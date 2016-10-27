@@ -1807,21 +1807,21 @@ if location='Notebook'then
 begin
 TDBrecord('PG0.global').amplifier:='nrn_simulation'; // choice of the amplifier
 PathOfTheDay := 'C:\Users\yann\Documents\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
-TDBrecord('PG0.global').loadnrnPath := 'D:/home/yann/work/elphy_code/nrn_files/' ; 
+TDBrecord('PG0.global').loadnrnPath := 'D:/home/yann/work/elphy/nrn_files/' ; 
 end;
 if location='Setup'then
 begin
 /// ---- CASE ON MULTICLAMP
 TDBrecord('PG0.global').amplifier:='multiclamp';
 PathOfTheDay := 'D:\Yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
-TDBrecord('PG0.global').loadnrnPath := 'D:/Yann/elphy_code/nrn_files/' ; 
+TDBrecord('PG0.global').loadnrnPath := 'D:/Yann/elphy/nrn_files/' ; 
 end;
 if location='Linux' then
 begin
 /// ---- CASE ON LINUX MACHINE
 TDBrecord('PG0.global').amplifier:='nrn_simulation';
 PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
-TDBrecord('PG0.global').loadnrnPath := 'Z:/home/yann/work/elphy_code/nrn_files/' ; 
+TDBrecord('PG0.global').loadnrnPath := 'Z:/home/yann/work/elphy/nrn_files/' ; 
 end;
 
 if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);
@@ -1859,4 +1859,3 @@ read_params;
 SetProtocolNames;
 init_windows;
 Init_Main_Dialog;
-

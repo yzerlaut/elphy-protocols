@@ -10,7 +10,8 @@ NEURON {
 	RANGE tau_LP, norm_factor
 	RANGE V_TTL, V0_TTL
 	RANGE vec
-	RANGE v_LP, Up_flag, UD_threshold
+	RANGE v_LP, Up_flag, UD_threshold, spike_threshold
+	RANGE Up_Stim_Periodicity, Down_Stim_Periodicity
 	RANGE Delay_for_Up_stim, Delay_for_Down_stim
 	RANGE Dur_for_Up_stim, Dur_for_Down_stim
 	NONSPECIFIC_CURRENT i
@@ -27,12 +28,14 @@ UNITS {
 PARAMETER {
 	tau_LP = 20. (ms) <1e-9,1e9>:Time constant for Online Low Pass Filtering
 	V0_TTL = 5. (mV) <1e-9,1e9> : TTL trigger
+	spike_threshold = -30. (mV) : spike threshold
 	UD_threshold = -60. (mV) : threshold for transitions between U&D
 	Delay_for_Up_stim = 50. (ms)
 	Delay_for_Down_stim = 100. (ms)
 	Dur_for_Up_stim = 200. (ms)
 	Dur_for_Down_stim = 200. (ms)
-	norm_factor
+	Up_Stim_Periodicity = 3
+	Down_Stim_Periodicity = 3
 }
 
 ASSIGNED {
@@ -47,6 +50,7 @@ ASSIGNED {
 	i (nA)
         up_blank_flag
 	down_blank_flag
+	norm_factor
 }
 
 INITIAL {
@@ -67,15 +71,20 @@ INITIAL {
     
 
 BREAKPOINT {
-      vec[0] = v : update with current v
-      FROM j=0 TO (N-2) {vec[(N-1)-j] = vec[(N-2)-j]} : shift all history
+      : update with current v (with threshold for spikes)
+      if (v<spike_threshold) { vec[0] = v }else {vec[0] = spike_threshold}
+      : then shift all history
+      FROM j=0 TO (N-2) {vec[(N-1)-j] = vec[(N-2)-j]} 
       v_LP = 0.0 : new Low pass filtered v
       FROM j=0 TO (N-1) {v_LP = v_LP + vec[j]*weights[j]} : compute
-      norm_factor = vec[0]
+
+      : check for transitions and update transitions variables
       if (v_LP>UD_threshold) {
 	if (Up_flag==0) { : means transition
 	    up_time_start = t
-	    if (up_blank_flag==0) {up_blank_flag=1} else {up_blank_flag=0} : switch of blank variable
+	    if (up_blank_flag==(Up_Stim_Periodicity-1)) {
+	      up_blank_flag=0 : last was test, now reset to series of blank trials
+	      } else {up_blank_flag=up_blank_flag+1} : increase blank/test variable
 	    }
 	Up_flag = 1
       } else { 
@@ -85,25 +94,24 @@ BREAKPOINT {
 	    }
 	Up_flag = 0
       }
-	  if ((t>up_time_start+Delay_for_Up_stim) && (t<up_time_start+Delay_for_Up_stim+Dur_for_Up_stim) && ((down_time_start-up_time_start)>Delay_for_Up_stim) ) {
+      : update stimulus accordingly
+      if ((t>up_time_start+Delay_for_Up_stim)
+	      && (t<up_time_start+Delay_for_Up_stim+Dur_for_Up_stim)
+	      && ((down_time_start-up_time_start)>Delay_for_Up_stim) ) {
 	  : the condition ((down_time_start-up_time_start)>Delay_for_Up_stim)
 	  : is used to monitor the fact that we did not have a transition before the stimulation should have started
-	  if (up_blank_flag==1) {
-	     V_TTL = -V0_TTL/2.
-	    }
-	  else {
-	   V_TTL = V0_TTL
-	  }
+	     if (up_blank_flag==(Up_Stim_Periodicity-1)) {
+		 V_TTL = V0_TTL : test trial
+	      } else { V_TTL = -V0_TTL/2. } : blank trials
 	}
-	if ((t>down_time_start+Delay_for_Down_stim) && (t<down_time_start+Delay_for_Down_stim+Dur_for_Down_stim) && ((up_time_start-down_time_start)>Delay_for_Down_stim)) {
-	    if (down_blank_flag==1) {
-	       V_TTL = -V0_TTL/2.
-	      }
-	    else {
-	       V_TTL = V0_TTL
-	      }
-	  }
-	else {
-       V_TTL = 0.
-	 }
+     else if ((t>down_time_start+Delay_for_Down_stim)
+	  && (t<down_time_start+Delay_for_Down_stim+Dur_for_Down_stim)
+	  && ((up_time_start-down_time_start)>Delay_for_Down_stim)) {
+	       if (down_blank_flag==(Down_Stim_Periodicity-1)) {
+		   V_TTL = V0_TTL : test trial
+		} else { V_TTL = -V0_TTL/2. } : blank trials
+	    }
+     else {
+	 V_TTL = 0. : no stim
+      }
   }

@@ -1,16 +1,12 @@
 {$EDIT TF_START}
 {========================================================================
-------- Master file for the transfer functions experiments ---------
+------- Master file for the optogenetics experiments  ---------
+------- phase-locked on the slow cortical oscillation ---------
 ========================================================================}
 
 Const
    ProtocolCount    = 2 ; 
-   CONTINUOUS_TIMER = 0.5 ; {timer for Tdetect update}
    location	    = 'Setup' ;
-   N_pause	    =  7 ; {N_pause*CONTINUOUS_TIMER = time between protocols...}
-   START_I_CST = 1000; {in ms, for the break in between points}
-   STOP_I_CST = 2500 ; {in ms}
-   threshold_for_spikes = -30 ;  {for online counting of spikes}
    
 var  { ========= COMMON VARIABLES ============ }
    protocol_choice : integer; 
@@ -22,15 +18,7 @@ var  { ========= COMMON VARIABLES ============ }
    Year,Month,Day,Hour,Minute,Second,MilliSecond:smallint; {variables to fetch the date and time }
    gain1,gain2 : real; gain1_int,gain2_int,clamp_int:integer;cont_choice:boolean;  
    dll_load : string ;
-   detector, time_detector : Tdetector ;
-   Rm, Cm, Bridge, El, Holding, f_acq : real ; // parameters of the patch recording !
-var
-   TFdialog : Tdialog;  spiketimes : Tvector ;
-   stop_flag : boolean ;   max_spikes_number : integer ;
-var global_step : integer ;  continu_flag : boolean ;
-var max_authorized_time :real;
-var recorded_fout : Tvector ;
-var rest_flag,jump_to_next:boolean ; // flag pour alterner de la stimulation et des periods de repos...
+   f_acq : real ; // parameters of the patch recording !
 
 { ============================================================================
  ---- Protocol names and graphical settings ----------------------------------
@@ -55,8 +43,8 @@ begin
   deleteallpages('default');
   InsertPage(1,'Vm-recording during Phase-Locked Optogenetics');
   Definewindow(1, 0, 0, PageWidth, Round(PageHeight/2.));
-   Definewindow(1, 0, Round(PageHeight/2.), PageWidth, PageHeight);
-   Page:=1; color:=cl_gray;
+  Definewindow(1, 0, Round(PageHeight/2.), PageWidth, PageHeight);
+  Page:=1; color:=cl_gray;
 end;
 
 
@@ -222,7 +210,7 @@ begin {-- we set all the variables of the acquisition class, then we create
    acquisition.Channels[2].NrnSymbolName:='TTL_CHECK'; acquisition.Channels[2].unitY:='mV' ;
    acquisition.Channels[3].NrnSymbolName:='UP_CHECK)'; acquisition.Channels[3].unitY:='mV' ;
    addObject(1,1,v1); v1.title:='Vm(t)';
-   addObject(1,2,v2); addObject(1,2,v3); v2.title:='Online Analysis Quantities';
+   addObject(1,2,v2); addObject(1,2,v3); v2.title:='Online-Analysis Quantities';
    v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ;
    v1.cpy:=1 ; v2.cpy := 2 ; v3.cpy:= 2 ;  {we set the coupling value -> to couple to future analysis} 
 end;
@@ -286,12 +274,6 @@ end;
 end;
 
 
-ProcessCont  // COMMON to all continuous processes
-begin
-time_detector.update(v1.Iend);
-detector.update(v1.Iend);
-end;
-
 {$EDIT Up-state-test}
 { ==============================================================================
 --------------- BUILDING THE MEMBRANE TEST IN VOLTAGE CLAMP --------------------
@@ -299,7 +281,7 @@ end;
 
 { Membrane Test procedure : Voltage Clamp test }
 var
-  UD_threshold, spike_threshold : real ;
+  UD_threshold, spike_threshold, tau_LP, V0_TTL : real ;
 	Up_Stim_Periodicity, Down_Stim_Periodicity :integer ;
 	Delay_for_Up_stim, Delay_for_Down_stim : real ;
 	Dur_for_Up_stim, Dur_for_Down_stim : real ;
@@ -310,29 +292,31 @@ procedure write_Exp_params; {to be used by all subsequent protocols}
 begin
    TDBrecord('PG0.global').f_acq := f_acq ; 
    TDBrecord('PG0.Exp_params').UD_threshold := UD_threshold ;
+   TDBrecord('PG0.Exp_params').tau_LP := tau_LP;
    TDBrecord('PG0.Exp_params').spike_threshold :=  spike_threshold;
-	 TDBrecord('PG0.Exp_params').Up_Stim_Periodicity := Up_Stim_Periodicity ;
+   TDBrecord('PG0.Exp_params').V0_TTL := V0_TTL;
+   TDBrecord('PG0.Exp_params').Up_Stim_Periodicity := Up_Stim_Periodicity ;
    TDBrecord('PG0.Exp_params').Down_Stim_Periodicity := Down_Stim_Periodicity  ;
-	 TDBrecord('PG0.Exp_params').Delay_for_Up_stim := Delay_for_Up_stim  ;
+   TDBrecord('PG0.Exp_params').Delay_for_Up_stim := Delay_for_Up_stim  ;
    TDBrecord('PG0.Exp_params').Delay_for_Down_stim  := Delay_for_Down_stim  ;
-	 TDBrecord('PG0.Exp_params').Dur_for_Up_stim := Dur_for_Up_stim    ;
+   TDBrecord('PG0.Exp_params').Dur_for_Up_stim := Dur_for_Up_stim    ;
    TDBrecord('PG0.Exp_params').Dur_for_Down_stim := Dur_for_Down_stim   ;
 end;
-
-
 
 procedure Init_single_exp;
 begin         
    {configuring the seed of the excitatory presynaptic events}
    RTneuron.execute('stim.UD_threshold = '+Rstr(UD_threshold));
+   RTneuron.execute('stim.tau_LP = '+Rstr(tau_LP));
    RTneuron.execute('stim.spike_threshold = '+Rstr(spike_threshold));
+   RTneuron.execute('stim.V0_TTL = '+Rstr(V0_TTL));
    RTneuron.execute('stim.Up_Stim_Periodicity = '+Istr(Up_Stim_Periodicity));
    RTneuron.execute('stim.Down_Stim_Periodicity = '+Istr(Down_Stim_Periodicity));
    RTneuron.execute('stim.Delay_for_Up_stim = '+Rstr(Delay_for_Up_stim));
    RTneuron.execute('stim.Delay_for_Up_stim = '+Rstr(Delay_for_Up_stim));
    RTneuron.execute('stim.Dur_for_Up_stim = '+Rstr(Dur_for_Up_stim));
    RTneuron.execute('stim.Dur_for_Down_stim = '+Rstr(Dur_for_Down_stim));
-
+   // the initialization
    RTneuron.execute('finitialize()');
 end;
 
@@ -345,7 +329,6 @@ begin
      UD_dialog.update;
 end;  
 
-
 procedure InitUDdialog;
 begin
    TDBrecord('PG0.Exp_params').exp_type := 'Up-state-stim' ;
@@ -354,357 +337,32 @@ begin
       create;
       OnEvent:=UD_DialogEvent;
       { !! Very Important : at every GUI event, we call this function}
-      setText('Phase-locked stim in the Up state');
+      setText('__==** Optogenetical Stim. Phase-locked to the Slow Oscill.  **==__');
       setText('______________________________________');
-      getIntegerA('SEED (int)',SEED,6,200);
-      getIntegerA('REPETITION of SEED (int)',REPETITION,6,200);
-      setText('o==>Stimulation Parameters :');
-      getRealA(' clamping the mean (mV)',clamp_muV,10,3,200);
-      getRealA(' clamping the std dev. (mV)',clamp_sV,10,3,200);
-      getRealA(' clamping the Gtot/gL ratio',clamp_muGn,10,3,200);
+      setText('o==> Real-Time analysis parameters :');
+      getRealA('Time constant for Low-Pass filter (ms)',tau_LP,10,3,200);
+      getRealA('Vm threshold for Up-Down transitions (mV) ',UD_threshold,10,3,200);
+      getRealA('spike-cut threshold (mV) ',spike_threshold,10,3,200);
+      setText('______________________________________');
+      setText('o==> TTL parameters :');
+      getRealA('TTL input value (mV) ',V0_TTL,10,3,200);
+      setText('______________________________________');
+      setText('o==> Up-state stim parameters :');
+      getIntegerA('Periodicity (1 stim every XX cycles)', Up_Stim_Periodicity,6,200);
+      getRealA('Delay after Up-state start (ms) ', Delay_for_Up_stim,10,3,200);
+      getRealA('Stimulus duration (ms) ', Dur_for_Up_stim,10,3,200);
+      setText('______________________________________');
+      setText('o==> Down-state stim parameters :');
+      getIntegerA('Periodicity (1 stim every XX cycles)', Down_Stim_Periodicity,6,200);
+      getRealA('Delay after Down-state start (ms) ', Delay_for_Down_stim,10,3,200);
+      getRealA('Stimulus duration (ms) ', Dur_for_Down_stim,10,3,200);
       setText('______________________________________');
       getRealA('min. synaptic time ratio',min_Ts_ratio,10,3,200);
       getRealA('max. synaptic time ratio',max_Ts_ratio,10,3,200);
       setText('______________________________________');
-      getRealA(' Driving Force (mV)',Driving_Force,10,3,200);
-      getIntegerA('Number of points ',point_number,6,200);
-      getboolean('Checking the conductance ??', check_for_conductance);
       setText('');
-      getCommandA(' Generate and Shuffle the stim ',0,301); { OnEvent flag -> 201 }
-      getCommandA(' Run ',0,201); { OnEvent flag -> 201 }
-      getIntegerA('Current Step ',global_step,6,200);
-      setText('');
-      getboolean('Continue Running (stop asap...)',continu_flag);
-      getboolean('jump to the next one',jump_to_next);
-      setText('');
-      getIntegerA('MAX spikes number',max_spikes_number,6,200);
-      getRealA('max_authorized_time)',max_authorized_time,10,3,200);
-      Caption:='Autocorrelation time Impact';
-      Show;
-   end;
-end;
-
-{$EDIT Gtot_and_Tv_effect_on_spiking} 
-{ ==============================================================================
----- How much does the mean somatic conductance might have an influence on the firing freq ---
-================================================================================ }
-
-procedure gen_GTVE_input; 
-var ii : integer ; muGn, dmuGn : real;
-begin
-
-   initialize_stimulation_vectors;
-    
-   dmuGn := (max_muGn-min_muGn)/(point_number-1) ;  // nS
-   for ii:=0 to point_number-1 do 
-   begin
-      muGn := min_muGn+ii*dmuGn ; {in nanoSiemens,  shuffled through vec_i}
-
-      params_variations_calc(muGn, clamp_muV, clamp_sV, clamp_Ts_ratio, Driving_Force, Rm, Cm, El, I0, F, Q, Ts, Gs);
-      put_the_values_into_stimulation_vectors(muGn, clamp_muV, clamp_sV, clamp_Ts_ratio+1./muGn, I0, F, Q, Ts, Gs);
-    end;
-   create_and_shuffle_the_index_vector(point_number, REPETITION);
-end;
-
-
-procedure GTVEDialogEvent(n:integer);
-var is_already_inh : integer ; ii :integer ;
-begin
-   TFdialog.updatevar;
-   case n of
-     201 : Run_massive_scan;
-     301 : begin global_step:=0; gen_GTVE_input; InitializeChannels; basic_nrn_init;end;
-     end;
-     TFdialog.update;
-end;  
-
-
-procedure InitGTVEdialog;
-begin
-   TDBrecord('PG0.Exp_params').exp_type := 'tf_Gtot_and_TV_effect_on_spiking' ;
-   with TFdialog do
-   begin
-      create;
-      OnEvent:=GTVEDialogEvent;
-      { !! Very Important : at every GUI event, we call this function}
-      setText('Effect of both Gtot and Tv on spike triggering');
-      setText('______________________________________');
-      getIntegerA('SEED (int)',SEED,6,200);
-      getIntegerA('REPETITION of SEED (int)',REPETITION,6,200);
-      setText('o==>Stimulation Parameters :');
-      getRealA(' clamping the mean (mV)',clamp_muV,10,3,200);
-      getRealA(' clamping the std dev. (mV)',clamp_sV,10,3,200);
-      getRealA(' clamping the synaptic time ratio',clamp_Ts_ratio,10,3,200);
-      getRealA(' Min. muG factor (muG/Gl)',min_muGn,10,3,200);
-      getRealA(' Max. muG factor (muG/Gl)',max_muGn,10,3,200);
-      setText('______________________________________');
-      getRealA(' Driving Force (mV)',Driving_Force,10,3,200);
-      getIntegerA('Number of points ',point_number,6,200);
-      getboolean('Checking the conductance ??', check_for_conductance);
-      setText('');
-      getCommandA(' Generate and Shuffle the stim ',0,301); { OnEvent flag -> 201 }
-      getCommandA(' Run ',0,201); { OnEvent flag -> 201 }
-      getIntegerA('Current Step ',global_step,6,200);
-      setText('');
-      getboolean('Continue Running (stop asap...)',continu_flag);
-      getboolean('jump to the next one',jump_to_next);
-      setText('');
-      getIntegerA('MAX spikes number',max_spikes_number,6,200);
-      getRealA('max_authorized_time)',max_authorized_time,10,3,200);
-      Caption:='Gtot and Tv comod Effect';
-      Show;
-   end;
-end;
-
-{$EDIT muV_Effect} 
-
-procedure gen_MUVE_input; 
-var ii : integer ; dv : real;
-begin
-   initialize_stimulation_vectors;
-   dv := (max_muV-min_muV)/(point_number-1) ; {mV}
-   for ii:=0 to point_number-1 do 
-   begin
-      muV := min_muV+ii*dv ; {in mV,  shuffled through vec_i}
-      params_variations_calc(clamp_muGn, muV, clamp_sV, clamp_Ts_ratio, Driving_Force, Rm, Cm, El, I0, F, Q, Ts, Gs);
-      put_the_values_into_stimulation_vectors(clamp_muGn, muV, clamp_sV, clamp_Ts_ratio+1./clamp_muGn, I0, F, Q, Ts, Gs);
-    end;
-   create_and_shuffle_the_index_vector(point_number, REPETITION);
-end;
-
-
-procedure MUVEDialogEvent(n:integer);
-var is_already_inh : integer ; ii :integer ;
-begin
-   TFdialog.updatevar;
-   case n of
-     201 : Run_massive_scan;
-     301 : begin global_step:=0; gen_MUVE_input; InitializeChannels; basic_nrn_init;end;
-     end;
-     TFdialog.update;
-end;  
-
-
-procedure InitMUVEdialog;
-begin
-   TDBrecord('PG0.Exp_params').exp_type := 'tf_muV_effect_on_spiking';
-   with TFdialog do
-   begin
-      create;
-      OnEvent:=MUVEDialogEvent;
-      { !! Very Important : at every GUI event, we call this function}
-      setText('Investigating the effect of input conductance on spike triggering');
-      setText('______________________________________');
-      getIntegerA('SEED (int)',SEED,6,200);
-      getIntegerA('REPETITION of SEED (int)',REPETITION,6,200);
-      setText('o==>Stimulation Parameters :');
-      getRealA(' clamping the sV (mV)',clamp_sV,10,3,200);
-      getRealA(' clamping the Ts ratio',clamp_Ts_ratio,10,3,200);
-      getRealA(' clamping muG/Gl ([])',clamp_muGn, 10,3,200);
-      setText('______________________________________');
-      getRealA(' Min. muV',min_muV,10,3,200);
-      getRealA(' Max. muV',max_muV,10,3,200);
-      setText('______________________________________');
-      getRealA(' Driving Force (mV)',Driving_Force,10,3,200);
-      getIntegerA('Number of points ',point_number,6,200);
-      getboolean('Checking the conductance ??', check_for_conductance);
-      setText('');
-      getCommandA(' Generate and Shuffle the stim ',0,301); { OnEvent flag -> 201 }
-      getCommandA(' Run ',0,201); { OnEvent flag -> 201 }
-      getIntegerA('Current Step ',global_step,6,200);
-      setText('');
-      getboolean('Continue Running (stop asap...)',continu_flag);
-      getboolean('jump to the next one',jump_to_next);
-      setText('');
-      getIntegerA('MAX spikes number',max_spikes_number,6,200);
-      getRealA('max_authorized_time)',max_authorized_time,10,3,200);
-      Caption:='Dependence on mean Vm';
-      Show;
-   end;
-end;
-
-
-{$EDIT sV_Effect} 
-
-procedure gen_sVE_input; 
-var ii : integer ; dsv, sv1 : real;
-begin
-   initialize_stimulation_vectors;
-   dsv := (max_sV-min_sV)/(point_number-1) ; {mV}
-   for ii:=0 to point_number-1 do 
-   begin
-      sV1 := min_sV+ii*dsv ; {in mV,  shuffled through vec_i}
-      params_variations_calc(clamp_muGn, clamp_muV, sV1, clamp_Ts_ratio, Driving_Force, Rm, Cm, El, I0, F, Q, Ts, Gs);
-      put_the_values_into_stimulation_vectors(clamp_muGn, clamp_muV, sV1, clamp_Ts_ratio+1./clamp_muGn, I0, F, Q, Ts, Gs);
-    end;
-   create_and_shuffle_the_index_vector(point_number, REPETITION);
-end;
-
-
-procedure SVEDialogEvent(n:integer);
-var is_already_inh : integer ; ii :integer ;
-begin
-   TFdialog.updatevar;
-   case n of
-     201 : Run_massive_scan;
-     301 : begin global_step:=0; gen_SVE_input; InitializeChannels; basic_nrn_init;end;
-     end;
-     TFdialog.update;
-end;  
-
-
-procedure InitSVEdialog;
-begin
-   TDBrecord('PG0.Exp_params').exp_type := 'tf_SV_effect_on_spiking';
-   with TFdialog do
-   begin
-      create;
-      OnEvent:=SVEDialogEvent;
-      { !! Very Important : at every GUI event, we call this function}
-      setText('Investigating the effect of input conductance on spike triggering');
-      setText('______________________________________');
-      getIntegerA('SEED (int)',SEED,6,200);
-      getIntegerA('REPETITION of SEED (int)',REPETITION,6,200);
-      setText('o==>Stimulation Parameters :');
-      getRealA(' clamping the mean (mV)',clamp_muV,10,3,200);
-      getRealA(' clamping the Ts ratio',clamp_Ts_ratio,10,3,200);
-      getRealA(' clamping muG/Gl ([])',clamp_muGn, 10,3,200);
-      setText('______________________________________');
-      getRealA(' Min. sV',min_sV,10,3,200);
-      getRealA(' Max. sV',max_sV,10,3,200);
-      setText('______________________________________');
-      getRealA(' Driving Force (mV)',Driving_Force,10,3,200);
-      getIntegerA('Number of points ',point_number,6,200);
-      getboolean('Checking the conductance ??', check_for_conductance);
-      setText('');
-      getCommandA(' Generate and Shuffle the stim ',0,301); { OnEvent flag -> 201 }
-      getCommandA(' Run ',0,201); { OnEvent flag -> 201 }
-      getIntegerA('Current Step ',global_step,6,200);
-      setText('');
-      getboolean('Continue Running (stop asap...)',continu_flag);
-      getboolean('jump to the next one',jump_to_next);
-      setText('');
-      getIntegerA('MAX spikes number',max_spikes_number,6,200);
-      getRealA('max_authorized_time)',max_authorized_time,10,3,200);
-      Caption:='Dependence on std Vm';
-      Show;
-   end;
-end;
-
-{$EDIT Massive_mV_sV_Tv_mG} 
-
-{ ==============================================================================
---------------------------------- Scanning the mV_sV_Tv_mG space ---------------------------------------
-================================================================================ }
-
-
-procedure gen_massive_scan_input; 
-var iv, is, it, ig, n_tot : integer ;  DmuGn, DmV, DsV, sV1_min, sv1_max, 
-         dTs_ratio, muGn, max_Tv, min_Tv, DTvN,compress : real;  vec_ts1:Tvector;
-begin
-   n_tot := DISCRET_SV*DISCRET_MV*DISCRET_MUG*DISCRET_TS; {total number of points}
-   initialize_stimulation_vectors;
-
-   if DISCRET_MV>1 then DmV := (max_muV-min_muV)/(DISCRET_MV-1) else DmV:=0;
-   if DISCRET_TS>1 then DTs_ratio := (max_Ts_ratio-min_Ts_ratio)/(DISCRET_TS-1) else DTs_ratio:=0;
-   {actually the variation of muGn is used to vary the global autocorrelation time}
-   { and we make TvN vary linearly, not muG=(TvN-Ts_ratio)**-1 }
-   if DISCRET_MUG>1 then DTvN := (1./min_muGn-1./max_muGn)/(DISCRET_MUG-1) else DTvN:=0;
-   //if DISCRET_MUG>1 then DmuGn := (max_muGn-min_muGn)/(DISCRET_MUG-1) else DmuGn:=0;
-
-   for iv:=0 to DISCRET_MV-1 do 
-   begin
-      muV := min_muV + iv*DmV;
-      {here we construct the triangle for the mean and variance}
-
-      sv1_max:=max_sV+iv/DISCRET_MV*(max_sV2-max_sV);
-      sv1_min:=min_sV+iv/DISCRET_MV*(min_sV2-min_sV);
-
-      if DISCRET_SV>1 then DsV := (sV1_max-sV1_min)/(DISCRET_SV-1) else DsV:=1;
-      for is:=0 to DISCRET_SV-1 do 
-      begin 
-	       sV := sv1_min + is*DsV;
-	       for ig:=0 to DISCRET_MUG-1 do 
-	       begin
-	          //muGn:=min_muGn +ig*DmuGn;
-	          muGn := 1./(1./max_muGn + ig*DTvN);
-	          //for it:=0 to DISCRET_TS-1 do 
-	          //begin
-	          Ts_ratio:=min_Ts_ratio;// +it*DTs_ratio;
-	          params_variations_calc(muGn, muV, sV, Ts_ratio, Driving_Force, Rm, Cm, El, I0, F, Q, Ts, Gs);
-	          {NOW WE CAN APPEND THE VALUES TO THE VECTORS}
-	          put_the_values_into_stimulation_vectors(muGn, muV, sV, Ts_ratio+1./muGn, I0, F, Q, Ts, Gs);
-	          //end;
-	 end;
-      end;
-   end;
-   create_and_shuffle_the_index_vector(n_tot, REPETITION);
-end;
-
-
-procedure massive_scan_DialogEvent(n:integer);
-var is_already_inh : integer ; ii :integer ;
-begin
-   TFdialog.updatevar;
-   case n of
-     201 : Run_massive_scan;
-     301 : begin global_step:=0; gen_massive_scan_input; InitializeChannels; basic_nrn_init;end;
-     end;
-     TFdialog.update;
-end;  
-
-
-procedure Init_massive_scan_dialog;
-begin
-   TDBrecord('PG0.Exp_params').exp_type := 'tf_massive_mV_sV_Tv_mG';
-   min_Ts_ratio:=3./20.; max_Ts_ratio:=6./20.; {different than for Tv scan}
-   min_muGn := 1.17647 ; max_muGn := 6.6666667;
-   
-   with TFdialog do
-   begin
-      create;
-      OnEvent:=massive_scan_DialogEvent;
-      { !! Very Important : at every GUI event, we call this function}
-      setText('Investigating the effect of input conductance on spike triggering');
-      setText('______________________________________');
-      getIntegerA('SEED (int)',SEED,6,200);
-      getIntegerA('REPETITION of SEED (int)',REPETITION,6,200);
-      setText('o==>GRID Parameters :');
-      getIntegerA('=====> DISCRET. muV ',DISCRET_MV,6,200);
-      getRealA(' Min. muV',min_muV,10,3,200);
-      getRealA(' Max. muV',max_muV,10,3,200);
-      getIntegerA('=====> DISCRET. sV ',DISCRET_SV,6,200);
-      getRealA(' Min. sV (at min. muV)',min_sV,10,3,200);
-      getRealA(' Max. sV (at min. muV)',max_sV,10,3,200);
-      getRealA(' Min. sV (at max. muV)',min_sV2,10,3,200);
-      getRealA(' Max. sV (at max. muV)',max_sV2,10,3,200);
-      getIntegerA('=====> DISCRET. muGn ',DISCRET_MUG,6,200);
-      getRealA(' Min. Gtot/Gl',min_muGn,10,3,200);
-      getRealA(' Max. Gtot/Gl',max_muGn,10,3,200);
-      //getIntegerA('=====> DISCRET. Ts ',DISCRET_TS,6,200);
-      setText('=====> Ts (fixed)');
-      getRealA(' Ts ratio',min_Ts_ratio,10,3,200);
-      //getRealA(' Max. Ts ratio',max_Ts_ratio,10,3,200);
-      setText('');
-      getIntegerA('MAX spikes number',max_spikes_number,6,200);
-      getRealA('max_authorized_time)',max_authorized_time,10,3,200);
-      getboolean('Checking the conductance ??', check_for_conductance);
-      setText('=======================================');
-      setText('');
-      getCommandA(' Generate and Shuffle the stim ',0,301); { OnEvent flag -> 201 }
-      getCommandA(' Run ',0,201); { OnEvent flag -> 201 }
-      getIntegerA('Current Step ',global_step,6,200);
-      if location='Setup'then
-      begin
-      getRealA(' Current muV (mV)',muV,10,3,200);
-      getRealA(' Current sV (mV)',sV,10,3,200);
-      getRealA(' Current muGn (nS)',muGn,10,3,200);
-      getRealA(' Current Ts (ms)',Ts,10,3,200);
-      setText('');
-      end;
-      getboolean('Continue Running (stop asap...)',continu_flag);
-      getboolean('jump to the next one',jump_to_next);
-      Caption:='massive scan mV-sV-Tv-mG space';
+      getCommandA(' Run (useless button)',0,201); { OnEvent flag -> 201 }
+      Caption:='Real-Time-optogenetics during Up and Down states ';
       Show;
    end;
 end;
@@ -727,14 +385,8 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
   case n of
     101: begin 
               case protocol_choice of
-                       1 : VCMembTest_Init;
-                       2 : ICMembTest_Init;
-                       3 : InitGTEdialog;                
-                       4 : InitTvEdialog;                
-                       5 : InitGTVEdialog;                
-                       6 : InitMUVEdialog;                
-                       7 : InitSVEdialog;                
-                       8 : Init_massive_scan_dialog;
+		1 : begin Up_Stim_Periodicity:=3; Down_Stim_Periodicity:=10000000; InitUDdialog; end;
+		2 : begin Down_Stim_Periodicity:=3; Up_Stim_Periodicity:=10000000; InitUDdialog; end;
               end; 
          end;
     111 : begin SetGain1; end;
@@ -753,6 +405,7 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
 end;    
 
 
+
 procedure Init_Main_Dialog; {we call this procedure when we load the main program, (else values are 0 -> dangerous for division, e.g. freq) }
 var amplifier : string ;
 begin
@@ -767,15 +420,6 @@ protocol_choice := 0;
    begin
       create;
       getRealA('Acquisition freq. (kHz)',f_acq,3,2,785);
-      setText('|=== Recording Parameters ===|');
-      getRealA('Rs -- Access resistance (MO)',Bridge,4,2,785);
-      getRealA('Rm -- Input resistance (MO)',Rm,4,2,785);
-      getRealA('Cm -- Membrane capacitance (pF)',Cm,4,2,785);
-      getRealA('El -- Resting potential (mV)',El,4,2,785);
-      getRealA('Ih -- Holding current (pA)',Holding,4,2,785);
-      setText('Last measured at : '+Istr(Hour)+'h '+Istr(Minute)+'m '+Istr(Second)+'s');
-      setText('|--------------------------------------------------------|');
-      getRealA('desired DV for Rinput  (mV)',expected_DV_for_cond,10,3,200);
       setText('');
       OnEvent := MainDialog_update;
    

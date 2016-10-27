@@ -142,11 +142,7 @@ begin {-- we set all the variables of the acquisition class, then we create
    RTneuron.FadvanceON:=True; { in dynamic clamp -> NEURON calculus }  
    RTneuron.execute('create soma');
    RTneuron.execute('insert pas');
-   RTneuron.execute('e_pas = '+Rstr(El));
-   RTneuron.execute('L=diam=79.8');
-   RTneuron.Execute('g_pas = 5e-5');
-   RTneuron.execute('insert WangBuszaki');
-   
+  
    RTneuron.Execute('objref stim');
    RTneuron.Execute('soma stim = new opto_Up_Down(.5)');
    for i:=1 to 3 do 
@@ -253,14 +249,11 @@ begin
          amplifier := TDBrecord('PG0.global').amplifier ;
          if amplifier='nrn_simulation' then Set_DC_channels_DEMO;
          if amplifier='multiclamp' then Set_DC_channels;
-         time_detector.create ; detector.create ;   // needs to be created
 end;
 
 
 procedure set_dac_to_zero;
 begin
-RTneuron.execute('stim.stop_flag=1'); {trying to use the stop flag !!!}
-RTneuron.execute('fadvance()');
 Rtneuron.DacChan[0].HoldingValue:=0;
 Rtneuron.DacChan[0].UseHoldingValue:=True;    
 Rtneuron.DacChan[1].HoldingValue:=0;
@@ -287,6 +280,21 @@ var
 	Dur_for_Up_stim, Dur_for_Down_stim : real ;
   UD_dialog : Tdialog ; 
   UD_cursor : Tcursor ;
+
+procedure init_csts;
+begin
+   f_acq := 0.5 ; 
+   UD_threshold :=-60;
+   tau_LP := tau_LP;
+   spike_threshold := -30;
+   V0_TTL := 5;
+   Up_Stim_Periodicity := 3 ;
+   Down_Stim_Periodicity := 3 ;
+   Delay_for_Up_stim := 30 ;
+   Delay_for_Down_stim  := 80  ;
+   Dur_for_Up_stim := 100   ;
+   Dur_for_Down_stim := 100 ;
+end;
   
 procedure write_Exp_params; {to be used by all subsequent protocols}
 begin
@@ -324,7 +332,7 @@ procedure UD_DialogEvent(n:integer);
 begin
    UD_dialog.updatevar;
    case n of
-     201 : MessageBox('nothing yet');
+     201 : Set_DC_Channels;
      end;
      UD_dialog.update;
 end;  
@@ -357,12 +365,9 @@ begin
       getRealA('Delay after Down-state start (ms) ', Delay_for_Down_stim,10,3,200);
       getRealA('Stimulus duration (ms) ', Dur_for_Down_stim,10,3,200);
       setText('______________________________________');
-      getRealA('min. synaptic time ratio',min_Ts_ratio,10,3,200);
-      getRealA('max. synaptic time ratio',max_Ts_ratio,10,3,200);
-      setText('______________________________________');
       setText('');
-      getCommandA(' Run (useless button)',0,201); { OnEvent flag -> 201 }
-      Caption:='Real-Time-optogenetics during Up and Down states ';
+      getCommandA(' Initialize Exp. )',0,201); { OnEvent flag -> 201 }
+      Caption:='Real-Time-opto Up&Down';
       Show;
    end;
 end;
@@ -437,7 +442,6 @@ protocol_choice := 0;
      begin 
         setText(' ==<| GAIN  |>== ');
         getStringListA('Primary Output  ','1 | 2 | 5 | 10 | 20 | 50 | 100 | 200 | 500 | 1000 | 2000',Gain1_int,111);
-        getStringListA('Secondary Output ','1 | 2 | 5 | 10 | 20 | 50 | 100',Gain2_int,112);
         setText('');
      end;
    getBoolean(' saving ? ',SAVING);
@@ -446,7 +450,7 @@ protocol_choice := 0;
    setText('');
    getMemo(' Comments ',comments,15,4,1,300);
    getCommandA(' reset comments ',0,301);
-   Caption:='Main Dialog';
+   Caption:='RT-optogenetics';
   end;
 Maindialog.show;
 end;
@@ -462,35 +466,12 @@ var
     global, Exp_params : TDBrecord ;
     vec_params : Tvector ;
 
-procedure read_params;
-var size : integer ;  filename : string;
-begin
-     vec_params.create;
-     filename :=TDBrecord('PG0.global').PathOfTheDay+'cell_params';
-     if FileExists(filename) then 
-     begin
-     vec_params.LoadObject(filename);
-     f_acq:= vec_params[0]; 
-     Rm :=vec_params[1] ;  Cm :=vec_params[2] ; 
-     El :=vec_params[3] ;  Bridge :=vec_params[4] ;  Holding:=vec_params[5]; 
-     gain1_int:=Round(vec_params[6]) ;   gain1:=vec_params[7] ;
-     gain2_int := Round(vec_params[8]) ; gain2:=vec_params[9] ;
-     // now the time at which they have been calculated !
-     Hour:=Round(vec_params[10]); Minute:=Round(vec_params[11]) ; Second:=Round(vec_params[11]) ; 
-     end else begin
-     Rm :=100;Cm:=200;Bridge:=15;El:=-70;f_acq:=10;Holding:=0;
-     gain1_int:=1;gain1:=1;gain2_int:=1;gain2:=1;
-     end; 
-     TDBrecord('PG0.global').gain1 := gain1 ;  TDBrecord('PG0.global').gain2 := gain2 ;
-end;
-
 procedure global_init;
 var PathOfTheDay : string ;
 begin
 
 RTneuron.resetParams;
 DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
-time_detector.create ; detector.create ;
 
 SAVING:=True;
 global.create; Exp_Params.create;
@@ -529,9 +510,10 @@ TDBrecord('PG0.global').stim := False;  // if True acquisition.Fstimulate := Tru
 
 
 TDBrecord('PG0.global').main_protocol:='';
-TDBrecord('PG0.global').protocol:='transfer_functions';
+TDBrecord('PG0.global').protocol:='RT-opto-Up-Down';
 TDBrecord('PG0.global').saving := True ;
-
+gain1 :=1 ; gain2 := 1. ;
+TDBrecord('PG0.global').gain1 := gain1 ;  TDBrecord('PG0.global').gain2 := gain2 ;
 
 TDBrecord('PG0.global').FadvanceON := True ;  
    
@@ -547,9 +529,8 @@ Rtneuron.DacChan[0].UseHoldingValue:=True;
 }
 
 program Launch
-init_fluct_const;
+init_csts;
 global_init ;
-read_params;
 SetProtocolNames;
 init_windows;
 Init_Main_Dialog;

@@ -1,4 +1,4 @@
-{$EDIT TF_START}
+{$EDIT START}
 {========================================================================
 ------- Master file for the optogenetics experiments  ---------
 ------- phase-locked on the slow cortical oscillation ---------
@@ -6,7 +6,7 @@
 
 Const
    ProtocolCount    = 2 ; 
-   location	    = 'Setup' ;
+   location	    = 'Macbook' ;
    
 var  { ========= COMMON VARIABLES ============ }
    protocol_choice : integer; 
@@ -120,8 +120,6 @@ end;
 --------- Setting the Acquisition channels -------------------------------------
 ================================================================================ }
 
-
-
 procedure Set_DC_Channels_DEMO;       {NOT WORKING YET !!!!}
 var 
    i : integer; f_acq:real;
@@ -129,7 +127,7 @@ begin {-- we set all the variables of the acquisition class, then we create
       the NEURON variables and link it to the analogous variables
        -- the NEURON files are loaded thanks to main dialog buttons}
 
-   acquisition.ChannelCount := 2; // vm, Iinj
+   acquisition.ChannelCount := 3; // vm, v_up, v_ttl
 
    {we delete previous graphical display}
    ClearObjects(1,1); ClearObjects(1,2);
@@ -142,20 +140,27 @@ begin {-- we set all the variables of the acquisition class, then we create
    RTneuron.FadvanceON:=True; { in dynamic clamp -> NEURON calculus }  
    RTneuron.execute('create soma');
    RTneuron.execute('insert pas');
+   RTneuron.execute('e_pas=-80.');
+   RTneuron.execute('L=diam=79.8');
+   RTneuron.Execute('g_pas = 5e-5');
+   RTneuron.execute('insert WangBuszaki');
   
-   RTneuron.Execute('objref stim');
-   RTneuron.Execute('soma stim = new opto_Up_Down(.5)');
+   RTneuron.Execute('objref UD_loop, stim');
+   RTneuron.Execute('soma UD_loop = new opto_Up_Down(.5)');
+   RTneuron.Execute('soma stim = new cExpSyn_with_static_cond(.5)');
    for i:=1 to 3 do 
    begin 
      acquisition.Channels[i].ChannelType := TI_Neuron;
      acquisition.Channels[i].DownSamplingFactor:=1;
    end;
-   acquisition.Channels[1].unitY:='mV'; addObject(1,1,v1); v1.title:='V_intra(t)';
-   acquisition.Channels[1].NrnSymbolName:='soma.v(.5)';
-   acquisition.Channels[2].unitY:='nA'; addObject(1,2,v2); v1.title:='Iinj(t)';
-   acquisition.Channels[2].NrnSymbolName:='stim.i';
-   acquisition.Channels[3].unitY:='nA'; addObject(1,2,v3); v3.title:='Icst';
-   acquisition.Channels[3].NrnSymbolName:='stim.Icst';
+   
+   acquisition.Channels[1].NrnSymbolName:='soma.v(.5)'; acquisition.Channels[1].unitY:='mV' ;
+   acquisition.Channels[2].NrnSymbolName:='UD_loop.V_TTL'; acquisition.Channels[2].unitY:='mV' ;
+   acquisition.Channels[3].NrnSymbolName:='UD_loop.Up_flag'; acquisition.Channels[3].unitY:='mV' ;
+   addObject(1,1,v1); v1.title:='Vm(t)';
+   addObject(1,2,v2); addObject(1,2,v3); v2.title:='Online-Analysis Quantities';
+   v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ;
+   v1.cpy:=1 ; v2.cpy := 2 ; v3.cpy:= 2 ;  {we set the coupling value -> to couple to future analysis} 
    v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ; 
    v1.cpy:=1 ; v2.cpy := 2 ; v3.cpy:=2 ; {we set the coupling value -> to couple to future analysis} 
    v2.color := CL_Olive ; v3.color := CL_Blue ;
@@ -183,8 +188,8 @@ begin {-- we set all the variables of the acquisition class, then we create
    acquisition.PeriodPerChannel:=1./f_acq ; { in ms }
 
    RTneuron.Execute('create soma');
-   RTneuron.Execute('objref stim');
-   RTneuron.Execute('soma stim = new opto_Up_Down(.5)');
+   RTneuron.Execute('objref UD_loop');
+   RTneuron.Execute('soma UD_loop = new opto_Up_Down(.5)');
    
    for i:=1 to 3 do 
    begin 
@@ -199,8 +204,8 @@ begin {-- we set all the variables of the acquisition class, then we create
    RTneuron.AdcChan[2].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[2].NrnSymbolName:='UP_CHECK'; // secondary comes from analogous
    
    // OUTPUT OF THE FEEDBACK LOOP                                      
-   RTneuron.DacChan[0].NrnSymbolName:='stim.V_TTL'; RTneuron.DacChan[0].setScale(0,32767,0,1000.0/gain1); {command -> I clamp, stim.i in nA !!! and opposite sign !!!}
-   RTneuron.DacChan[1].NrnSymbolName:='stim.Up_flag'; RTneuron.DacChan[1].setScale(0,32767,0,1000.0/gain1); {command -> I clamp, stim.i in nA !!! and opposite sign !!!}
+   RTneuron.DacChan[0].NrnSymbolName:='UD_loop.V_TTL'; RTneuron.DacChan[0].setScale(0,32767,0,1000.0/gain1); {command -> I clamp, stim.i in nA !!! and opposite sign !!!}
+   RTneuron.DacChan[1].NrnSymbolName:='UD_loop.Up_flag'; RTneuron.DacChan[1].setScale(0,32767,0,1000.0/gain1); {command -> I clamp, stim.i in nA !!! and opposite sign !!!}
    
    acquisition.Channels[1].NrnSymbolName:='soma.v(.5)'; acquisition.Channels[1].unitY:='mV' ;
    acquisition.Channels[2].NrnSymbolName:='TTL_CHECK'; acquisition.Channels[2].unitY:='mV' ;
@@ -283,9 +288,9 @@ var
 
 procedure init_csts;
 begin
-   f_acq := 0.5 ; 
+   f_acq := 10. ; 
    UD_threshold :=-60;
-   tau_LP := tau_LP;
+   tau_LP := 20.;
    spike_threshold := -30;
    V0_TTL := 5;
    Up_Stim_Periodicity := 3 ;
@@ -312,27 +317,68 @@ begin
 end;
 
 procedure Init_single_exp;
-begin         
+var amplifier : string ;
+begin
+   amplifier := TDBrecord('PG0.global').amplifier ;
    {configuring the seed of the excitatory presynaptic events}
-   RTneuron.execute('stim.UD_threshold = '+Rstr(UD_threshold));
-   RTneuron.execute('stim.tau_LP = '+Rstr(tau_LP));
-   RTneuron.execute('stim.spike_threshold = '+Rstr(spike_threshold));
-   RTneuron.execute('stim.V0_TTL = '+Rstr(V0_TTL));
-   RTneuron.execute('stim.Up_Stim_Periodicity = '+Istr(Up_Stim_Periodicity));
-   RTneuron.execute('stim.Down_Stim_Periodicity = '+Istr(Down_Stim_Periodicity));
-   RTneuron.execute('stim.Delay_for_Up_stim = '+Rstr(Delay_for_Up_stim));
-   RTneuron.execute('stim.Delay_for_Up_stim = '+Rstr(Delay_for_Up_stim));
-   RTneuron.execute('stim.Dur_for_Up_stim = '+Rstr(Dur_for_Up_stim));
-   RTneuron.execute('stim.Dur_for_Down_stim = '+Rstr(Dur_for_Down_stim));
+   RTneuron.execute('UD_loop.UD_threshold = '+Rstr(UD_threshold));
+   { RTneuron.execute('UD_loop.tau_LP = '+Rstr(tau_LP)); }
+   RTneuron.execute('UD_loop.spike_threshold = '+Rstr(spike_threshold));
+   RTneuron.execute('UD_loop.V0_TTL = '+Rstr(V0_TTL));
+   RTneuron.execute('UD_loop.Up_Stim_Periodicity = '+Istr(Up_Stim_Periodicity));
+   RTneuron.execute('UD_loop.Down_Stim_Periodicity = '+Istr(Down_Stim_Periodicity));
+   RTneuron.execute('UD_loop.Delay_for_Up_stim = '+Rstr(Delay_for_Up_stim));
+   RTneuron.execute('UD_loop.Delay_for_Down_stim = '+Rstr(Delay_for_Down_stim));
+   RTneuron.execute('UD_loop.Dur_for_Up_stim = '+Rstr(Dur_for_Up_stim));
+   RTneuron.execute('UD_loop.Dur_for_Down_stim = '+Rstr(Dur_for_Down_stim));
+   if amplifier='nrn_simulation' then
+      // we set a sequence of Up and Down states !!
+      begin
+   	 RTneuron.execute('objref ncE, nsE, ncI, nsI');
+   	 RTneuron.execute('soma nsE = new NetStim(.5)');
+   	 RTneuron.execute('nsE.start = 0'); RTneuron.execute('nsE.number = 1e30');
+   	 RTneuron.execute('nsE.noise = 1'); // frequency and seed comes later !
+   	 RTneuron.execute('ncE = new NetCon(nsE, stim)');
+   	 RTneuron.execute('ncE.delay = 0');
+   	 RTneuron.execute('soma nsI = new NetStim(.5)');
+   	 RTneuron.execute('nsI.start = 0'); RTneuron.execute('nsI.number = 1e30');
+   	 RTneuron.execute('nsI.noise = 1');
+   	 RTneuron.execute('ncI = new NetCon(nsI, stim)');
+   	 RTneuron.execute('ncI.delay = 0');
+   	 RTneuron.execute('nsE.seed(0)');
+   	 RTneuron.execute('nsI.seed(2)');
+   	 {synaptic weights}
+   	 RTneuron.execute('ncE.weight = 0.003');
+   	 RTneuron.execute('ncI.weight = -0.003'); {NEGATIVE FLAG !!!}
+   	 {then synaptic times}
+   	 RTneuron.execute('stim.tau = 5');
+   	 {synaptic reversal potential}
+   	 RTneuron.execute('stim.DrivingForce = 30');
+   	 { static conductance }
+   	 RTneuron.execute('stim.muV = -55');
+   	 RTneuron.execute('stim.Gs = 0.4');
+   	 {firing frequencies}
+	 RTneuron.execute('nsE.interval = 0.1');
+	 RTneuron.execute('nsI.interval = 0.1');
+   	 {current to bring at mean}
+   	 RTneuron.execute('stim.I0 = 0.3');
+   	 RTneuron.execute('objref fih, rand, cvode');
+   	 RTneuron.execute('rand = new Random()');
+   	 RTneuron.execute('rand.uniform(0,1)');
+	 RTneuron.execute('cvode = new CVode()');
+   	 RTneuron.execute('fih = new FInitializeHandler(1, "f1()")');
+	 RTneuron.execute('tt = 0.');
+	 RTneuron.execute('proc f1() {for i=0, 100 {tt = tt+rand.negexp(600.) print tt cvode.event(tt, "stim.stop_flag=(1-stim.stop_flag)")}}');
+      end;
    // the initialization
-   RTneuron.execute('finitialize()');
+   RTneuron.execute('finitialize(-80.)');
 end;
 
 procedure UD_DialogEvent(n:integer);
 begin
    UD_dialog.updatevar;
    case n of
-     201 : Set_DC_Channels;
+     201 : begin InitializeChannels; Init_Single_Exp; end;
      end;
      UD_dialog.update;
 end;  
@@ -366,7 +412,7 @@ begin
       getRealA('Stimulus duration (ms) ', Dur_for_Down_stim,10,3,200);
       setText('______________________________________');
       setText('');
-      getCommandA(' Initialize Exp. )',0,201); { OnEvent flag -> 201 }
+      getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -> 201 }
       Caption:='Real-Time-opto Up&Down';
       Show;
    end;
@@ -498,6 +544,14 @@ TDBrecord('PG0.global').amplifier:='nrn_simulation';
 PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
 TDBrecord('PG0.global').loadnrnPath := 'Z:/home/yann/work/elphy/nrn_files/' ; 
 end;
+if location='Macbook' then
+begin
+/// ---- CASE ON OS X Macbook
+TDBrecord('PG0.global').amplifier:='nrn_simulation';
+PathOfTheDay := 'Z:\Users\yzerlaut\Documents\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
+TDBrecord('PG0.global').loadnrnPath := 'Z:/Users/yzerlaut/work/elphy/nrn_files/' ;
+SAVING:=False;
+end;
 
 if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);
 TDBrecord('PG0.global').PathOfTheDay := PathOfTheDay ;
@@ -511,6 +565,7 @@ TDBrecord('PG0.global').stim := False;  // if True acquisition.Fstimulate := Tru
 
 TDBrecord('PG0.global').main_protocol:='';
 TDBrecord('PG0.global').protocol:='RT-opto-Up-Down';
+TDBrecord('PG0.global').exp_type:='RT-opto-Up-Down';
 TDBrecord('PG0.global').saving := True ;
 gain1 :=1 ; gain2 := 1. ;
 TDBrecord('PG0.global').gain1 := gain1 ;  TDBrecord('PG0.global').gain2 := gain2 ;

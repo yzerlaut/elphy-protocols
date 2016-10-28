@@ -59,16 +59,11 @@ INITIAL {
 
 BREAKPOINT {
     SOLVE state METHOD cnexp : exp decay for the conductances
-    i = (gi-ge)*DrivingForce + Gs*(v-muV)- Icst
-    
-    : if (stop_flag==1) {
-    : 	i=0
-    : } else { 
-    : 	if (t < stopI && t >= startI) { 
-    : 	} else {
-    : 	    i = (gi-ge)*DrivingForce + Gs*(v-muV)
-    : 	}
-    : }
+    if (stop_flag==1) {
+    	i=0
+    } else { 
+      i = (gi-ge)*DrivingForce + Gs*(v-muV)- Icst
+    }
 }
 
 

@@ -6,7 +6,7 @@
 Const
    ProtocolCount    = 8 ; 
    CONTINUOUS_TIMER = 0.5 ; {timer for Tdetect update}
-   location	    = 'Setup' ;
+   location	    = 'Macbook' ;
    N_pause	    =  7 ; {N_pause*CONTINUOUS_TIMER = time between protocols...}
    START_I_CST = 1000; {in ms, for the break in between points}
    STOP_I_CST = 2500 ; {in ms}
@@ -1822,6 +1822,13 @@ begin
 TDBrecord('PG0.global').amplifier:='nrn_simulation';
 PathOfTheDay := 'Z:\home\yann\Documents\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
 TDBrecord('PG0.global').loadnrnPath := 'Z:/home/yann/work/elphy/nrn_files/' ; 
+end;
+if location='Macbook' then
+begin
+/// ---- CASE ON OS X Macbook
+TDBrecord('PG0.global').amplifier:='nrn_simulation';
+PathOfTheDay := 'Z:\Users\yzerlaut\Documents\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
+TDBrecord('PG0.global').loadnrnPath := 'Z:/Users/yzerlaut/work/elphy/nrn_files/' ; 
 end;
 
 if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);

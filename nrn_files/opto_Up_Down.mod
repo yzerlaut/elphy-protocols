@@ -1,6 +1,8 @@
 COMMENT
 Mod file that implements a real-time monitoring of Up and Down states dynamics
 It low passes the Vm and do a simple upward and downward threshold detection
+It sends a step-like signals for optogenetic stimulations at specific delays
+of the Up and/or Down states
 -------------------------------------------------------------------------
 Written by Yann Zerlaut, Istituto Italiano di Tecnologia, October 2016
 ENDCOMMENT
@@ -14,6 +16,7 @@ NEURON {
 	RANGE Up_Stim_Periodicity, Down_Stim_Periodicity
 	RANGE Delay_for_Up_stim, Delay_for_Down_stim
 	RANGE Dur_for_Up_stim, Dur_for_Down_stim
+	RANGE up_stimulation, down_stimulation
 	NONSPECIFIC_CURRENT i
 }
 
@@ -50,6 +53,8 @@ ASSIGNED {
 	i (nA)
         up_blank_flag
 	down_blank_flag
+        up_stimulation
+	down_stimulation
 	norm_factor
 }
 
@@ -71,9 +76,8 @@ INITIAL {
     
 
 BREAKPOINT {
-
-      : ---------------------------------------------------------------------
-      : Let's compute the Real-Time Low-Pass-Filtered membrane potential
+      : =====================================================================
+      : We compute the Real-Time Low-Pass-Filtered membrane potential
       : ---------------------------------------------------------------------
       : update with current v (with threshold for spikes)
       if (v<spike_threshold) { vec[0] = v }else {vec[0] = spike_threshold}
@@ -82,72 +86,64 @@ BREAKPOINT {
       v_LP = 0.0 : new Low pass filtered v
       FROM j=0 TO (N-1) {v_LP = v_LP + vec[j]*weights[j]} : compute
 
-      if (V_TTL!=0) {
+      : =====================================================================
+      : Establishing the current state and tracking transitions
       : ---------------------------------------------------------------------
-      : if we are stimulating, we do not want
-      : that the evoked dynamics perturb the scheduled stimulation
+      if (v_LP>UD_threshold) { : ==> We are in Up state
       : ---------------------------------------------------------------------
-	: so we just update the "state" flag 
-	if (v_LP>UD_threshold) { Up_flag = 1} else { Up_flag = 0}
-	: and we remove the stimulation if it is over
-	if (t>up_time_start+Delay_for_Up_stim+Dur_for_Up_stim) { V_TTL=0 }
-      }
-      else { :================================================================
-      : here we check for transitions and trigger stim when necessary
-      :=======================================================================
-      
-	   : ---------------------------------------------------------------------
-	   if (v_LP>UD_threshold) { : ==> We are in Up state
-	   : ---------------------------------------------------------------------
-		 if (Up_flag==0) { : We were in Down state -> transitions !
-		 state_time_start = t : so we note the time of the transition
-		 }
-		 if (t>up_time_start+Delay_for_Up_stim)
-		 
+	 if (Up_flag==0) { : We were in Down state -> transitions !
+	    up_time_start = t : so we note the time of the transition
+	   }
+	 Up_flag = 1 : State update -> Up
+      } else { : ==> We are in Down state
+      : ---------------------------------------------------------------------
+	 if (Up_flag==1) { : We were in Up state -> transitions !
+	    down_time_start = t : so we note the time of the transition
+	   }
+	 Up_flag = 0 : State update -> Down
+       }		 
+      : =====================================================================
+      : Triggering and removing stimulation
+      : =====================================================================
+      : if a new Down state did not appear, if the time conditions are matched and if we
+      : were not stimulation, we start the stimulation
+      : ---------------------------------------------------------------------
+	if ((up_time_start>down_time_start) && (t>up_time_start+Delay_for_Up_stim) && (up_stimulation==0) && (t<=up_time_start+Delay_for_Up_stim+Dur_for_Up_stim)) {
+	  up_stimulation = 1
+	  : We decide whether that should ba a blamk trial or a test trial !
 	    if (up_blank_flag==(Up_Stim_Periodicity-1)) {
 	      up_blank_flag=0 : last was test, now reset to series of blank trials
-	      } else {up_blank_flag=up_blank_flag+1} : increase blank/test variable
-	    }
-		 
-	   
-      }
-      
-      
-      
-	    
-	    
-	Up_flag = 1 : of course we set the flag to Up state
-
-	: SHould we trigger a stimulation ?
-
-	if ((t>up_time_start+Delay_for_Up_stim)
-		&& (t<up_time_start+Delay_for_Up_stim+Dur_for_Up_stim)
-		&& ((down_time_start-up_time_start)>Delay_for_Up_stim) ) {
-	  : the condition ((down_time_start-up_time_start)>Delay_for_Up_stim)
-	  : is used to monitor the fact that we did not have a transition before the stimulation should have started
-	     if (up_blank_flag==(Up_Stim_Periodicity-1)) {
-		 V_TTL = V0_TTL : test trial
-	      } else { V_TTL = -V0_TTL/2. } : blank trials
-	}
-	
-	
+	      V_TTL = V0_TTL
+	      } else {
+		 V_TTL = -1
+		 up_blank_flag=up_blank_flag+1
+	      } : increase blank/test variable
+         }
+      : =====================================================================
+      : if a new Up state did not appear, if the time conditions are matched and if we
+      : were not stimulation, we start the stimulation
       : ---------------------------------------------------------------------
-      } else {  : ==> We are in Down state
+	if ((down_time_start>up_time_start) && (t>down_time_start+Delay_for_Down_stim) && (down_stimulation==0) && (t<=down_time_start+Delay_for_Down_stim+Dur_for_Down_stim)) {
+	  down_stimulation = 1
+	  : We decide whether that should ba a blamk trial or a test trial !
+	    if (down_blank_flag==(Down_Stim_Periodicity-1)) {
+	      down_blank_flag=0 : last was test, now reset to series of blank trials
+	      V_TTL = V0_TTL
+	      } else {
+		 V_TTL = -1
+		 down_blank_flag=down_blank_flag+1
+	      } : increase blank/test variable
+         }
+      : =====================================================================
+      : N.B. if we are stimulating, we do not want that the evoked dynamics
+      : perturb the scheduled stimulation, except if the stimulation should end !
       : ---------------------------------------------------------------------
-	if (Up_flag==1) { : means transition
-	  down_time_start = t
-	    if (down_blank_flag==0) {down_blank_flag=1} else {down_blank_flag=0} : switch of blank variable
-	    }
-	Up_flag = 0
-      }
-     else if ((t>down_time_start+Delay_for_Down_stim)
-	  && (t<down_time_start+Delay_for_Down_stim+Dur_for_Down_stim)
-	  && ((up_time_start-down_time_start)>Delay_for_Down_stim)) {
-	       if (down_blank_flag==(Down_Stim_Periodicity-1)) {
-		   V_TTL = V0_TTL : test trial
-		} else { V_TTL = -V0_TTL/2. } : blank trials
-	    }
-     else {
-	 V_TTL = 0. : no stim
-      }
-  }
+      if ((up_stimulation==1) && (t>up_time_start+Delay_for_Up_stim+Dur_for_Up_stim)) {
+	  V_TTL=0
+	  up_stimulation = 0
+        }
+      if ((down_stimulation==1) && (t>down_time_start+Delay_for_Down_stim+Dur_for_Down_stim)) {
+	  V_TTL=0
+	  down_stimulation = 0
+        }
+}

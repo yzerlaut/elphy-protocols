@@ -5,7 +5,7 @@
 ========================================================================}
 
 Const
-   ProtocolCount    = 3 ; 
+   ProtocolCount    = 4 ; 
    location	    = 'Macbook' ;
    
 var  { ========= COMMON VARIABLES ============ }
@@ -40,6 +40,7 @@ begin
    ProtocolName[1]:= 'Spont. Act. Sampling'; 
    ProtocolName[2]:= 'Up-state stim.'; 
    ProtocolName[3]:= 'Down-state stim.';
+   ProtocolName[4]:= 'stim. BOTH Up & Down';
    ProtoNames:=ProtocolName[1];
    ProtoNum :='0|1';
    for i:=2 to ProtocolCount do 
@@ -325,6 +326,7 @@ end;
 --------------- INITIALIZE A SINGLE PROTOCOL --------------------
 ================================================================================ }
 
+var Up_State_Stim, Down_State_Stim : boolean;
 procedure Init_single_exp;
 var amplifier : string ;
 begin
@@ -341,6 +343,8 @@ begin
 	 RTneuron.execute('UD_loop.Delay_for_Down_stim = '+Rstr(Delay_for_Down_stim));
 	 RTneuron.execute('UD_loop.Dur_for_Up_stim = '+Rstr(Dur_for_Up_stim));
 	 RTneuron.execute('UD_loop.Dur_for_Down_stim = '+Rstr(Dur_for_Down_stim));
+	 if Up_State_Stim then RTneuron.execute('UD_loop.up_stimulation = 0') else RTneuron.execute('UD_loop.up_stimulation = -1');
+	 if Down_State_Stim then RTneuron.execute('UD_loop.down_stimulation = 0') else RTneuron.execute('UD_loop.down_stimulation = -1');
       end;
    
    amplifier := TDBrecord('PG0.global').amplifier ;
@@ -559,8 +563,9 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
     101: begin 
               case protocol_choice of
 		1 : begin closedLoop:=False ; InitSASdialog; end;
-		2 : begin closedLoop:=True; Up_Stim_Periodicity:=3; Down_Stim_Periodicity:=10000000; InitUDdialog; end;
-		3 : begin closedLoop:=True; Down_Stim_Periodicity:=3; Up_Stim_Periodicity:=10000000; InitUDdialog; end;
+		2 : begin closedLoop:=True; Up_State_Stim:=True; Down_State_Stim:=False; Up_Stim_Periodicity:=3; Down_Stim_Periodicity:=-1; InitUDdialog; end;
+		3 : begin closedLoop:=True; Up_State_Stim:=False; Down_State_Stim:=True; Down_Stim_Periodicity:=3; Up_Stim_Periodicity:=-1; InitUDdialog; end;
+		4 : begin closedLoop:=True; Up_State_Stim:=True; Down_State_Stim:=True; Up_Stim_Periodicity:=3; Down_Stim_Periodicity:=3; InitUDdialog; end;
               end;
 	      // we initialize the experiment with the default parameters !
 	      InitializeChannels; Init_single_exp;	    

@@ -132,8 +132,185 @@ begin
    fraction_of_cumprob_for_Up_transition := 0.6 ;
    flag_for_state_stimulation := 1;
    clamp_index :=1 ; opto_index :=1;
+   min_delay := 0.; max_delay:=200; min_duration:=20; max_duration:=200;
+   num_delay := 3; num_duration:= 3; num_amp:= 3;
 end;
   
+{$EDIT channels_settings} 
+{ Acquisition + Stimulation + Gain settings }
+
+{ ==============================================================================
+--------- Setting the Acquisition channels -------------------------------------
+================================================================================ }
+
+procedure UpdateCursor(n:integer);
+begin
+   downward_threshold := Down_Cursor.position[1];
+   upward_threshold := Up_Cursor.position[1];
+   UD_dialog.update;
+end;
+
+procedure FinalPlot_Settings;
+begin
+   if (ProtocolName[protocol_index]='Vm------------Opto-Stim-vs-Ctrl') or
+      (ProtocolName[protocol_index]='Vm------------Stim-at-Various-Delays') or
+      (ProtocolName[protocol_index]='Vm------------Stim-of-Various-Durations') or
+      (ProtocolName[protocol_index]='Vm-Feedback---Spont-Act-Sampling') then
+   begin
+      v1.cpy:=1 ; v5.cpy := 1 ; v3.cpy:= 2 ; v4.cpy:= 2 ;  {we set the coupling value -D  to couple to future analysis} 
+      v1.color := CL_Black ; v2.color := CL_Black ; v3.color := CL_Red ; v4.color := CL_Blue ; v5.color := CL_Red ;
+      Down_Cursor.create ; Down_Cursor.style:=cs_Y ; DOwn_Cursor.PosMin:=-80;Down_Cursor.PosMax:=-10;
+      Down_Cursor.InstallSource(v1); Down_Cursor.visible:=True ; Down_Cursor.position[1]:=downward_threshold ;
+      Down_Cursor.OnChange:=UpdateCursor;
+      Up_Cursor.create ; Up_Cursor.style:=cs_Y ;  Up_Cursor.PosMin:=-80;Up_Cursor.PosMax:=-10;
+      Up_Cursor.InstallSource(v1); Up_Cursor.visible:=True ; Up_Cursor.position[1]:=upward_threshold ;
+      Up_Cursor.OnChange:=UpdateCursor;
+   end;
+   v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ; v4.cpx:=1 ; v5.cpx:=1 ;
+end;
+
+procedure Set_DC_Channels_DEMO;       {NOT WORKING YET !!!!}
+var 
+   i : integer; f_acq:real; setup:string;
+begin {-- we set all the variables of the acquisition class, then we create 
+      the NEURON variables and link it to the analogous variables
+       -- the NEURON files are loaded thanks to main dialog buttons}
+   RTneuron.ResetParams;
+   acquisition.ChannelCount := 6; // vm, v_up, v_ttl
+   RTneuron.Execute('objref UD_loop, stim'); // initialization so that they are put to 'nil' by default
+
+   {we delete previous graphical display}
+   ClearObjects(1,1); ClearObjects(1,2);
+
+   acquisition.Fcontinuous:=true;
+   acquisition.Fstimulate := False ; {we DON'T stimulate in Elphy!!}
+   f_acq := TDBrecord('PG0.global').f_acq ;
+   acquisition.PeriodPerChannel:=1./f_acq ; { in ms }
+ 
+   for i:=1 to acquisition.ChannelCount do 
+   begin 
+     acquisition.Channels[i].ChannelType := TI_Neuron;
+     acquisition.Channels[i].DownSamplingFactor:=1;
+   end;
+   
+   RTneuron.FadvanceON:=True; { -D  NEURON calculus }  
+   RTneuron.execute('create soma, lfp');
+   RTneuron.execute('insert pas');
+   RTneuron.execute('e_pas=-80.');
+   RTneuron.execute('L=diam=79.8');
+   RTneuron.Execute('g_pas = 5e-5');
+   // channel 1 --D  primary -D  Vm
+   acquisition.Channels[1].NrnSymbolName:='soma.v(0.5)';
+   acquisition.Channels[1].unitY:='mV' ;
+   addObject(1,1,v1); v1.title:='Vm(t)';
+   // leaving channel 2 for secondary !
+   if SetupName[setup_index]='RT-Setup' then
+   begin acquisition.Channels[2].NrnSymbolName:='Iinj';
+      acquisition.Channels[2].unitY:='pA' ; end;
+   // if 'I-clamp protocols' => addObject(1,2,v2); v2.title:='Iinj';
+
+   {===============================================================}
+   {        Articifially Emulating Vm/lFP                          }
+   {===============================================================}
+   if SetupName[setup_index]='NEURON-sim.' then
+      begin
+	 RTneuron.execute('insert WangBuszaki');
+	 RTneuron.Execute('soma stim = new cExpSyn_with_static_cond(.5)');
+      end
+   else if SetupName[setup_index]='Data-Replay' then
+      begin
+	 RTneuron.execute('objref vclamp');
+	 RTneuron.execute('soma vclamp = new SEClamp(.5)');
+	 RTneuron.execute('vclamp.rs=1e-2');
+	 RTneuron.execute('vclamp.dur1=1e9');
+	 if not with_LFP then RTneuron.execute('vv.play(&vclamp.amp1, dt)');
+	 if with_LFP then RTneuron.execute('vv2.play(&lfp.v(0.5), dt)');
+      end;
+   
+   {===============================================================}
+   {        Protocol Specific Mechanisms                           }
+   {===============================================================}
+   if (ProtocolName[protocol_index]='Vm------------Opto-Stim-vs-Ctrl') or
+      (ProtocolName[protocol_index]='Vm------------Stim-at-Various-Delays') or
+      (ProtocolName[protocol_index]='Vm------------Stim-of-Various-Durations') then
+   begin
+      RTneuron.Execute('soma UD_loop = new Vm_feedback_for_opto(.5)');
+      acquisition.Channels[3].NrnSymbolName:='UD_loop.V_TTL'; acquisition.Channels[3].unitY:='mV' ; v3.title:='Up_flag'; addObject(1,2,v3); 
+      acquisition.Channels[4].NrnSymbolName:='UD_loop.Up_flag'; acquisition.Channels[4].unitY:='mV' ; v4.title:='TTL_Input'; addObject(1,2,v4);  
+      acquisition.Channels[5].NrnSymbolName:='UD_loop.v_LP'; acquisition.Channels[5].unitY:='mV' ; v5.title:='Vm_low_passed'; addObject(1,1,v5);
+   end;
+
+   // Final graphical settings
+   FinalPlot_Settings;
+end;
+
+procedure Set_DC_channels;
+var
+   gain1, gain2, epdur, f_acq, acquisitionISI :real;
+   Continu, stim :boolean;
+   clamp_index, max_ep_num, i :integer;
+begin {-- we set all the variables of the acquisition class, then we create 
+      the NEURON variables and link it to the analogous variables
+       -- the NEURON files are loaded thanks to main dialog buttons}
+
+   acquisition.ChannelCount := 4; // for the whole classic_electrophy protocols
+   RTneuron.execute('create soma, lfp');
+   RTneuron.Execute('objref UD_loop, stim'); // initialization so that they are put to 'nil' by default
+
+   {we delete previous graphical display}
+   ClearObjects(1,1); ClearObjects(1,2);
+   
+   acquisition.Fcontinuous:=true;
+   acquisition.Fstimulate := False ; {we DON'T stimulate in Elphy!!}
+   gain1 := TDBrecord('PG0.global').gain1 ;
+   gain2 := TDBrecord('PG0.global').gain2 ;
+   f_acq := TDBrecord('PG0.global').f_acq ;
+   acquisition.PeriodPerChannel:=1./f_acq ; { in ms }
+
+   for i:=1 to acquisition.ChannelCount do 
+   begin 
+     acquisition.Channels[i].ChannelType := TI_Neuron;
+     acquisition.Channels[i].DownSamplingFactor:=1;
+   end;
+   
+   // MEMBRANE POTENTIAL, SENT TO THE DYNAMIC CLAMP LOOP
+   RTneuron.AdcChan[0].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[0].NrnSymbolName:='soma.v(.5)';
+   acquisition.Channels[1].NrnSymbolName:='soma.v(.5)'; acquisition.Channels[1].unitY:='mV' ;
+   addObject(1,1,v1); v1.title:='Vm(t)';
+   // LFP
+   RTneuron.AdcChan[1].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[1].NrnSymbolName:='lfp.v(.5)';
+   acquisition.Channels[1].NrnSymbolName:='lfp.v(.5)'; acquisition.Channels[1].unitY:='mV' ;
+   addObject(1,2,v2); v2.title:='LFP(t)';
+   if closedLoop then
+      begin
+	 RTneuron.Execute('soma UD_loop = new Vm_feedback_for_opto(.5)');
+	 // CHECKING THE OUTPUT OF THE FEEDBACK LOOP , additional inputs for closed-loop setting
+	 RTneuron.AdcChan[2].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[2].NrnSymbolName:='TTL_CHECK'; // secondary comes from analogous
+	 RTneuron.AdcChan[3].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[3].NrnSymbolName:='UP_CHECK'; // secondary comes from analogous
+	 // OUTPUT OF THE FEEDBACK LOOP                                      
+	 RTneuron.DacChan[0].NrnSymbolName:='UD_loop.V_TTL'; RTneuron.DacChan[0].setScale(0,32767,0,1000.0/gain1); {command -D  I clamp, stim.i in nA !!! and opposite sign !!!}
+	 RTneuron.DacChan[1].NrnSymbolName:='UD_loop.Up_flag'; RTneuron.DacChan[1].setScale(0,32767,0,1000.0/gain1); {command -D  I clamp, stim.i in nA !!! and opposite sign !!!}
+	 acquisition.Channels[3].NrnSymbolName:='TTL_CHECK'; acquisition.Channels[3].unitY:='mV' ;
+	 acquisition.Channels[4].NrnSymbolName:='UP_CHECK'; acquisition.Channels[4].unitY:='mV' ;
+	 addObject(1,3,v3); addObject(1,3,v4); v3.title:='Online-Analysis Quantities';
+      end;
+   FinalPlot_Settings;
+end;
+
+procedure set_dac_to_zero;
+begin
+   Rtneuron.DacChan[0].HoldingValue:=0;
+   Rtneuron.DacChan[0].UseHoldingValue:=True;    
+   Rtneuron.DacChan[1].HoldingValue:=0;
+   Rtneuron.DacChan[1].UseHoldingValue:=True;  
+   with stimulator do
+   begin
+      stimulator.setValue(0,0,0,0);   
+      stimulator.setValue(0,0,1,0);   
+      stimulator.setValue(0,1,0,0);  
+   end; 
+end;
+
 {$EDIT Info_recording}
 { ============================================================================
  ---- File saving and Comments + Information storing ---------------------------
@@ -238,206 +415,6 @@ begin
    if SAVING then begin CreateDir(filename); write_Exp_params; save_metadata_as_txt;  acquisition.writeDBfileinfo(DB); end;
 end;
 
-{$EDIT channels_settings} 
-{ Acquisition + Stimulation + Gain settings }
-
-
-{ ==============================================================================
---------- Setting the Acquisition channels -------------------------------------
-================================================================================ }
-
-procedure UpdateCursor(n:integer);
-begin
-   downward_threshold := Down_Cursor.position[1];
-   upward_threshold := Up_Cursor.position[1];
-   UD_dialog.update;
-end;
-
-procedure FinalPlot_Settings;
-begin
-   if (ProtocolName[protocol_index]='Vm------------Opto-Stim-vs-Ctrl') or
-      (ProtocolName[protocol_index]='Vm------------Stim-at-Various-Delays') or
-      (ProtocolName[protocol_index]='Vm------------Stim-of-Various-Durations') or
-      (ProtocolName[protocol_index]='Vm-Feedback---Spont-Act-Sampling') then
-   begin
-      v1.cpy:=1 ; v5.cpy := 1 ; v3.cpy:= 2 ; v4.cpy:= 2 ;  {we set the coupling value -D  to couple to future analysis} 
-      v1.color := CL_Black ; v2.color := CL_Black ; v3.color := CL_Red ; v4.color := CL_Blue ; v5.color := CL_Red ;
-      Down_Cursor.create ; Down_Cursor.style:=cs_Y ; DOwn_Cursor.PosMin:=-80;Down_Cursor.PosMax:=-10;
-      Down_Cursor.InstallSource(v1); Down_Cursor.visible:=True ; Down_Cursor.position[1]:=downward_threshold ;
-      Down_Cursor.OnChange:=UpdateCursor;
-      Up_Cursor.create ; Up_Cursor.style:=cs_Y ;  Up_Cursor.PosMin:=-80;Up_Cursor.PosMax:=-10;
-      Up_Cursor.InstallSource(v1); Up_Cursor.visible:=True ; Up_Cursor.position[1]:=upward_threshold ;
-      Up_Cursor.OnChange:=UpdateCursor;
-   end;
-   v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ; v4.cpx:=1 ; v5.cpx:=1 ;
-end;
-
-procedure Set_DC_Channels_DEMO;       {NOT WORKING YET !!!!}
-var 
-   i : integer; f_acq:real; setup:string;
-begin {-- we set all the variables of the acquisition class, then we create 
-      the NEURON variables and link it to the analogous variables
-       -- the NEURON files are loaded thanks to main dialog buttons}
-   RTneuron.ResetParams;
-   acquisition.ChannelCount := 6; // vm, v_up, v_ttl
-   RTneuron.Execute('objref UD_loop, stim'); // initialization so that they are put to 'nil' by default
-
-   {we delete previous graphical display}
-   ClearObjects(1,1); ClearObjects(1,2);
-
-   acquisition.Fcontinuous:=true;
-   acquisition.Fstimulate := False ; {we DON'T stimulate in Elphy!!}
-   f_acq := TDBrecord('PG0.global').f_acq ;
-   acquisition.PeriodPerChannel:=1./f_acq ; { in ms }
- 
-   for i:=1 to acquisition.ChannelCount do 
-   begin 
-     acquisition.Channels[i].ChannelType := TI_Neuron;
-     acquisition.Channels[i].DownSamplingFactor:=1;
-   end;
-   
-   RTneuron.FadvanceON:=True; { -D  NEURON calculus }  
-   RTneuron.execute('create soma, lfp');
-   RTneuron.execute('insert pas');
-   RTneuron.execute('e_pas=-80.');
-   RTneuron.execute('L=diam=79.8');
-   RTneuron.Execute('g_pas = 5e-5');
-   // channel 1 --D  primary -D  Vm
-   acquisition.Channels[1].NrnSymbolName:='soma.v(0.5)';
-   acquisition.Channels[1].unitY:='mV' ;
-   addObject(1,1,v1); v1.title:='Vm(t)';
-   // leaving channel 2 for secondary !
-   acquisition.Channels[2].NrnSymbolName:='Iinj';
-   acquisition.Channels[2].unitY:='pA' ;
-   // if 'I-clamp protocols' => addObject(1,2,v2); v2.title:='Iinj';
-
-   {===============================================================}
-   {        Articifially Emulating Vm/lFP                          }
-   {===============================================================}
-   if SetupName[setup_index]='NEURON-sim.' then
-      begin
-	 RTneuron.execute('insert WangBuszaki');
-	 RTneuron.Execute('soma stim = new cExpSyn_with_static_cond(.5)');
-      end
-   else if SetupName[setup_index]='Data-Replay' then
-      begin
-	 RTneuron.execute('objref vclamp');
-	 RTneuron.execute('soma vclamp = new SEClamp(.5)');
-	 RTneuron.execute('vclamp.rs=1e-2');
-	 RTneuron.execute('vclamp.dur1=1e9');
-	 if not with_LFP then RTneuron.execute('vv.play(&vclamp.amp1, dt)');
-	 if with_LFP then RTneuron.execute('vv2.play(&lfp.v(0.5), dt)');
-      end;
-   
-   {===============================================================}
-   {        Protocol Specific Mechanisms                           }
-   {===============================================================}
-   if (ProtocolName[protocol_index]='Vm------------Opto-Stim-vs-Ctrl') or
-      (ProtocolName[protocol_index]='Vm------------Stim-at-Various-Delays') or
-      (ProtocolName[protocol_index]='Vm------------Stim-of-Various-Durations') then
-   begin
-      RTneuron.Execute('soma UD_loop = new Vm_feedback_for_opto(.5)');
-      acquisition.Channels[3].NrnSymbolName:='UD_loop.V_TTL'; acquisition.Channels[3].unitY:='mV' ; v3.title:='Up_flag'; addObject(1,2,v3); 
-      acquisition.Channels[4].NrnSymbolName:='UD_loop.Up_flag'; acquisition.Channels[4].unitY:='mV' ; v4.title:='TTL_Input'; addObject(1,2,v4);  
-      acquisition.Channels[5].NrnSymbolName:='UD_loop.v_LP'; acquisition.Channels[5].unitY:='mV' ; v5.title:='Vm_low_passed'; addObject(1,1,v5);
-   end;
-
-   // Final graphical settings
-   FinalPlot_Settings;
-end;
-
-procedure Set_DC_channels;
-var
-   gain1, gain2, epdur, f_acq, acquisitionISI :real;
-   Continu, stim :boolean;
-   clamp_index, max_ep_num, i :integer;
-begin {-- we set all the variables of the acquisition class, then we create 
-      the NEURON variables and link it to the analogous variables
-       -- the NEURON files are loaded thanks to main dialog buttons}
-
-   acquisition.ChannelCount := 4; // for the whole classic_electrophy protocols
-   RTneuron.execute('create soma, lfp');
-   RTneuron.Execute('objref UD_loop, stim'); // initialization so that they are put to 'nil' by default
-
-   {we delete previous graphical display}
-   ClearObjects(1,1); ClearObjects(1,2);
-   
-   acquisition.Fcontinuous:=true;
-   acquisition.Fstimulate := False ; {we DON'T stimulate in Elphy!!}
-   gain1 := TDBrecord('PG0.global').gain1 ;
-   gain2 := TDBrecord('PG0.global').gain2 ;
-   f_acq := TDBrecord('PG0.global').f_acq ;
-   acquisition.PeriodPerChannel:=1./f_acq ; { in ms }
-
-   for i:=1 to acquisition.ChannelCount do 
-   begin 
-     acquisition.Channels[i].ChannelType := TI_Neuron;
-     acquisition.Channels[i].DownSamplingFactor:=1;
-   end;
-   
-   // MEMBRANE POTENTIAL, SENT TO THE DYNAMIC CLAMP LOOP
-   RTneuron.AdcChan[0].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[0].NrnSymbolName:='soma.v(.5)';
-   acquisition.Channels[1].NrnSymbolName:='soma.v(.5)'; acquisition.Channels[1].unitY:='mV' ;
-   addObject(1,1,v1); v1.title:='Vm(t)';
-   // LFP
-   RTneuron.AdcChan[1].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[1].NrnSymbolName:='lfp.v(.5)';
-   acquisition.Channels[1].NrnSymbolName:='lfp.v(.5)'; acquisition.Channels[1].unitY:='mV' ;
-   addObject(1,2,v2); v2.title:='LFP(t)';
-   if closedLoop then
-      begin
-	 RTneuron.Execute('soma UD_loop = new Vm_feedback_for_opto(.5)');
-	 // CHECKING THE OUTPUT OF THE FEEDBACK LOOP , additional inputs for closed-loop setting
-	 RTneuron.AdcChan[2].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[2].NrnSymbolName:='TTL_CHECK'; // secondary comes from analogous
-	 RTneuron.AdcChan[3].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[3].NrnSymbolName:='UP_CHECK'; // secondary comes from analogous
-	 // OUTPUT OF THE FEEDBACK LOOP                                      
-	 RTneuron.DacChan[0].NrnSymbolName:='UD_loop.V_TTL'; RTneuron.DacChan[0].setScale(0,32767,0,1000.0/gain1); {command -D  I clamp, stim.i in nA !!! and opposite sign !!!}
-	 RTneuron.DacChan[1].NrnSymbolName:='UD_loop.Up_flag'; RTneuron.DacChan[1].setScale(0,32767,0,1000.0/gain1); {command -D  I clamp, stim.i in nA !!! and opposite sign !!!}
-	 acquisition.Channels[3].NrnSymbolName:='TTL_CHECK'; acquisition.Channels[3].unitY:='mV' ;
-	 acquisition.Channels[4].NrnSymbolName:='UP_CHECK'; acquisition.Channels[4].unitY:='mV' ;
-	 addObject(1,3,v3); addObject(1,3,v4); v3.title:='Online-Analysis Quantities';
-      end;
-   FinalPlot_Settings;
-end;
-
-{ =========================================================================
-------------------- GAIN settings ----------------------------------------
-===========================================================================  }
-
-procedure SetGain1;
-var Gain1_index:integer;
-begin
-
-    gain1_index:=TDBrecord('PG0.global').Gain1_index;
-    case Gain1_index of
-    1: TDBrecord('PG0.global').Gain1 := 1.0; 2: TDBrecord('PG0.global').Gain1 := 2.0;
-    3: TDBrecord('PG0.global').Gain1 := 5.0; 4: TDBrecord('PG0.global').Gain1 := 10.0;
-    5: TDBrecord('PG0.global').Gain1 := 20.0; 6: TDBrecord('PG0.global').Gain1 := 50.0;
-    7: TDBrecord('PG0.global').Gain1 := 100.0; 8: TDBrecord('PG0.global').Gain1 := 200.0;
-    9: TDBrecord('PG0.global').Gain1 := 500.0; 10: TDBrecord('PG0.global').Gain1 := 1000.0;
-    11: TDBrecord('PG0.global').Gain1 := 2000.0;
-    end;
-end;   {SetGain1}
-
-procedure InitializeChannels;
-var setup : string ;
-begin
-   setup := TDBrecord('PG0.global').setup ;
-   if setup='RT-Setup' then Set_DC_channels else Set_DC_channels_DEMO;
-end;
-
-procedure set_dac_to_zero;
-begin
-Rtneuron.DacChan[0].HoldingValue:=0;
-Rtneuron.DacChan[0].UseHoldingValue:=True;    
-Rtneuron.DacChan[1].HoldingValue:=0;
-Rtneuron.DacChan[1].UseHoldingValue:=True;  
-with stimulator do
-  begin
-    stimulator.setValue(0,0,0,0);   
-    stimulator.setValue(0,0,1,0);   
-    stimulator.setValue(0,1,0,0);  
-end; 
-end;
 
 procedure Save_Vector_From_NEURON(neuron_vector, filename: string);
 var nrnPath, protocol :  string;
@@ -465,6 +442,13 @@ begin
 	 Save_Vector_From_NEURON('UD_loop.delay_vec', 'delays.txt');
 	 Save_Vector_From_NEURON('UD_loop.duration_vec', 'durations.txt');
       end;
+end;
+
+procedure my_endprocess;
+var PathOfTheDay, protocol, filename  : string ; {variables to fetch the date and time }
+begin
+   if SAVING then Get_Transitions_Times;
+   set_dac_to_zero;
 end;
 
 {$EDIT artificial-UD}
@@ -511,6 +495,37 @@ begin
    RTneuron.execute('tt = 0.');
    RTneuron.execute('proc f1() {for i=0, 100 {tt = tt+rand.repick() print tt cvode.event(tt, "stim.stop_flag=(1-stim.stop_flag)")}}');
 end;
+
+{ =========================================================================
+------------------- GAIN settings ----------------------------------------
+===========================================================================  }
+
+procedure SetGain1;
+var Gain1_index:integer;
+begin
+
+    gain1_index:=TDBrecord('PG0.global').Gain1_index;
+    case Gain1_index of
+    1: TDBrecord('PG0.global').Gain1 := 1.0; 2: TDBrecord('PG0.global').Gain1 := 2.0;
+    3: TDBrecord('PG0.global').Gain1 := 5.0; 4: TDBrecord('PG0.global').Gain1 := 10.0;
+    5: TDBrecord('PG0.global').Gain1 := 20.0; 6: TDBrecord('PG0.global').Gain1 := 50.0;
+    7: TDBrecord('PG0.global').Gain1 := 100.0; 8: TDBrecord('PG0.global').Gain1 := 200.0;
+    9: TDBrecord('PG0.global').Gain1 := 500.0; 10: TDBrecord('PG0.global').Gain1 := 1000.0;
+    11: TDBrecord('PG0.global').Gain1 := 2000.0;
+    end;
+end;   {SetGain1}
+
+procedure InitializeChannels;
+var setup : string ;
+begin
+   setup := TDBrecord('PG0.global').setup ;
+   if setup='RT-Setup' then Set_DC_channels else Set_DC_channels_DEMO;
+   if setup='NEURON-sim.' then Initialize_Simulated_Up_and_Down_States; // Fake data
+   // the initialization
+   RTneuron.execute('finitialize(-70)');
+end;
+
+
 
 {$EDIT Spont-act-sampling}
 { ==============================================================================
@@ -612,7 +627,7 @@ end;
 ================================================================================ }
 
 procedure Init_Vm_feedback_loop;
-var setup : string ; i : integer;
+var setup : string ; i, j : integer;
 begin
    {configuring the seed of the excitatory presynaptic events}
    RTneuron.execute('UD_loop.upward_threshold = '+Rstr(upward_threshold));
@@ -630,20 +645,36 @@ begin
 	 RTneuron.execute('for i = 0,1999 { if (i%'+Istr(Stim_Periodicity)+'==1) { UD_loop.stim_vec[i]=1 } }' );
 	 RTneuron.execute('for i = 0,1999 { UD_loop.delay_vec[i]='+Rstr(Delay_for_stim)+'}');
 	 RTneuron.execute('for i = 0,1999 { UD_loop.duration_vec[i]='+Rstr(Dur_for_stim)+'}');
-      end;
-   if (ProtocolName[protocol_index]='Vm------------Opto-Stim-vs-Ctrl') then
+      end
+   else if (ProtocolName[protocol_index]='Vm------------Stim-at-Various-Delays') then
       begin
-	 RTneuron.execute('for i = 0,1999 { if (i%'+Istr(Stim_Periodicity)+'==1) { UD_loop.stim_vec[i]=1 } }' );
-	 RTneuron.execute('for i = 0,1999 { UD_loop.delay_vec[i]='+Rstr(Delay_for_stim)+'}');
-	 RTneuron.execute('for i = 0,1999 { UD_loop.duration_vec[i]='+Rstr(Dur_for_stim)+'}');
+	 if num_delay>1 then
+	    begin
+	       RTneuron.execute('for i = 0,1999 { if (i%'+Istr(Stim_Periodicity)+'==1) { UD_loop.stim_vec[i]=1 } }' );
+	       RTneuron.execute('objref v1' );
+	       RTneuron.execute('v1 = new Vector()');
+	       for j:=0 to num_delay-1 do RTneuron.execute('v1.append('+Rstr(min_delay+j*(max_delay-min_delay)/(num_delay-1))+')');
+	       RTneuron.execute('j=0');
+	       RTneuron.execute('for i = 0,1999 { if (i%'+Istr(Stim_Periodicity)+'==1) { UD_loop.delay_vec[i]=v1.x[j%'+Istr(num_delay)+'] j=j+1 } }' );
+	       RTneuron.execute('for i = 0,1999 { UD_loop.duration_vec[i]='+Rstr(Dur_for_stim)+'}');
+	    end else MessageBox('Need delay_num>1 !');
+      end
+   else if (ProtocolName[protocol_index]='Vm------------Stim-of-Various-Durations') then
+      begin
+	 if num_duration>1 then
+	    begin
+	       RTneuron.execute('for i = 0,1999 { if (i%'+Istr(Stim_Periodicity)+'==1) { UD_loop.stim_vec[i]=1 } }' );
+	       RTneuron.execute('for i = 0,1999 { UD_loop.delay_vec[i]='+Rstr(Delay_for_stim)+'}');
+	       RTneuron.execute('objref v1' );
+	       RTneuron.execute('v1 = new Vector()');
+	       for j:=0 to num_duration-1 do RTneuron.execute('v1.append('+Rstr(min_duration+j*(max_duration-min_duration)/(num_duration-1))+')');
+	       RTneuron.execute('j=0');
+	       RTneuron.execute('for i = 0,1999 { if (i%'+Istr(Stim_Periodicity)+'==1) { UD_loop.duration_vec[i]=v1.x[j%'+Istr(num_duration)+'] j=j+1 } }' );
+	    end else MessageBox('Need delay_num>1 !');
       end;
-   setup := TDBrecord('PG0.global').setup ;
-   if setup='NEURON-sim.' then Initialize_Simulated_Up_and_Down_States;
-   // the initialization
-   RTneuron.execute('finitialize(-80.)');
 end;
 
-{$EDIT Single-state-test}
+{$EDIT Test-vs-Ctrl-Vm-Feedback}
 { ==============================================================================
 --------------- PHASE-LOCKED OPTOGENTICS IN UP-or-DOWN-STATE  ------------------
 ================================================================================ }
@@ -666,7 +697,7 @@ begin
      UD_dialog.update;
 end;  
 
-procedure InitUDdialog;
+procedure InitUD_dialog;
 begin
    init_windows;
    Definewindow(1, 0, 0, PageWidth, Round(2.*PageHeight/3.));
@@ -693,8 +724,126 @@ begin
       setText('______________________________________');
       setText('o==> Stimulation parameters :');
       getIntegerA('Periodicity (1 stim every XX cycles)', Stim_Periodicity,6,200);
-      getRealA('Delay after Down-state start (ms) ', Delay_for_stim,10,3,200);
+      getRealA('Delay after State start (ms) ', Delay_for_stim,10,3,200);
       getRealA('Stimulus duration (ms) ', Dur_for_stim,10,3,200);
+      setText('______________________________________');
+      setText('');
+      getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
+      Caption:='Real-Time-opto Up&Down';
+      Show;
+   end;
+end;
+
+{$EDIT Varying-Delays-Vm-Feedback}
+{ ==============================================================================
+--------------- Protocol to Vary Delays  ------------------
+================================================================================ }
+
+procedure UDdelayVm_DialogEvent(n:integer);
+begin
+   UD_dialog.updatevar;
+   case n of
+     201 : begin
+	      if flag_for_state_stimulation=1 then begin {stimulation in Up state}
+		 Up_State_Stim:=True; Down_State_Stim:=False; end
+	      else if flag_for_state_stimulation=2 then begin {stimulation in Up state}
+		 Down_State_Stim:=True; Up_State_Stim:=False; end;
+	      // then initialization
+	      InitializeChannels; Init_Vm_feedback_loop;
+	   end;
+     end;
+     UD_dialog.update;
+end;  
+
+procedure InitUDdelayVm_Dialog;
+begin
+   init_windows;
+   Definewindow(1, 0, 0, PageWidth, Round(2.*PageHeight/3.));
+   Definewindow(1, 0, Round(2.*PageHeight/3.), PageWidth, PageHeight);
+   Page:=1; color:=cl_gray;
+   TDBrecord('PG0.Exp_params').exp_type := 'Up-state-stim' ;
+   with UD_dialog do
+   begin
+      create;
+      OnEvent:=UDdelayVm_DialogEvent;
+      { !! Very Important : at every GUI event, we call this function}
+      setText('__==** Optogenetical Stim. Phase-locked to the Slow Oscill.  **==__');
+      setText('______________________________________');
+      getStringList(' Simulation in : ','Up State|Down State','1|2',flag_for_state_stimulation,37);  { Onevent flag ->199}
+      setText('______________________________________');
+      setText('o==> Real-Time analysis parameters :');
+      getRealA('SubSampling Frequency (ms)',subsampling_freq,10,3,200);
+      getRealA('Vm threshold for Down-to-Up transitions (mV) ',upward_threshold,10,3,200);
+      getRealA('Vm threshold for Up-to-Down transitions (mV) ',downward_threshold,10,3,200);
+      setText('______________________________________');
+      setText('o==> TTL parameters :');
+      getRealA('TTL input value (mV) ',V0_TTL,10,3,200);
+      setText('______________________________________');
+      setText('o==> Stimulation parameters :');
+      getIntegerA('Varying Delays : Number', num_delay, 6, 200);
+      getRealA('Varying Delays : Minimum (ms) ', min_delay, 10, 3, 200);
+      getRealA('Varying Delays : Maximum (ms) ', max_delay, 10, 3, 200);
+      getIntegerA('Periodicity (1 stim every XX cycles)', Stim_Periodicity, 6, 200);
+      getRealA('Stimulus duration (ms) ', Dur_for_stim, 10, 3, 200);
+      setText('______________________________________');
+      setText('');
+      getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
+      Caption:='Real-Time-opto Up&Down';
+      Show;
+   end;
+end;
+
+{$EDIT Varying-Durations-Vm-Feedback}
+{ ==============================================================================
+--------------- Protocol to Vary Durations  ------------------
+================================================================================ }
+
+procedure UDdurationVm_DialogEvent(n:integer);
+begin
+   UD_dialog.updatevar;
+   case n of
+     201 : begin
+	      if flag_for_state_stimulation=1 then begin {stimulation in Up state}
+		 Up_State_Stim:=True; Down_State_Stim:=False; end
+	      else if flag_for_state_stimulation=2 then begin {stimulation in Up state}
+		 Down_State_Stim:=True; Up_State_Stim:=False; end;
+	      // then initialization
+	      InitializeChannels; Init_Vm_feedback_loop;
+	   end;
+     end;
+     UD_dialog.update;
+end;  
+
+procedure InitUDdurationVm_Dialog;
+begin
+   init_windows;
+   Definewindow(1, 0, 0, PageWidth, Round(2.*PageHeight/3.));
+   Definewindow(1, 0, Round(2.*PageHeight/3.), PageWidth, PageHeight);
+   Page:=1; color:=cl_gray;
+   TDBrecord('PG0.Exp_params').exp_type := 'Up-state-stim' ;
+   with UD_dialog do
+   begin
+      create;
+      OnEvent:=UDdurationVm_DialogEvent;
+      { !! Very Important : at every GUI event, we call this function}
+      setText('__==** Optogenetical Stim. Phase-locked to the Slow Oscill.  **==__');
+      setText('______________________________________');
+      getStringList(' Simulation in : ','Up State|Down State','1|2',flag_for_state_stimulation,37);  { Onevent flag ->199}
+      setText('______________________________________');
+      setText('o==> Real-Time analysis parameters :');
+      getRealA('SubSampling Frequency (ms)',subsampling_freq,10,3,200);
+      getRealA('Vm threshold for Down-to-Up transitions (mV) ',upward_threshold,10,3,200);
+      getRealA('Vm threshold for Up-to-Down transitions (mV) ',downward_threshold,10,3,200);
+      setText('______________________________________');
+      setText('o==> TTL parameters :');
+      getRealA('TTL input value (mV) ',V0_TTL,10,3,200);
+      setText('______________________________________');
+      setText('o==> Stimulation parameters :');
+      getIntegerA('Varying Durations : Number', num_duration, 6, 200);
+      getRealA('Varying Durations : Minimum (ms) ', min_duration, 10, 3, 200);
+      getRealA('Varying Durations : Maximum (ms) ', max_duration, 10, 3, 200);
+      getIntegerA('Periodicity (1 stim every XX cycles)', Stim_Periodicity, 6, 200);
+      getRealA('Stimulus Delay (ms) ', Delay_for_stim, 10, 3, 200);
       setText('______________________________________');
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
@@ -812,11 +961,13 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
     101: begin
 	    proto := ProtocolName[protocol_index];
 	    if proto='Vm-Feedback---Spont-Act-Sampling'
-	       then begin closedLoop:=False ; with_LFP :=False ; InitSASdialog; end
+	       then begin closedLoop:=False ; with_LFP :=False ; InitSASdialog; InitializeChannels; Init_Vm_feedback_loop; end
 	    else if proto='Vm------------Opto-Stim-vs-Ctrl'
-	       then begin closedLoop:=True; with_LFP :=False ; InitUDdialog; end;
-	    // we initialize the experiment with the default parameters !
-	    InitializeChannels; Init_Vm_feedback_loop;	    
+	       then begin closedLoop:=True; with_LFP :=False ; InitUD_dialog; end
+	    else if proto='Vm------------Stim-at-Various-Delays'
+	       then begin closedLoop:=True; with_LFP :=False ; InitUDdelayVm_dialog; end
+	    else if proto='Vm------------Stim-of-Various-Durations'
+	       then begin closedLoop:=True; with_LFP :=False ; InitUDdurationVm_dialog; end;
          end;
     333	: load_fake_Vm;
     334	: load_fake_LFP;
@@ -826,7 +977,7 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
     40: Update_Clamp;
     111 : SetGain1; 
     200 : begin
-	     acquisition.InstallProcess(my_initprocess0, nil, nil, Get_Transitions_Times);
+	     acquisition.InstallProcess(my_initprocess0, nil, nil, my_endProcess);
 	     if SAVING then acquisition.startandsave else acquisition.start;
 	  end;
     201 : acquisition.stop ;
@@ -899,7 +1050,7 @@ begin
    RTneuron.resetParams;
    SetLocations; SetSetup; SetOpto; SetClamp;SetProtocolNames;
    if location='RT-Setup' then begin setup_index :=1; location_index:=1 ; SAVING:=True; end;
-   if location='Macbook' then begin setup_index :=2; location_index:=2 ; SAVING:=False; end;
+   if location='Macbook' then begin setup_index :=3; location_index:=2 ; SAVING:=False; end;
    global.create; Exp_Params.create;
    Update_Location; Update_Setup;
  

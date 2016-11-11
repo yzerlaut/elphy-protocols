@@ -1827,7 +1827,7 @@ if location='Macbook' then
 begin
 /// ---- CASE ON OS X Macbook
 TDBrecord('PG0.global').amplifier:='nrn_simulation';
-PathOfTheDay := 'Z:\Users\yzerlaut\Documents\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
+PathOfTheDay := 'Z:\Users\yzerlaut\DATA\debuging_data\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
 TDBrecord('PG0.global').loadnrnPath := 'Z:/Users/yzerlaut/work/elphy/nrn_files/' ; 
 end;
 

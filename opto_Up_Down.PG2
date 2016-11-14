@@ -415,21 +415,19 @@ begin
    if SAVING then begin CreateDir(filename); write_Exp_params; save_metadata_as_txt;  acquisition.writeDBfileinfo(DB); end;
 end;
 
-
 procedure Save_Vector_From_NEURON(neuron_vector, filename: string);
-var nrnPath, protocol :  string;
+var Path, protocol, st : string ; i : integer;
 begin
    protocol := ProtocolName[protocol_index];
-   nrnPath := TDBrecord('PG0.global').nrnPathOfTheDay ;
-   nrnPath := nrnPath+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)+'_'+protocol;
-   RTneuron.execute('objref ff, vv');
-   RTneuron.execute('vv = new Vector()');
-   RTneuron.execute('ff = new File()');
-   RTneuron.execute('ff.wopen("'+nrnPath+'/'+filename+'")');
-   RTneuron.execute('i=0');
-   RTneuron.execute('for i=0,1999 {vv.append('+neuron_vector+'[i])}');
-   RTneuron.execute('vv.printf(ff)');
-   RTneuron.execute('ff.close()');
+   Path := TDBrecord('PG0.global').PathOfTheDay ;
+   Path := Path+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)+'_'+protocol;
+   openText(1,Path+sep+filename,false);
+   for i:=0 to 1999 do
+      begin
+	 st := Rstr(RTneuron.getNRNvalue(neuron_vector+'['+Istr(i)+']'), 1, 6);
+	 writelnText(1,st);
+      end;
+   closeText(1);
 end;
 
 procedure Get_Transitions_Times;
@@ -884,19 +882,16 @@ begin
 	   PathOfTheDay := 'D:\Yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
 	   sep :='\';
 	   TDBrecord('PG0.global').loadnrnPath := 'D:/home/yann/work/elphy/nrn_files/' ; 
-	   TDBrecord('PG0.global').nrnPathOfTheDay := 'D:/Yann/DATA/'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'/'; 
 	end; 
      2: begin {osx}
 	   PathOfTheDay := 'Z:\Users\yzerlaut\DATA\debuging_data\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
 	   sep :='/';
 	   TDBrecord('PG0.global').loadnrnPath := 'Z:/Users/yzerlaut/work/elphy/nrn_files/' ; 
-	   TDBrecord('PG0.global').nrnPathOfTheDay := 'Z:/Users/yzerlaut/DATA/debuging_data/'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'/'; 
 	end;
      3: begin {linux}
 	   PathOfTheDay := 'Z:\home\yann\DATA\debuging_data\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
 	   sep :='/';
 	   TDBrecord('PG0.global').loadnrnPath := 'Z:/home/yann/work/elphy/nrn_files/' ; 
-	   TDBrecord('PG0.global').nrnPathOfTheDay := 'Z:/home/yann/DATA/debuging_data/'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'/'; 
 	end;
     end;
    if DirectoryExists(PathOfTheDay)=False then CreateDir(PathOfTheDay);
@@ -1050,7 +1045,7 @@ begin
    RTneuron.resetParams;
    SetLocations; SetSetup; SetOpto; SetClamp;SetProtocolNames;
    if location='RT-Setup' then begin setup_index :=1; location_index:=1 ; SAVING:=True; end;
-   if location='Macbook' then begin setup_index :=3; location_index:=2 ; SAVING:=False; end;
+   if location='Macbook' then begin setup_index :=2; location_index:=2 ; SAVING:=False; end;
    global.create; Exp_Params.create;
    Update_Location; Update_Setup;
  

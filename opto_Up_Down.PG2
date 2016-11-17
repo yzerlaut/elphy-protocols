@@ -54,10 +54,10 @@ procedure SetProtocolNames;
 var          
   i:integer;                           
 begin
-   ProtocolName[1]:= 'Vm-Feedback---Spont-Act-Sampling'; 
-   ProtocolName[2]:= 'Vm------------Opto-Stim-vs-Ctrl'; 
-   ProtocolName[3]:= 'Vm------------Stim-at-Various-Delays'; 
-   ProtocolName[4]:= 'Vm------------Stim-of-Various-Durations'; 
+   ProtocolName[1]:= 'Vm-feedback--Spont-Act-Sampling'; 
+   ProtocolName[2]:= 'Vm-feedback--Opto-Stim-vs-Ctrl'; 
+   ProtocolName[3]:= 'Vm-feedback--Stim-at-Various-Delays'; 
+   ProtocolName[4]:= 'Vm-feedback--Stim-of-Various-Durations'; 
    ProtocolName[5]:= '*LFP* Feedback -D  Spont. Act. Sampling'; 
    ProtocolName[6]:= '*LFP* ----------D  2 Holding Protocols'; 
    ProtocolName[7]:= '*LFP* ----------D  V-Clamp for Excitation'; 
@@ -150,12 +150,18 @@ begin
    UD_dialog.update;
 end;
 
+procedure UpdateCursor_in_NEURON;
+begin
+   if not with_LFP then RTneuron.execute('UD_loop.downward_threshold = '+Rstr(downward_threshold));
+   if not with_LFP then RTneuron.execute('UD_loop.upward_threshold = '+Rstr(upward_threshold));
+end;
+
 procedure FinalPlot_Settings;
 begin
-   if (ProtocolName[protocol_index]='Vm------------Opto-Stim-vs-Ctrl') or
-      (ProtocolName[protocol_index]='Vm------------Stim-at-Various-Delays') or
-      (ProtocolName[protocol_index]='Vm------------Stim-of-Various-Durations') or
-      (ProtocolName[protocol_index]='Vm-Feedback---Spont-Act-Sampling') then
+   if (ProtocolName[protocol_index]='Vm-feedback--Opto-Stim-vs-Ctrl') or
+      (ProtocolName[protocol_index]='Vm-feedback--Stim-at-Various-Delays') or
+      (ProtocolName[protocol_index]='Vm-feedback--Stim-of-Various-Durations') or
+      (ProtocolName[protocol_index]='Vm-feedback--Spont-Act-Sampling') then
    begin
       v1.cpy:=1 ; v5.cpy := 1 ; v3.cpy:= 2 ; v4.cpy:= 2 ;  {we set the coupling value -D  to couple to future analysis} 
       v1.color := CL_Black ; v2.color := CL_Black ; v3.color := CL_Red ; v4.color := CL_Blue ; v5.color := CL_Red ;
@@ -215,7 +221,8 @@ begin {-- we set all the variables of the acquisition class, then we create
    if SetupName[setup_index]='NEURON-sim.' then
       begin
 	 RTneuron.execute('insert WangBuszaki');
-	 RTneuron.Execute('soma stim = new cExpSyn_with_static_cond(.5)');
+	 { RTneuron.Execute('soma stim = new cExpSyn_with_static_cond(.5)'); }
+	 RTneuron.Execute('soma stim = new Exp2Syn_eiNtwk(.5)');
       end
    else if SetupName[setup_index]='Data-Replay' then
       begin
@@ -230,9 +237,9 @@ begin {-- we set all the variables of the acquisition class, then we create
    {===============================================================}
    {        Protocol Specific Mechanisms                           }
    {===============================================================}
-   if (ProtocolName[protocol_index]='Vm------------Opto-Stim-vs-Ctrl') or
-      (ProtocolName[protocol_index]='Vm------------Stim-at-Various-Delays') or
-      (ProtocolName[protocol_index]='Vm------------Stim-of-Various-Durations') then
+   if (ProtocolName[protocol_index]='Vm-feedback--Opto-Stim-vs-Ctrl') or
+      (ProtocolName[protocol_index]='Vm-feedback--Stim-at-Various-Delays') or
+      (ProtocolName[protocol_index]='Vm-feedback--Stim-of-Various-Durations') then
    begin
       RTneuron.Execute('soma UD_loop = new Vm_feedback_for_opto(.5)');
       acquisition.Channels[3].NrnSymbolName:='UD_loop.V_TTL'; acquisition.Channels[3].unitY:='mV' ; v3.title:='Up_flag'; addObject(1,2,v3); 
@@ -334,7 +341,6 @@ begin
    TDBrecord('PG0.Exp_params').closedLoop :=closedLoop;
    TDBrecord('PG0.Exp_params').gain1 := gain1 ;
    TDBrecord('PG0.Exp_params').gain2 := gain2;
-   TDBrecord('PG0.Exp_params').f_acq :=f_acq;
    TDBrecord('PG0.Exp_params').with_LFP:=with_LFP;
    TDBrecord('PG0.Exp_params').Up_State_Stim:=Up_State_Stim;
    TDBrecord('PG0.Exp_params').Down_State_Stim := Down_State_Stim ;
@@ -358,7 +364,6 @@ procedure FillDBinfo(var DB: TDBrecord); {procedure to write the metadata !}
 var jj:integer; st:string;
 begin
   DB.clear; 
-  DB.s:=''+CRLF;                                     
   DB.info_spec:='+ specific infos about the protocol :';  
   for jj:=1 to TDBrecord('PG0.global').count do
   begin  
@@ -377,30 +382,6 @@ begin
   DB.Hour := Hour ; DB.Minute := Minute ; DB.SEcond := Second ;    
 end;
 
-procedure save_metadata_as_txt;
-var jj:integer; st, st2, filename :string;
-begin
-   filename := TDBrecord('PG0.Exp_params').filename;
-   openText(1,filename+sep+'metadata.json',false);
-   writelnText(1,'{');
-  for jj:=1 to TDBrecord('PG0.global').count do
-  begin  
-    st:= TDBrecord('PG0.global').Names[jj] ;
-    st2:=TDBrecord('PG0.global').Valstring[jj] ;
-    writelnText(1,'"'+st+'":"'+st2+'",');
-  end;                                                                      
-  for jj:=1 to TDBrecord('PG0.Exp_params').count do
-  begin  
-    st:= TDBrecord('PG0.Exp_params').Names[jj] ;
-    st2:=TDBrecord('PG0.Exp_params').Valstring[jj];
-    writelnText(1,'"'+st+'":"'+st2+'",');
-  end;        
-  for jj:=1 to ChannelCount do WriteLnText(1, '"DY'+Istr(jj)+'" : "'+Rstr(v[jj].dY)+'",');
-  writelnText(1,'"lastline":"no_value"');
-  writelnText(1,'}');
-  closeText(1);                                                              
-end;
-
 procedure my_initprocess0;
 var PathOfTheDay, protocol, filename  : string ; {variables to fetch the date and time }
 begin
@@ -410,9 +391,10 @@ begin
    DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time}
    filename := PathOfTheDay+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)+'_'+protocol ;
    TDBrecord('PG0.Exp_params').filename := filename;
-   acquisition.genericfilename := PathOfTheDay+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)+'_'+protocol ;
+   write_Exp_params; 
    FillDBinfo(DB); 
-   if SAVING then begin CreateDir(filename); write_Exp_params; save_metadata_as_txt;  acquisition.writeDBfileinfo(DB); end;
+   if SAVING then begin CreateDir(filename); acquisition.writeDBfileinfo(DB); end;
+   acquisition.genericfilename := PathOfTheDay+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)+'_'+protocol ;
 end;
 
 procedure Save_Vector_From_NEURON(neuron_vector, filename: string);
@@ -420,8 +402,8 @@ var Path, protocol, st : string ; i : integer;
 begin
    protocol := ProtocolName[protocol_index];
    Path := TDBrecord('PG0.global').PathOfTheDay ;
-   Path := Path+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)+'_'+protocol;
-   openText(1,Path+sep+filename,false);
+   Path := Path+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)+'_'+protocol+'\';
+   openText(1,Path+filename,false);
    for i:=0 to 1999 do
       begin
 	 st := Rstr(RTneuron.getNRNvalue(neuron_vector+'['+Istr(i)+']'), 1, 6);
@@ -470,28 +452,30 @@ begin
    RTneuron.execute('ncI.delay = 0');
    RTneuron.execute('nsE.seed(0)');
    RTneuron.execute('nsI.seed(2)');
+   RTneuron.execute('Qe_up = 0.004');
+   RTneuron.execute('Qe_down = 0.001');
+   RTneuron.execute('Qi_up = -0.003');
+   RTneuron.execute('Qi_down = -0.0032');
    {synaptic weights}
-   RTneuron.execute('ncE.weight = 0.003');
-   RTneuron.execute('ncI.weight = -0.003'); {NEGATIVE FLAG !!!}
+   RTneuron.execute('ncE.weight = Qe_up');
+   RTneuron.execute('ncI.weight = Qi_up'); {NEGATIVE FLAG !!!}
    {then synaptic times}
-   RTneuron.execute('stim.tau = 5');
-   {synaptic reversal potential}
-   RTneuron.execute('stim.DrivingForce = 30');
-   { static conductance }
-   RTneuron.execute('stim.muV = -55');
-   RTneuron.execute('stim.Gs = 0.4');
+   RTneuron.execute('stim.tauE = 5');
+   RTneuron.execute('stim.tauI = 10');
    {firing frequencies}
-   RTneuron.execute('nsE.interval = 0.1');
-   RTneuron.execute('nsI.interval = 0.1');
+   RTneuron.execute('nsE.interval = 1.');
+   RTneuron.execute('nsI.interval = 0.5');
    {current to bring at mean}
-   RTneuron.execute('stim.I0 = 0.3');
    RTneuron.execute('objref fih, rand, cvode');
    RTneuron.execute('rand = new Random()');
-   RTneuron.execute('rand.normal(400,200*200)');
+   RTneuron.execute('rand.normal(300,200*200)');
    RTneuron.execute('cvode = new CVode()');
    RTneuron.execute('fih = new FInitializeHandler(1, "f1()")');
    RTneuron.execute('tt = 0.');
-   RTneuron.execute('proc f1() {for i=0, 100 {tt = tt+rand.repick() print tt cvode.event(tt, "stim.stop_flag=(1-stim.stop_flag)")}}');
+   RTneuron.execute('proc f2() {ncE.weight = (Qe_up-ncE.weight)*Qe_up/(Qe_up-Qe_down) - (Qe_down-ncE.weight)*Qe_down/(Qe_up-Qe_down)}');
+   RTneuron.execute('proc f3() {ncI.weight = (Qi_up-ncI.weight)*Qi_up/(Qi_up-Qi_down) - (Qi_down-ncI.weight)*Qi_down/(Qi_up-Qi_down)}');
+   { RTneuron.execute('proc f1() {\for i=0, 500 {\tt = tt+rand.repick() cvode.event(tt, "stim.stop_flag=(1-stim.stop_flag)")!{\!{\'); }
+   RTneuron.execute('proc f1() {for i=0, 500 {tt = tt+rand.repick() cvode.event(tt, "f2() f3()")}}');
 end;
 
 { =========================================================================
@@ -638,13 +622,13 @@ begin
    if Up_State_Stim then RTneuron.execute('UD_loop.up_stimulation = 0') else RTneuron.execute('UD_loop.up_stimulation = -1');
    if Down_State_Stim then RTneuron.execute('UD_loop.down_stimulation = 0') else RTneuron.execute('UD_loop.down_stimulation = -1');
 
-   if (ProtocolName[protocol_index]='Vm------------Opto-Stim-vs-Ctrl') then
+   if (ProtocolName[protocol_index]='Vm-feedback--Opto-Stim-vs-Ctrl') then
       begin
 	 RTneuron.execute('for i = 0,1999 { if (i%'+Istr(Stim_Periodicity)+'==1) { UD_loop.stim_vec[i]=1 } }' );
 	 RTneuron.execute('for i = 0,1999 { UD_loop.delay_vec[i]='+Rstr(Delay_for_stim)+'}');
 	 RTneuron.execute('for i = 0,1999 { UD_loop.duration_vec[i]='+Rstr(Dur_for_stim)+'}');
       end
-   else if (ProtocolName[protocol_index]='Vm------------Stim-at-Various-Delays') then
+   else if (ProtocolName[protocol_index]='Vm-feedback--Stim-at-Various-Delays') then
       begin
 	 if num_delay>1 then
 	    begin
@@ -657,7 +641,7 @@ begin
 	       RTneuron.execute('for i = 0,1999 { UD_loop.duration_vec[i]='+Rstr(Dur_for_stim)+'}');
 	    end else MessageBox('Need delay_num>1 !');
       end
-   else if (ProtocolName[protocol_index]='Vm------------Stim-of-Various-Durations') then
+   else if (ProtocolName[protocol_index]='Vm-feedback--Stim-of-Various-Durations') then
       begin
 	 if num_duration>1 then
 	    begin
@@ -691,6 +675,7 @@ begin
 	      // then initialization
 	      InitializeChannels; Init_Vm_feedback_loop;
 	   end;
+     203 : updatecursor_in_NEURON;
      end;
      UD_dialog.update;
 end;  
@@ -727,6 +712,8 @@ begin
       setText('______________________________________');
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
+      setText('');
+      getCommandA(' Update cursors',0,203); { OnEvent flag -D  201 }
       Caption:='Real-Time-opto Up&Down';
       Show;
    end;
@@ -749,6 +736,7 @@ begin
 	      // then initialization
 	      InitializeChannels; Init_Vm_feedback_loop;
 	   end;
+     203 : updatecursor_in_NEURON;
      end;
      UD_dialog.update;
 end;  
@@ -786,6 +774,8 @@ begin
       setText('______________________________________');
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
+      setText('');
+      getCommandA(' Update cursors',0,203); { OnEvent flag -D  201 }
       Caption:='Real-Time-opto Up&Down';
       Show;
    end;
@@ -808,6 +798,7 @@ begin
 	      // then initialization
 	      InitializeChannels; Init_Vm_feedback_loop;
 	   end;
+     203 : updatecursor_in_NEURON;
      end;
      UD_dialog.update;
 end;  
@@ -845,6 +836,8 @@ begin
       setText('______________________________________');
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
+      setText('');
+      getCommandA(' Update cursors',0,203); { OnEvent flag -D  201 }
       Caption:='Real-Time-opto Up&Down';
       Show;
    end;
@@ -879,17 +872,17 @@ begin
    DecodeDateTime(Now,Year,Month,Day,Hour2,Minute2,Second2,MilliSecond2); {function to fetch date and time}
    case location_index of
      1: begin {setup}
-	   PathOfTheDay := 'D:\Yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
+	   PathOfTheDay := 'D:\Yann\DATA_elphy\Exps_Ste_and_Yann\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
 	   sep :='\';
 	   TDBrecord('PG0.global').loadnrnPath := 'D:/home/yann/work/elphy/nrn_files/' ; 
 	end; 
      2: begin {osx}
-	   PathOfTheDay := 'Z:\Users\yzerlaut\DATA\debuging_data\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
+	   PathOfTheDay := 'Z:\Users\yzerlaut\DATA_elphy\Exps_Ste_and_Yann\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
 	   sep :='/';
 	   TDBrecord('PG0.global').loadnrnPath := 'Z:/Users/yzerlaut/work/elphy/nrn_files/' ; 
 	end;
      3: begin {linux}
-	   PathOfTheDay := 'Z:\home\yann\DATA\debuging_data\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
+	   PathOfTheDay := 'Z:\home\yann\DATA_elphy\Exps_Ste_and_Yann\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
 	   sep :='/';
 	   TDBrecord('PG0.global').loadnrnPath := 'Z:/home/yann/work/elphy/nrn_files/' ; 
 	end;
@@ -955,13 +948,13 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
   case n of
     101: begin
 	    proto := ProtocolName[protocol_index];
-	    if proto='Vm-Feedback---Spont-Act-Sampling'
+	    if proto='Vm-feedback--Spont-Act-Sampling'
 	       then begin closedLoop:=False ; with_LFP :=False ; InitSASdialog; InitializeChannels; Init_Vm_feedback_loop; end
-	    else if proto='Vm------------Opto-Stim-vs-Ctrl'
+	    else if proto='Vm-feedback--Opto-Stim-vs-Ctrl'
 	       then begin closedLoop:=True; with_LFP :=False ; InitUD_dialog; end
-	    else if proto='Vm------------Stim-at-Various-Delays'
+	    else if proto='Vm-feedback--Stim-at-Various-Delays'
 	       then begin closedLoop:=True; with_LFP :=False ; InitUDdelayVm_dialog; end
-	    else if proto='Vm------------Stim-of-Various-Durations'
+	    else if proto='Vm-feedback--Stim-of-Various-Durations'
 	       then begin closedLoop:=True; with_LFP :=False ; InitUDdurationVm_dialog; end;
          end;
     333	: load_fake_Vm;
@@ -1040,103 +1033,96 @@ end;
 // ----------- Metadata (TDBrecord,...) written in a JSON file  ------- //
 // ==================================================================== //
 
-const
-ROOT_DATA = '\DATA' ; // this will be translated into ROOT_DATA+'_binary' (so here '\DATA_binary') to store the binary files !!!!
-   
 var elphy_filename, binary_filename, json_filename, dat_directory, new_directory : string ;
 var time:TdateTime; var size:longword; var att:integer ;    
      
-// --- for the binary file very simple, no header, no [...]
-// just the episodes one by one and the channels one by one  
-// --- JSON file : all the remaining importnat informations
-// about the protocol and acquisition       
-procedure save_Binary_Json(elphy_filename, binary_filename, json_filename:string);
+procedure save_Binary_Json(elphy_filename:string);
 var datafile : Tdatafile ; binfile : TbinaryFile; db_info : TDBrecord;
-    channelID, episodeID, jj, ii : integer ;
-    st, st2 : string;
+    channelID, episodeID, jj, ii, num : integer ;
+    st, st2, name, ext, binary_filename, json_filename, binary_data_path, elphy_data_path : string;
+   
 begin
-  // loading Elphy datafile 
-  datafile.create;
-  datafile.NewFile(elphy_filename);
-  // creating the binary file
-  MessageBox(binary_filename);
-  binfile.rewrite(binary_filename);
-  // creating the json file
-  openText(1, json_filename, False); // False for writing mode
-  
-  statuslineTxt('==> translating binary and json files for :'+elphy_filename);
-  
-  // Binary file writing ! 
-  for episodeID:=1 to datafile.EpCount do
-  begin 
-    datafile.EpNum := episodeID ;                                                                                           
-    for channelID := 1 to datafile.channelcount do
-    begin
-      statuslineTxt('channel'+Istr(channelID)+', episode'+Istr(episodeID)+' v1[0]='+Rstr(datafile.v[1][datafile.v[1].Iend]));
-      datafile.v[channelID].SaveBinaryData(binfile, 2);
-    end;
-  end;
-  
-  // JSON file
-  writelnText(1,'{'); // and we start the dict() structure
-  db_info.create;  
-  {we start by the informations stored in the TdbRecord associated to the acquisition file} 
-  datafile.ReadDBFileInfo(db_info);
-  for jj:=1 to db_info.count do
-  begin  
-    st:= db_info.Names[jj] ;
-    st2:=db_info.Valstring[jj];
-    writelnText(1,'"'+st+'":"'+st2+'",');
-  end;        
-  // then the gain of each channel
-  for ii:=1 to datafile.ChannelCount do
+  // ---------------------------------------------------------
+  // Finding the right path
+  // ---------------------------------------------------------
+   SplitFileNameEx(elphy_filename, elphy_data_path, name, num, ext);
+   binary_data_path := elphy_data_path;
+   if Pos('_ELPHY', elphy_data_path)>0 then 
+   begin
+      Delete(binary_data_path, Pos('_ELPHY', binary_data_path),Length('_ELPHY'));
+      if not DirectoryExists(binary_data_path) then createDir(binary_data_path);
+   end else MessageBox('Problem with directory:'+elphy_data_path);
+   // then making a folder with the protocol name
+   binary_data_path := binary_data_path+'\'+name;
+   if not DirectoryExists(binary_data_path) then createDir(binary_data_path);
+   // then simple name within folder
+   binary_filename := binary_data_path+'\data.bin'; // we also change the extension
+   json_filename := binary_data_path+'\metadata.json'; // we also change the extension
+   // ---------------------------------------------------------
+   // Copying the metadata files
+   // ---------------------------------------------------------
+   st := FirstFile(elphy_data_path+name+'\*.txt');
+   while st<>'' do
+   begin
+      SplitFileNameEx(st, elphy_data_path, name, num, ext);
+      if CopyFile(st,binary_data_path+'\'+name+ext) then StatusLineTxt(st+' copied') else MessageBox('File '+st+' not copied');
+      st := NextFile;
+   end;
+   // ---------------------------------------------------------
+   // Initializing files
+   // ---------------------------------------------------------
+   // loading Elphy datafile 
+   datafile.create;
+   datafile.NewFile(elphy_filename);
+   // creating the binary file
+   binfile.rewrite(binary_filename);
+   // creating the json file
+   openText(1, json_filename, False); // False for writing mode
+   
+   statuslineTxt('==> translating binary and json files for :'+elphy_filename);
+   // ---------------------------------------------------------
+   // Binary file writing ! 
+   // ---------------------------------------------------------
+   for episodeID:=1 to datafile.EpCount do
+   begin 
+      datafile.EpNum := episodeID ;                                                                                           
+      for channelID := 1 to datafile.channelcount do
+      begin
+	 statuslineTxt('channel'+Istr(channelID)+', episode'+Istr(episodeID)+' v1[0]='+Rstr(datafile.v[1][datafile.v[1].Iend]));
+	 datafile.v[channelID].SaveBinaryData(binfile, 5);
+      end;
+   end;
+   
+   // ---------------------------------------------------------
+   // JSON file writing
+   // ---------------------------------------------------------
+   statuslineTxt('writing JSON file (matadata)');
+   writelnText(1,'{'); // and we start the dict() structure
+   db_info.create;  
+   {we start by the informations stored in the TdbRecord associated to the acquisition file} 
+   datafile.ReadDBFileInfo(db_info);
+   for jj:=1 to db_info.count do
+   begin  
+      st:= db_info.Names[jj] ;
+      st2:=db_info.Valstring[jj];
+      writelnText(1,'"'+st+'":"'+st2+'",');
+   end;        
+   // then the gain of each channel
+   for ii:=1 to datafile.ChannelCount do
       WriteLnText(1, '"gain_'+Istr(ii)+'" : "'+Rstr(datafile.v[ii].dY)+'",');
-  // then the unit of each channel
-  WriteLnText(1, '"unitX" : "'+datafile.v[1].unitX+'",'); // all channels have the same x unit
-  for ii:=1 to datafile.ChannelCount do
+   // then the unit of each channel
+   WriteLnText(1, '"unitX" : "'+datafile.v[1].unitX+'",'); // all channels have the same x unit
+   for ii:=1 to datafile.ChannelCount do
       WriteLnText(1, '"unitY_'+Istr(ii)+'" : "'+datafile.v[ii].unitY+'",');
-  // Then some other very usefull things:
-  WriteLnText(1, '"ChannelCount" : "'+Istr(datafile.ChannelCount)+'",');
-  WriteLnText(1, '"EpCount" : "'+Istr(datafile.EpCount)+'",');
-  // finally we close the JSON file 
-  writelnText(1,'"lastline":"no_value"}'); // we write a last line (just to have no comma)
-  CloseText(1);
-  // we close everything
-  db_info.free; datafile.free; binfile.free;
-  statuslineTxt('DONE !! ');
-end;
-
-// we translate a data path of Elphy files into a data path of binary files
-// if this directory does not exist, we create it
-// N.B. the new directory will translate ROOT_DATA in ROOT_DATA+'_binary'
-procedure get_binary_data_path(elphy_data_path:string; var binary_data_path:string);
-begin
-binary_data_path := binary_data_path;
-if Pos(ROOT_DATA, binary_data_path)>0
-then 
- begin
-  Insert('_binary', binary_data_path, Pos(ROOT_DATA, binary_data_path)+Length(ROOT_DATA));
-  if not DirectoryExists(binary_data_path)then createDir(binary_data_path);
- end
-else
- MessageBox('Directory do not contains the ROOT_DATA directory (see comments in code)');
-end;
-
-procedure get_binary_filename(elphy_filename:string; var binary_filename:string);
-var st:string; var path1, path2, name:string; var num:integer; var ext:string;
-begin
-   SplitFileNameEx(elphy_filename, path1, name, num, ext);
-   get_binary_data_path(path1, path1); // we change the path to put it in the binary folder
-   { CopyDir(path1, path2); }
-   binary_filename := path1+name+Istr(num)+'.bin'; // we also change the extension
-end;
-
-procedure get_json_filename(elphy_filename:string; var json_filename:string);
-var st:string; var path, name:string; var num:integer; var ext:string;
-begin
-   SplitFileNameEx(elphy_filename, path, name, num, ext);
-   get_binary_data_path(path, path); // we change the path to put it in the binary folder
-   json_filename := path+name+Istr(num)+'.json'; // we also change the extension
+   // Then some other very usefull things:
+   WriteLnText(1, '"ChannelCount" : "'+Istr(datafile.ChannelCount)+'",');
+   WriteLnText(1, '"EpCount" : "'+Istr(datafile.EpCount)+'",');
+   // finally we close the JSON file 
+   writelnText(1,'"lastline":"no_value"}'); // we write a last line (just to have no comma)
+   CloseText(1);
+   // we close everything
+   db_info.free; datafile.free; binfile.free;
+   statuslineTxt('DONE !! ');
 end;
 
 
@@ -1153,7 +1139,7 @@ begin
    RTneuron.resetParams;
    SetLocations; SetSetup; SetOpto; SetClamp;SetProtocolNames;
    if location='RT-Setup' then begin setup_index :=1; location_index:=1 ; SAVING:=True; end;
-   if location='Macbook' then begin setup_index :=2; location_index:=2 ; SAVING:=False; end;
+   if location='Macbook' then begin setup_index :=3; location_index:=2 ; SAVING:=False; end;
    global.create; Exp_Params.create;
    Update_Location; Update_Setup;
  
@@ -1162,8 +1148,8 @@ begin
    TDBrecord('PG0.global').clamp_index := clamp_index; // integer that code for 1:IC, 2: VC
    TDBrecord('PG0.global').cont_choice := True; // if True -D  continus mode, else episode
    TDBrecord('PG0.global').stim := False;  // if True acquisition.Fstimulate := True
-   TDBrecord('PG0.global').main_protocol:='';
-   TDBrecord('PG0.global').protocol:='RT-opto-Up-Down';
+   TDBrecord('PG0.global').main_protocol:='RT-opto-Up-Down';
+   TDBrecord('PG0.global').protocol:='';
    TDBrecord('PG0.Exp_params').exp_type := 'blank-exp';
    TDBrecord('PG0.global').saving := True ;
    gain1 :=1 ; gain2 := 1. ;
@@ -1184,9 +1170,7 @@ program Convert_a_single_File
 global_init;init_csts;
 elphy_filename := PathOftheDay+'\*.DAT';
 ChooseFile(elphy_filename);
-get_binary_filename(elphy_filename, binary_filename);
-get_json_filename(elphy_filename, json_filename);
-save_Binary_Json(elphy_filename, binary_filename, json_filename);
+save_Binary_Json(elphy_filename);
 
 program Loop_over_files_in_root_folder
 global_init;init_csts;
@@ -1197,10 +1181,7 @@ while (elphy_filename<>'') do
   if extractFileExt(elphy_filename)='.DAT' then 
     begin
      MessageBox(elphy_filename);
-     get_binary_filename(elphy_filename, binary_filename);
-     MessageBox(binary_filename);
-     get_json_filename(elphy_filename, json_filename);
-     save_Binary_Json(elphy_filename, binary_filename, json_filename);
+     save_Binary_Json(elphy_filename);
     end;
   elphy_filename := NextFile ;
  end;  

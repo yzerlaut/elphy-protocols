@@ -1,8 +1,8 @@
-TITLE VClamp.mod
+TITLE myVClamp.mod
 COMMENT
-adapted by yann zerlaut : zerlaut@unic.cnrs-gif.fr
+adapted by yann zerlaut, yann.zerlaut@gmail.com, 2013 CNRS, France and 2016 IIT, Italy
 for the RTneuron-Simulation mode in Elphy
-adapted from svclmp.mod 
+adapted from svclmp.mod // basically it enables to have a hodling set by the amplifier and not by NEURON !
 see the comments below
 -----------------------------------------------------------------------
 Single electrode Voltage clamp with three levels.
@@ -28,12 +28,14 @@ ENDCOMMENT
 
 NEURON {
 	POINT_PROCESS myVClamp
+	RANGE V0, rs, vc, i, V_CMD
+	USEION ca READ cao WRITE cai 
 	ELECTRODE_CURRENT i
-	RANGE V0, Vcmd, rs, vc, i
 }
 
 UNITS {
 	(nA) = (nanoamp)
+	(pA) = (picoamp)
 	(mV) = (millivolt)
 	(uS) = (microsiemens)
 }
@@ -41,19 +43,24 @@ UNITS {
 
 PARAMETER {
     rs = 5 (megohm) <1e-9, 1e9>
-    V0 = -65 (millivolt)
+    V0 = -70 (millivolt)
+    I0 = 1000 (pA)
+    I1 = 1 (nA)
+    eca = 0 (mV)
 }
 
 ASSIGNED {
 	v (mV)	: automatically v + vext when extracellular is present
 	i (nA)
 	vc (mV)
-	Vcmd (mV) : Vcmd is the command in voltage clamp, so Delta V !
+	cao (mV) : V_CMD is the command in voltage clamp, so Delta V !
+	cai (pA)
 }
 
 BREAKPOINT {
 	SOLVE icur METHOD after_cvode
 	vstim()
+	cai = -I0/I1*i
 }
 
 PROCEDURE icur() {
@@ -75,6 +82,6 @@ time step.
 ENDCOMMENT
 
 PROCEDURE vstim() {
-    vc = V0+Vcmd
+    vc = V0+cao
     icur()
 }

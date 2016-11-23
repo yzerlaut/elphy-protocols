@@ -3,6 +3,7 @@ NEURON {
 	RANGE tau1E,tauE, Ee, ge 
 	RANGE tau1I,tauI, Ei, gi
 	RANGE Ipico, stop_flag
+	USEION ca READ cai : is the externally generated command !
 	NONSPECIFIC_CURRENT i
 }
 
@@ -30,6 +31,7 @@ ASSIGNED {
 	factorE
 	factorI
 	stop_flag
+	cai (nA) : actually pA
 }
 
 STATE {
@@ -68,7 +70,7 @@ BREAKPOINT {
     SOLVE state METHOD cnexp
     ge = Be - Ae
     gi = Bi - Ai
-    if (stop_flag==1) {i=0} else { i = ge*(v-Ee)+gi*(v-Ei) }
+    if (stop_flag==1) {i=0} else { i = ge*(v-Ee)+gi*(v-Ei) - 0.001*cai}
     UNITSOFF
     Ipico = -1000*i
     UNITSON

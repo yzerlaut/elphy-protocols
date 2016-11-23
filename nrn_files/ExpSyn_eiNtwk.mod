@@ -13,6 +13,7 @@ NEURON {
 	RANGE tauI, Ei, gi
 	RANGE startI, stopI, Icst
 	RANGE stop_flag
+	USEION ca READ cai
 	NONSPECIFIC_CURRENT i
 }
 
@@ -35,6 +36,7 @@ PARAMETER {
 ASSIGNED {
 	v (mV)
 	i (nA)
+	cai (nA) : actually pA
 	stop_flag
 }
 
@@ -57,9 +59,9 @@ BREAKPOINT {
 	i=0
     } else { 
 	if (t < stopI && t >= startI) { 
-	    i = ge*(v-Ee)+gi*(v-Ei) - Icst
+	    i = ge*(v-Ee)+gi*(v-Ei) - Icst + 0.001*cai
 	} else {
-	    i = ge*(v-Ee)+gi*(v-Ei)
+	    i = ge*(v-Ee)+gi*(v-Ei) + 0.001*cai
 	}
     }
 }

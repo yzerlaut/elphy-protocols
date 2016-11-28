@@ -7,7 +7,7 @@
 Const
    ProtocolCount = 17 ; 
    OptoCount	 = 9 ; 
-   location	 = 'Macbook' ; // switch to 'RT-Setup' for experiments !!
+   location	 = 'RT-Setup' ; // switch to 'RT-Setup' for experiments !!
    setup	 = 'NEURON-sim' ; // switch to 'RT-Setup' for experiments !!
 
   {		 = ======== COMMON VARIABLES ============ }
@@ -22,7 +22,7 @@ var
    gain1,gain2, episode_duration, acquisitionISI					 : real;
    gain1_index,gain2_index, max_EP_num							 : integer;
    dll_load										 : string ;
-   f_acq										 : real ; // parameters of the patch recording !
+   f_acq, El, Cm, Rm, Rs, Rs2										 : real ; // parameters of the patch recording !
    hist, cum_proba									 : Tvector; 
    fraction_of_cumprob_for_Down_transition, fraction_of_cumprob_for_Up_transition	 : real;
    upward_threshold, downward_threshold, spike_threshold, subsampling_freq, Amp_for_Stim : real ;
@@ -144,7 +144,8 @@ end;
 
 procedure init_csts;
 begin
-   f_acq := 10. ; 
+   f_acq := 10. ;
+   El := -70 ; Cm :=200 ; Rm :=100;
    upward_threshold :=-60;
    downward_threshold :=-65;
    subsampling_freq := 1.;
@@ -678,10 +679,10 @@ end;   {SetGain2}
 
 procedure InitializeChannels;
 begin
-   if SetupName[setup_index]='RT-Setup' then Set_DC_channels else Set_DC_channels_DEMO;
+   if SetupName[location_index]='RT-Setup' then Set_DC_channels else Set_DC_channels_DEMO;
    if SetupName[setup_index]='NEURON-sim.' then Initialize_Simulated_Up_and_Down_States; // Fake data
    // the initialization
-   RTneuron.execute('finitialize(-70)');
+   RTneuron.execute('finitialize('+Rstr(El)+')');
 end;
 
 
@@ -814,9 +815,6 @@ begin
    vec.fill1(-VCMT_amp/2,vec.Istart+VCMT_t3,vec.Istart+VCMT_t4);
 end;
   
-var
-  rm,rs,cm,rs2:real;
-
  //old version,  implemented by gerard, not based on the surface...
 procedure RsCm2(var vec:Tvector;var rm,rs,cm,rs2:real;cursor : Boolean); 
   var
@@ -1051,7 +1049,7 @@ var
   ICMT_amp, ICMT_t1, ICMT_t2, ICMT_interStim : real ;
   ICMT_dialog : Tdialog ; ICMT_moy : Taverage ; ICMT_fit : TcurveFitting ;
   ICMT_cursor : Tcursor ; ICMT_memo : Tmemo ;
-  bridge, El, holding : real ;
+  bridge, holding : real ;
   
 
 procedure Build_ICMTstim(seq:longint;var vec:Tvector);  {pulse procedure called at each buildep}
@@ -2096,7 +2094,7 @@ begin
      1: begin {setup}
 	   PathOfTheDay := 'D:\Yann\DATA_elphy\Exps_Ste_and_Yann\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
 	   sep :='\';
-	   loadnrnPath := 'D:/home/yann/work/elphy/nrn_files/' ; 
+	   loadnrnPath := 'D:/yann/elphy/nrn_files/' ; 
 	end; 
      2: begin {osx}
 	   PathOfTheDay := 'Z:\Users\yzerlaut\DATA_elphy\Exps_Ste_and_Yann\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
@@ -2126,8 +2124,8 @@ begin
    begin
       memo.create;
       splitString(txtfile, '\', memo);
-      for ii:=1 to memo.count-1 do txtfile2:=txtfile2+memo[ii]+'/';
-      txtfile2:=txtfile2+memo[memo.count];
+      { for ii:=1 to memo.count-1 do txtfile2:=txtfile2+memo[ii]+'/'; }
+      { txtfile2:=txtfile2+memo[memo.count]; }
       RTneuron.execute('objref ff, vv'); RTneuron.execute('vv = new Vector()');
       RTneuron.execute('ff = new File()'); RTneuron.execute('ff.ropen("'+txtfile2+'")');
       RTneuron.execute('print " File loading [...] "'); RTneuron.execute('vv.scanf(ff)');
@@ -2145,8 +2143,8 @@ begin
    begin
       memo.create;
       splitString(txtfile, '\', memo);
-      for ii:=1 to memo.count-1 do txtfile2:=txtfile2+memo[ii]+'/';
-      txtfile2:=txtfile2+memo[memo.count];
+      { for ii:=1 to memo.count-1 do txtfile2:=txtfile2+memo[ii]+'/'; }
+      { txtfile2:=txtfile2+memo[memo.count]; }
       RTneuron.execute('objref ff2, vv2'); RTneuron.execute('vv2 = new Vector()');
       RTneuron.execute('ff2 = new File()'); RTneuron.execute('ff2.ropen("'+txtfile2+'")');
       RTneuron.execute('print " File loading [...] "'); RTneuron.execute('vv2.scanf(ff2)');

@@ -19,8 +19,8 @@ var
    ProtocolName										 : array[1..protocolCount] of string; ProtoNames, ProtoNum:string;
    DB											 : Tdbrecord ;  {for metadata information, storing comments, ... }
    Year,Month,Day,Hour,Minute,Second,MilliSecond					 : smallint; {variables to fetch the date and time }
-   gain1,gain2										 : real;
-   gain1_index,gain2_index								 : integer;
+   gain1,gain2, episode_duration, acquisitionISI					 : real;
+   gain1_index,gain2_index, max_EP_num							 : integer;
    dll_load										 : string ;
    f_acq										 : real ; // parameters of the patch recording !
    hist, cum_proba									 : Tvector; 
@@ -55,8 +55,8 @@ var
   i:integer;                           
 begin
    ProtocolName[1]:= 'Seal-Test'; 
-   ProtocolName[2]:= 'Membrane Test Current-Clamp '; 
-   ProtocolName[3]:= 'Membrane Test Voltage-Clamp'; 
+   ProtocolName[2]:= 'VC-Membrane Test'; 
+   ProtocolName[3]:= 'IC-Membrane Test'; 
    ProtocolName[4]:= ''; 
    ProtocolName[5]:= 'Vm-feedback--Spont-Act-Sampling';
    ProtocolName[6]:= 'Vm-feedback--Current-Pulses';
@@ -114,6 +114,7 @@ begin
    OptoName[8]:= 'Photo-Activation l2/3 pyr.'; 
    OptoName[9]:= 'Photo-Inhibition l2/3 pyr.';
    OptoList :='0';
+   OptoNames:='';
    for i:=1 to OptoCount do 
    begin OptoNames:=OptoNames+'|'+OptoName[i]; Optolist:=Optolist+'|'+Istr(i); end;
 end;    
@@ -128,6 +129,7 @@ begin
    CurrentsName[4]:= 'Both Alternatively';
    CurrentsName[5]:= 'Intermediate Currents';
    CurrentsList :='0';
+   CurrentsNames :='';
    for i:=1 to 4 do 
    begin CurrentsNames:=CurrentsNames+'|'+CurrentsName[i]; Currentslist:=Currentslist+'|'+Istr(i); end;
 end;    
@@ -148,7 +150,7 @@ begin
    subsampling_freq := 1.;
    spike_threshold := -30;
    Amp_for_Stim := 5;
-   Stim_Periodicity := 2 ;
+   Stim_Periodicity := 3 ;
    Delay_for_stim := 30 ;
    Dur_for_stim := 100   ;
    fraction_of_cumprob_for_Down_transition := 0.3 ;
@@ -163,7 +165,7 @@ begin
    current_pulse := -400.;
    excitatory_reversal := 80; inhibitory_reversal := -10.;
    intermediate_reversal := (inhibitory_reversal+excitatory_reversal)/2.;
-   current_index := 1; holding_potential := -70;
+   current_index := 1; holding_potential := -70; episode_duration := 500;
 end;
   
 {$EDIT channels_settings} 
@@ -211,14 +213,14 @@ begin
    v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ; v4.cpx:=1 ; v5.cpx:=1 ; v6.cpx:=1 ;
 end;
 
-procedure Set_DC_Channels_DEMO;       {NOT WORKING YET !!!!}
+procedure Set_DC_Channels_DEMO;   
 var 
    i : integer; 
 begin {-- we set all the variables of the acquisition class, then we create 
       the NEURON variables and link it to the analogous variables
        -- the NEURON files are loaded thanks to main dialog buttons}
    RTneuron.ResetParams;
-   acquisition.ChannelCount := 6; {one channel more in V-Clamp}
+   acquisition.ChannelCount := 6; 
    RTneuron.Execute('objref UD_loop, stim'); // initialization so that they are put to 'nil' by default
 
    {we delete previous graphical display}
@@ -293,7 +295,7 @@ begin {-- we set all the variables of the acquisition class, then we create
       end;
       acquisition.Channels[4].NrnSymbolName:='UD_loop.Up_flag'; acquisition.Channels[4].unitY:='mV' ; v4.title:='Up_flag'; 
       acquisition.Channels[3].NrnSymbolName:='UD_loop.V_LASER'; acquisition.Channels[3].unitY:='mV' ; v3.title:='TTL_Input';
-      if clamp_stim then begin addObject(1,3,v4);  addObject(1,3,v3); end else begin addObject(1,3,v4);  addObject(1,3,v3); end;
+      if clamp_stim then begin addObject(1,3,v4);  addObject(1,3,v3); end else begin addObject(1,2,v4);  addObject(1,2,v3); end;
    end else {fake compartment to still have UD_loop created}
    begin
       if ClampName[clamp_index]='I-Clamp' then  RTneuron.Execute('fake_comp UD_loop = new Vm_feedback_for_opto(.5)')
@@ -335,15 +337,15 @@ begin {-- we set all the variables of the acquisition class, then we create
       the NEURON variables and link it to the analogous variables
        -- the NEURON files are loaded thanks to main dialog buttons}
 
-   acquisition.ChannelCount := 4; // for the whole classic_electrophy protocols
-   RTneuron.execute('create soma, lfp');
+   RTneuron.ResetParams;
+   acquisition.ChannelCount := 6; 
    RTneuron.Execute('objref UD_loop, stim'); // initialization so that they are put to 'nil' by default
 
    {we delete previous graphical display}
    ClearObjects(1,1); ClearObjects(1,2);
    
    acquisition.Fcontinuous:=true;
-   acquisition.Fstimulate := False ; {we DON'T stimulate in Elphy!!}
+   acquisition.Fstimulate := stim ; {we DON'T stimulate in Elphy!!}
    acquisition.PeriodPerChannel:=1./f_acq ; { in ms }
 
    for i:=1 to acquisition.ChannelCount do 
@@ -352,28 +354,114 @@ begin {-- we set all the variables of the acquisition class, then we create
      acquisition.Channels[i].DownSamplingFactor:=1;
    end;
    
-   // MEMBRANE POTENTIAL, SENT TO THE DYNAMIC CLAMP LOOP
-   RTneuron.AdcChan[0].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[0].NrnSymbolName:='soma.v(.5)';
-   acquisition.Channels[1].NrnSymbolName:='soma.v(.5)'; acquisition.Channels[1].unitY:='mV' ;
-   addObject(1,1,v1); v1.title:='Vm(t)';
-   // LFP
-   RTneuron.AdcChan[1].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[1].NrnSymbolName:='lfp.v(.5)';
-   acquisition.Channels[1].NrnSymbolName:='lfp.v(.5)'; acquisition.Channels[1].unitY:='mV' ;
-   addObject(1,2,v2); v2.title:='LFP(t)';
-   if closedLoop then
+   {===============================================================}
+   {        Creating the fake (simulated) cell                     }
+   {===============================================================}
+   
+   RTneuron.FadvanceON:=True; { -->  NEURON calculus }  
+   RTneuron.execute('create soma, lfp, fake_comp');
+   RTneuron.execute('soma insert ca_ion'); {NEEDED in Voltage-Clamp, to have a non-Vm global variable...}
+
+   { {\===============================================================!{\ }
+   { {\        Recording channels                                     !{\ }
+   { {\===============================================================!{\ }
+
+   if ClampName[clamp_index]='I-Clamp' then
+   begin {Current-Clamp}
+      // channel 1 -->  primary ->  Vm
+      RTneuron.AdcChan[0].NrnSymbolName:='soma.v(.5)';
+      RTneuron.AdcChan[0].setScale(0,32767,0,1000.0/gain1);
+      acquisition.Channels[1].NrnSymbolName:='soma.v(0.5)';
+      acquisition.Channels[1].unitY:='mV' ;
+      addObject(1,1,v1); v1.title:='Vm(t)';
+      // channel 2 -->  secondary ->  Iinj (real amplifier output)
+      RTneuron.AdcChan[1].NrnSymbolName:='soma.cao(0.5)'; // secondary 
+      RTneuron.AdcChan[1].setScale(0,32767,0,20000.0/gain2);
+      acquisition.Channels[2].NrnSymbolName:='soma.cao(0.5)';
+      acquisition.Channels[2].unitY:='pA'; v2.title:='Iinj';
+      // COMMAND channel ->  Iinj (theoretical)
+      RTneuron.DacChan[0].NrnSymbolName:='soma.cai(0.5)';
+      RTneuron.DacChan[0].setScale(0,32767,0,4000.0); // command -> I clamp
+      stimulator.Channels[1].NrnSymbolName:='soma.cai(0.5)';
+      acquisition.Channels[3].NrnSymbolName:='soma.cai(0.5)';
+      acquisition.Channels[3].unitY:='pA';
+      if clamp_stim then addObject(1,2,v2); 
+   end else {Voltage-Clamp}
+   begin
+      // channel 1 -->  primary ->  recorded Isyn
+      RTneuron.AdcChan[0].NrnSymbolName:='soma.cao(0.5)';         
+      RTneuron.AdcChan[0].setScale(0,32767,0,20000.0/gain1);
+      acquisition.Channels[1].NrnSymbolName:='soma.cao(0.5)';
+      acquisition.Channels[1].unitY:='pA' ;
+      addObject(1,1,v1); v1.title:='Isyn';
+      // channel 2 -->  secondary -> V_pipette (real amplifier control)
+      RTneuron.AdcChan[1].NrnSymbolName:='soma.v(0.5)';  
+      RTneuron.AdcChan[1].setScale(0,32767,0,1000.0/gain2);
+      acquisition.Channels[2].NrnSymbolName:='soma.v(0.5)';
+      acquisition.Channels[2].unitY:='mV'; v1.title:='V_CMD';
+      // COMMAND channel ->  V_pipette (theoretical)
+      RTneuron.DacChan[0].NrnSymbolName:='soma.cai(0.5)';
+      RTneuron.DacChan[0].setScale(0,32767,0,4000.0); // command -> I clamp
+      stimulator.Channels[1].NrnSymbolName:='soma.cai(0.5)';
+      acquisition.Channels[3].NrnSymbolName:='soma.cai(0.5)';
+      acquisition.Channels[3].unitY:='pA';
+      if closedLoop then addObject(1,2,v2); 
+   end;
+   
+   {===============================================================}
+   {        Protocol Specific Mechanisms                           }
+   {===============================================================}
+   if ClosedLoop then
+   begin
+      if ClampName[clamp_index]='I-Clamp' then
       begin
 	 RTneuron.Execute('soma UD_loop = new Vm_feedback_for_opto(.5)');
-	 // CHECKING THE OUTPUT OF THE FEEDBACK LOOP , additional inputs for closed-loop setting
-	 RTneuron.AdcChan[2].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[2].NrnSymbolName:='TTL_CHECK'; // secondary comes from analogous
-	 RTneuron.AdcChan[3].setScale(0,32767,0,1000.0/gain1); RTneuron.AdcChan[3].NrnSymbolName:='UP_CHECK'; // secondary comes from analogous
-	 // OUTPUT OF THE FEEDBACK LOOP                                      
-	 RTneuron.DacChan[0].NrnSymbolName:='UD_loop.V_LASER'; RTneuron.DacChan[0].setScale(0,32767,0,1000.0/gain1); {command -D  I clamp, stim.i in nA !!! and opposite sign !!!}
-	 RTneuron.DacChan[1].NrnSymbolName:='UD_loop.Up_flag'; RTneuron.DacChan[1].setScale(0,32767,0,1000.0/gain1); {command -D  I clamp, stim.i in nA !!! and opposite sign !!!}
-	 acquisition.Channels[3].NrnSymbolName:='TTL_CHECK'; acquisition.Channels[3].unitY:='mV' ;
-	 acquisition.Channels[4].NrnSymbolName:='UP_CHECK'; acquisition.Channels[4].unitY:='mV' ;
-	 addObject(1,3,v3); addObject(1,3,v4); v3.title:='Online-Analysis Quantities';
+	 acquisition.Channels[5].NrnSymbolName:='UD_loop.v_LP';
+	 acquisition.Channels[5].unitY:='mV' ;
+	 v5.title:='Vm_low_passed'; addObject(1,1,v5);
+      end
+      else {Voltage-Clamp}
+      begin
+	 RTneuron.Execute('soma UD_loop = new Isyn_feedback_for_opto(.5)');
+	 acquisition.Channels[5].NrnSymbolName:='UD_loop.i_LP';
+	 acquisition.Channels[5].unitY:='pA' ;
+	 v5.title:='Isyn_low_passed'; addObject(1,1,v5);
+	 acquisition.Channels[6].NrnSymbolName:='soma.cao(0.5)';
+	 acquisition.Channels[6].unitY:='mV' ; v6.title:='Vcmd'; addObject(1,2,v6);
       end;
+      acquisition.Channels[4].NrnSymbolName:='UD_loop.Up_flag';
+      acquisition.Channels[4].unitY:='mV' ; v4.title:='Up_flag'; 
+      acquisition.Channels[3].NrnSymbolName:='UD_loop.V_LASER';
+      acquisition.Channels[3].unitY:='mV' ; v3.title:='TTL_Input';
+      // LASER COMMAND OUTPUT
+      RTneuron.DacChan[1].NrnSymbolName:='UD_loop.V_LASER';
+      RTneuron.DacChan[1].setScale(0,32767,0,4000.0); 
+      if clamp_stim then begin addObject(1,3,v4); addObject(1,3,v3); end
+          else begin addObject(1,2,v4);  addObject(1,2,v3); end;
+   end else {fake compartment to still have UD_loop created}
+   begin
+      if ClampName[clamp_index]='I-Clamp' then  RTneuron.Execute('fake_comp UD_loop = new Vm_feedback_for_opto(.5)')
+      else RTneuron.Execute('fake_comp UD_loop = new Isyn_feedback_for_opto(.5)');
+   end;
+   
+   {===============================================================}
+   {        Articifially Emulating Vm/lFP                          }
+   {===============================================================}
+   if SetupName[setup_index]='NEURON-sim.' then
+      begin
+   	 RTneuron.execute('soma insert hh_hippoc');
+   	 RTneuron.Execute('soma stim = new Exp2Syn_eiNtwk(0.5)');
+   	 if ClampName[clamp_index]='V-Clamp' then
+   	 begin {Voltage-Clamp}
+   	    RTneuron.execute('objref vclamp');
+   	    RTneuron.execute('soma vclamp = new myVClamp(0.5)');
+   	    RTneuron.execute('vclamp.rs=5.'); {15 MOhm access resistance !}
+   	 end;
+      end;
+   
+   // Final graphical settings
    FinalPlot_Settings;
+
 end;
 
 procedure set_dac_to_zero;
@@ -402,6 +490,9 @@ begin
    TDBrecord('PG0.global').PathOftheDay := PathOftheDay ; 
    TDBrecord('PG0.global').loadnrnPath := loadnrnPath ; 
    TDBrecord('PG0.global').location:=LocationName[location_index]; 
+   TDBrecord('PG0.global').episode_duration :=  episode_duration ;
+   TDBrecord('PG0.global').max_EP_num :=max_EP_num ;
+   TDBrecord('PG0.global').acquisitionISI:=acquisitionISI ;  // small break between the stims
    TDBrecord('PG0.Exp_params').fraction_of_cumprob_for_Down_transition := fraction_of_cumprob_for_Down_transition;
    TDBrecord('PG0.Exp_params').fraction_of_cumprob_for_Up_transition := fraction_of_cumprob_for_Up_transition;
    TDBrecord('PG0.Exp_params').upward_threshold := upward_threshold ;
@@ -436,6 +527,7 @@ begin
    TDBrecord('PG0.Exp_params').num_amp:=num_amp;
    TDBrecord('PG0.Exp_params').CMD_delay :=CMD_delay;
    TDBrecord('PG0.Exp_params').CMD_dur :=CMD_dur;
+   TDBrecord('PG0.Exp_params').current_pulse :=current_pulse;
    TDBrecord('PG0.Exp_params').clamp_periodicity := clamp_periodicity;
    TDBrecord('PG0.Exp_params').excitatory_reversal := excitatory_reversal;
    TDBrecord('PG0.Exp_params').inhibitory_reversal := inhibitory_reversal;
@@ -495,22 +587,19 @@ end;
 
 procedure Get_Transitions_Times;
 begin
-   if closedLoop then
-      begin
-	 Save_Vector_From_NEURON('UD_loop.up_transition_vec', 'up_transitions.txt');
-	 Save_Vector_From_NEURON('UD_loop.down_transition_vec', 'down_transitions.txt');
-	 Save_Vector_From_NEURON('UD_loop.stim_vec', 'stim_flag.txt');
-	 Save_Vector_From_NEURON('UD_loop.delay_vec', 'delays.txt');
-	 Save_Vector_From_NEURON('UD_loop.duration_vec', 'durations.txt');
-	 Save_Vector_From_NEURON('UD_loop.amplitude_vec', 'amplitudes.txt');
-	 if ClampName[clamp_index]='V-Clamp' then Save_Vector_From_NEURON('UD_loop.cmd_vec', 'Vcmd.txt');
-      end;
+   Save_Vector_From_NEURON('UD_loop.up_transition_vec', 'up_transitions.txt');
+   Save_Vector_From_NEURON('UD_loop.down_transition_vec', 'down_transitions.txt');
+   Save_Vector_From_NEURON('UD_loop.stim_vec', 'stim_flag.txt');
+   Save_Vector_From_NEURON('UD_loop.delay_vec', 'delays.txt');
+   Save_Vector_From_NEURON('UD_loop.duration_vec', 'durations.txt');
+   Save_Vector_From_NEURON('UD_loop.amplitude_vec', 'amplitudes.txt');
+   Save_Vector_From_NEURON('UD_loop.cmd_vec', 'commands.txt');
 end;
 
 procedure my_endprocess;
 begin
-   if SAVING then Get_Transitions_Times;
    set_dac_to_zero;
+   if SAVING then Get_Transitions_Times;
 end;
 
 {$EDIT artificial-UD}
@@ -575,6 +664,18 @@ begin
     end;
 end;   {SetGain1}
 
+procedure SetGain2; {TO BE ADJUSTED !!!}
+begin
+    case Gain2_index of
+    1: Gain2 := 1.0; 2: Gain2 := 2.0;
+    3: Gain2 := 5.0; 4: Gain2 := 10.0;
+    5: Gain2 := 20.0; 6: Gain2 := 50.0;
+    7: Gain2 := 100.0; 8: Gain2 := 200.0;
+    9: Gain2 := 500.0; 10: Gain2 := 1000.0;
+    11: Gain2 := 2000.0;
+    end;
+end;   {SetGain2}
+
 procedure InitializeChannels;
 begin
    if SetupName[setup_index]='RT-Setup' then Set_DC_channels else Set_DC_channels_DEMO;
@@ -583,6 +684,538 @@ begin
    RTneuron.execute('finitialize(-70)');
 end;
 
+
+{$EDIT seal_test}
+{ ==============================================================================
+--------------- BUILDING THE SEAL TEST PROCEDURE AND DIALOG --------------------
+================================================================================ }
+
+var 
+  tseal_vec : Tvector ; rseal_vec : Tvector ; iseal_vec : Tvector ; 
+  { vectors to monitor the evolution of the ileak and resistance of the seal in time } 
+  seal_memo : Tmemo ;   rseal_graph : Tgraph ; iseal_graph : Tgraph ;
+  i_baseline : real ; i_jump : real ; Rseal : real ; t0_seal : real ;
+  seal_dialog : Tdialog ; amp_seal, del_seal, dur_seal : real ;
+
+procedure Build_SealPulse(seq:longint;var vec:Tvector);  {pulse procedure called at each buildep}
+begin { we fill of 0, except between the t0+delay and t0+delay+duration }
+  vec.fill(0); vec.fill1(amp_seal,del_seal+vec.Istart,del_seal+dur_seal+vec.Istart);
+end;
+
+procedure seal_process;
+var tt : Tvector ; amplifier : string ;
+begin
+    DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
+
+    tt.create; Vcopy(v1,tt) ; i_baseline := tt.mean(1,del_seal-1); {constantes a ajuster en fonction des parametres du pulse}
+    i_jump := tt.mean(del_seal+20,del_seal+dur_seal-5);
+    if (i_jump-i_baseline)<>0 then Rseal := amp_seal/(i_jump-i_baseline)*1000 else Rseal:=0 ; 
+
+    rseal_vec.addtolist(Rseal); iseal_vec.addtolist(i_baseline);
+    tseal_vec.addtolist(60*Hour + Minute + Second/60 + MilliSecond/60/1000-t0_seal);
+    rseal_vec.refresh;iseal_vec.refresh;tseal_vec.refresh;
+    
+    rseal_graph.modify(tseal_vec,rseal_vec,tseal_vec.Istart,tseal_vec.Iend);
+    rseal_graph.refresh; rseal_graph.SetWorld(tseal_vec.Ymin,rseal_vec.Ymin,tseal_vec.Ymax,rseal_vec.Ymax);
+    iseal_graph.modify(tseal_vec,iseal_vec,tseal_vec.Istart,tseal_vec.Iend);
+    iseal_graph.refresh; iseal_graph.SetWorld(tseal_vec.Ymin,iseal_vec.Ymin,tseal_vec.Ymax,iseal_vec.Ymax);
+    
+    seal_memo.lines[3]:='Rseal= '+Rstr(Rseal,6,3)+' Mohm';
+    seal_memo.lines[5]:='I baseline= '+Rstr(i_baseline,6,3)+' pA';
+    seal_memo.refresh;
+    amplifier := TDBrecord('PG0.global').amplifier ;
+end;
+
+procedure Prepare_SealTest;
+begin
+   clamp_index := 2 ; // Voltage Clamp
+   cont_choice := False ; 
+   episode_duration :=  2*del_seal+dur_seal ;
+   max_EP_num :=0;
+   stim := True;
+   acquisitionISI:=0.5 ;  // small beak between the stims
+   {then we initialize the stimulation}
+   InitializeChannels; // we can initialize the channels
+   stimulator.Channels[1].BuildEp := Build_SealPulse ; 
+   stimulator.initVectors;
+   acquisition.InstallProcess(my_initprocess0, nil, seal_process, set_dac_to_zero);
+end;
+
+procedure SealTest_Event(n:integer);
+var amplifier : string ; 
+begin    
+   seal_dialog.updatevar;
+   case n of 
+   201 : Prepare_SealTest ;
+   end;
+end;
+
+procedure SealTest_Init;
+begin {when we modify the dialog, we adjust the stimulation params}
+
+  // initialize windows 
+  DestroyAllWindows(1);
+  Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
+  Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
+  Definewindow(1, 0, Round(PageHeight*2/3), Round(PageWidth/3), PageHeight);
+  Definewindow(1, Round(PageWidth/3), Round(PageHeight*2/3), Round(2*PageWidth/3), PageHeight);
+  Definewindow(1, Round(2*PageWidth/3), Round(PageHeight*2/3), Round(5*PageWidth/6), PageHeight);
+  Definewindow(1, Round(5*PageWidth/6), Round(PageHeight*2/3), PageWidth, PageHeight);
+  color:=cl_gray;
+
+  amp_seal :=-5; del_seal :=25 ; dur_seal := 100;  {pulse parameters}
+  {then we display the channels}
+  addObject(1,1,v1);  addObject(1,2,v2);   addObject(1,2,v3);
+  {then memo to display the values}
+  seal_memo.create(''); seal_memo.font.name:='Times New Roman'; seal_memo.font.size:=13;
+  seal_memo.font.color:=rgb(0,0,0);  seal_memo.font.style:=fs_bold;
+  seal_memo.lines[3]:='Rseal= '+Rstr(Rseal,6,3)+' Mohm';
+  seal_memo.lines[5]:='I baseline= '+Rstr(i_baseline,6,3)+' pA';
+  addObject(1,5,seal_memo);
+  {then the graph to display the time evolution of the parameters}
+  tseal_vec.create(t_single,0,-1);iseal_vec.create(t_single,0,-1);rseal_vec.create(t_single,0,-1);
+  rseal_graph.create(tseal_vec,rseal_vec,0,0); rseal_graph.Mode := DM_LINE_DIAMOND ; {graph initialisation }
+  iseal_graph.create(tseal_vec,iseal_vec,0,0); iseal_graph.Mode := DM_LINE_DIAMOND ;
+  addobject(1,3,rseal_graph);  {then we plot the vector}
+  addobject(1,4,iseal_graph);  {then we plot the vector} 
+  
+  {finally the small dialog fot the parameters and the initialisation}
+  seal_dialog.create ;
+  seal_dialog.getRealA(' Pulse size (mV)',amp_seal,3,1,99);
+  seal_dialog.getRealA(' onset (ms)',del_seal,3,1,99);
+  seal_dialog.getRealA(' duration (ms)',dur_seal,3,1,99);
+  seal_dialog.getCommandA('  init() ',0,999);
+  seal_dialog.OnEvent:=SealTest_event ;
+  AddDialog(1,6,seal_dialog); 
+  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
+  t0_seal := 60*Hour + Minute + Second/60 + MilliSecond/60/1000;
+  Prepare_SealTest ; // first initialization
+end;
+
+{$EDIT VC_membrane_test}
+{ ==============================================================================
+--------------- BUILDING THE MEMBRANE TEST IN VOLTAGE CLAMP --------------------
+================================================================================ }
+
+{ Membrane Test procedure : Voltage Clamp test }
+var
+  VCMT_fit : TcurveFitting;  VCMT_memo:Tmemo;  lVer:TlineVer;  lHor:TlineHor;
+  VCMT_moy : Taverage; VCMT_dialog : Tdialog ;  rs_vec : Tvector ; tmem_vec : Tvector ; 
+  t0_mem : real ; rs_graph : Tgraph ;  mt_dialog : Tdialog ; 
+  mt_cursor : Tcursor ; VCMT_interStim : real ;
+  VCMT_amp, VCMT_t1, VCMT_t2, VCMT_t3, VCMT_t4 : real ; {this will define the coltage s}
+
+
+procedure Build_VCMTstim(seq:longint;var vec:Tvector); 
+begin
+   vec.fill(0);
+   vec.fill1(-VCMT_amp/2,vec.Istart+VCMT_t1,vec.Istart+VCMT_t2);
+   vec.fill1(VCMT_amp/2,vec.Istart+VCMT_t2,vec.Istart+VCMT_t3);
+   vec.fill1(-VCMT_amp/2,vec.Istart+VCMT_t3,vec.Istart+VCMT_t4);
+end;
+  
+var
+  rm,rs,cm,rs2:real;
+
+ //old version,  implemented by gerard, not based on the surface...
+procedure RsCm2(var vec:Tvector;var rm,rs,cm,rs2:real;cursor : Boolean); 
+  var
+    I0,Im1,Is,Ip,tau:real;
+    x0:real;
+    x,xa,xb:real;
+    xorg:real;
+  begin
+    I0:=vec.mean(1,VCMT_t1-2);
+    Im1:=mini(vec,VCMT_t1-5,VCMT_t1+5)-I0;
+    Ip:=Im1; x0:=miniX(vec,VCMT_t1,VCMT_t1+5);
+    xorg:=FirstCrossing(vec,VCMT_t1-5,VCMT_t1+5,I0+Im1/2,false);
+    VCMT_fit.Xorigin:=xorg;
+    if cursor then begin VCMT_fit.xstartFit:=mt_cursor.position[1]; VCMT_fit.XendFit:=mt_cursor.position[2]; end 
+    else begin VCMT_fit.xstartFit:=x0+v1.convX(1); VCMT_fit.XendFit:=VCMT_t2-1;end;
+    VCMT_fit.execute; VCMT_fit.refresh ;
+    tau:=VCMT_fit.Param['a2'];
+    if tau<0 then tau:=-1/tau else tau:=1E9;
+    Is:=VCMT_fit.Param['a3']-I0;
+    Im1:=VCMT_fit.Param['a1']+Is;
+    if Im1<>0 then rs:=VCMT_amp/Im1*1000 else rs:=1E6; 
+    if Ip<>0 then rs2:=VCMT_amp/Ip*1000 else rs2:=1E6;
+    if Is<>0 then Rm:=VCMT_amp/Is*1000-Rs else Rm:=1E6;
+    Cm:=tau*(Rs+Rm)/(Rm*Rs)*1000;       
+    lHor.y:=Is+I0;
+    lVer.x:=xOrg;
+    with VCMT_memo do
+    begin
+      lines[3]:='tau='+Rstr(tau,12,3)+' ms';
+      lines[4]:='rs= '+Rstr(rs,12,3)+' Mohm';
+      lines[5]:='rm= '+Rstr(rm,12,3)+' Mohm';
+      lines[6]:='Cm= '+Rstr(Cm,12,3)+' pF';
+      lines[7]:='Rs2='+Rstr(rs2,12,3)+' Mohm';
+    end;
+    VCMT_memo.refresh;                     
+  end;
+
+
+procedure RsCm(var vec_arg:Tvector;var rm,rs,cm,rs2:real;cursor : Boolean); 
+  var
+    Ibase,Iend,integral_response,DI,Ijump,tau:real;
+    integral_resist,integral_capa : real ;
+    x0,x,xa,xb,Tint:real;
+    xorg:real;
+
+  begin
+    Ibase:= vec_arg.mean(VCMT_t2-11,VCMT_t2-1); {mean over 10ms}
+    Iend:= vec_arg.mean(VCMT_t3-11,VCMT_t3-1);  {mean over 10ms}
+    DI := Iend-Ibase ; {DI positif ou negatif}
+    if DI = 0 then DI:=1e-9 ; 
+    if DI<0 then 
+       begin
+          Ijump:=mini(vec_arg,VCMT_t2-5,VCMT_t2+5)-Ibase;
+          x0:=miniX(vec_arg,VCMT_t2,VCMT_t2+5);
+          xorg:=FirstCrossing(vec_arg,VCMT_t2-5,VCMT_t2+5,Ibase+Ijump/2,false); {false for downward}
+       end;
+    if DI>0 then 
+       begin
+          Ijump:=maxi(vec_arg,VCMT_t2-5,VCMT_t2+5)-Ibase;
+          x0:=maxiX(vec_arg,VCMT_t2,VCMT_t2+5);
+          xorg:=FirstCrossing(vec_arg,VCMT_t2-5,VCMT_t2+5,Ibase+Ijump/2,true); {true for upward}
+       end;
+
+    VCMT_fit.Xorigin:=xorg;
+
+    if cursor then begin VCMT_fit.xstartFit:=mt_cursor.position[1]; VCMT_fit.XendFit:=mt_cursor.position[2]; end 
+    else begin VCMT_fit.xstartFit:=x0+v1.convX(1); VCMT_fit.XendFit:=VCMT_t3-1;end;
+
+    VCMT_fit.execute; VCMT_fit.refresh ;
+
+    tau:=VCMT_fit.Param['a2']; {in the fit we only use the time constant value}
+    if tau<0 then tau:=-1/tau else tau:=1E9;
+
+    Tint := VCMT_t3-VCMT_t2 ; {length of the integral} 
+    integral_response := Integral(vec_arg,VCMT_t2,VCMT_t2+Tint,VCMT_t2-20,VCMT_t2-1);
+    integral_resist := DI*(Tint+Tau*(exp(-Tint/tau)-1)); {theoretical value given tau and Di, do the calculus}
+    integral_capa := integral_response  - integral_resist ;
+    {then we can deduce all the parameters :}
+    if integral_capa<>0 then rs:=tau*VCMT_amp/integral_capa*1000.0 else RS:=1E6;   { ms*mV / ms*pA *1000 -> Mohm } 
+    if DI<>0 then Rm:=VCMT_amp/DI*1000-Rs else Rm:=1E6;  { mV/pA*1000 -> Mohm  }
+    Cm:=tau*(Rs+Rm)/(Rm*Rs)*1000; {ms/Mohm*1000-> pF }
+    
+    lHor.y:=Iend;
+    lVer.x:=xOrg;
+    with VCMT_memo do
+    begin
+      lines[3]:='tau='+Rstr(tau,12,3)+' ms';
+      lines[4]:='rs= '+Rstr(RS,12,3)+' Mohm';
+      lines[5]:='rm= '+Rstr(rm,12,3)+' Mohm';
+      lines[6]:='Cm= '+Rstr(Cm,12,3)+' pF';
+    end;
+    VCMT_memo.refresh;
+end;
+
+
+{ ------------- then, Procedures of the Acquisition Processes (see doc) ----------}   
+
+procedure mt_initprocess;
+begin
+  VCMT_moy.create(t_single,v1.Istart,v1.Iend);
+  VCMT_moy.cpx:=1;  VCMT_moy.cpy:=1;  VCMT_moy.color:=cl_blue;
+  VCMT_moy.setWorld(VCMT_t2-5,v1.Ymin,VCMT_t2+5,v1.Ymax);
+  addObject(1,1,VCMT_moy);
+
+  VCMT_fit.create('');
+  VCMT_fit.standardModel:=fm_expC1 {fm_poly5};
+  VCMT_fit.initialize:=true;  VCMT_fit.reset;  VCMT_fit.setYdata(VCMT_moy);  VCMT_fit.MaxIt:=30;
+
+  VCMT_fit.setWorld(VCMT_moy.xmin,VCMT_moy.ymin,VCMT_moy.xmax,VCMT_moy.ymax);
+  VCMT_fit.cpx:=1;  VCMT_fit.cpy:=1;  VCMT_fit.matchVector(v1);  VCMT_fit.color:=cl_red;
+  addObject(1,1,VCMT_fit);
+end;
+
+procedure mt_process;
+begin
+     VCMT_moy.add(v1); {we add each episode result to the average}
+end;
+
+procedure mt_endprocess;
+begin
+  rsCm(VCMT_moy,rm,rs,cm,rs2,False); { and we process the analysis}
+  rs_vec.addtolist(rs); rs_vec.refresh;
+  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
+  tmem_vec.addtolist(0.001*(1000*60*60*Hour + 1000*60*Minute + 1000*Second + MilliSecond -t0_mem)); tmem_vec.refresh;
+  rs_graph.modify(tmem_vec,rs_vec,rs_vec.Istart,rs_vec.Iend); rs_graph.refresh ;
+  set_dac_to_zero;
+end;
+
+
+procedure prepare_mt;
+begin
+   {we write all the relevant global informations}
+   clamp_index := 2 ;
+   cont_choice := False ; 
+   episode_duration :=  VCMT_t1+VCMT_t4 ;
+   max_EP_num := 10 ; // 10 episodes !!
+   stim := True ;
+   acquisitionISI:= VCMT_interStim ;  // small break between the stims
+   TDBrecord('PG0.Exp_Params').clear;
+   TDBrecord('PG0.Exp_Params').exp_type:='VC_MembraneTest';
+   TDBrecord('PG0.Exp_Params').pulse_amplitude:=VCMT_amp;
+   TDBrecord('PG0.Exp_params').t1:=VCMT_t1;
+   TDBrecord('PG0.Exp_params').t2:=VCMT_t2;
+   TDBrecord('PG0.Exp_params').t3:=VCMT_t3;
+   TDBrecord('PG0.Exp_params').t4:=VCMT_t4;
+   {then we initialize the stimulation}
+   InitializeChannels; // we can initialize the channels
+   stimulator.Channels[1].BuildEp := Build_VCMTstim ; 
+   stimulator.initVectors;
+   acquisition.InstallProcess(my_initprocess0, mt_initprocess, mt_process, mt_endprocess);
+end;
+         
+
+procedure Set_global_RsRmCm;
+begin
+     TDBrecord('PG0.Exp_Params').Rs := Rs ;
+     TDBrecord('PG0.Exp_Params').Rm := Rm ;
+     TDBrecord('PG0.Exp_Params').Cm := Cm ;
+end;
+
+procedure VCMT_Event(n:integer);
+var amplifier : string ; 
+begin    
+   mt_dialog.updatevar;
+   case n of 
+   999 : prepare_mt ; 
+   998 : rsCm(VCMT_moy,rm,rs,cm,rs2,True);
+   997 : Set_global_RsRmCm;
+   end;
+end;
+
+
+procedure VCMembTest_Init; {executed only when ze choose the protocol }
+begin
+  // initialize windows 
+  DestroyAllWindows(1);
+  Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
+  Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
+  Definewindow(1, 0, Round(PageHeight*2/3), PageWidth, PageHeight);
+  DIvideWindow(1,3,3,1);
+  color:=cl_gray;
+
+   VCMT_amp:=-5; VCMT_t1:=20; VCMT_t2:=40; VCMT_t3:=60; VCMT_t4:=80;  // values charlotte
+   VCMT_interStim := 0.25 ;
+   TDBrecord('PG0.global').clamp_index := 2 ;
+   {then we display the channels}
+   addObject(1,1,v1);  addObject(1,2,v2);   addObject(1,2,v3);
+
+   rs_vec.create(t_single,0,-1) ; tmem_vec.create(t_single,0,-1) ; { we initialize the vector of the rs values }
+   rs_graph.create(tmem_vec,rs_vec,0,0); rs_graph.Mode := DM_LINE_DIAMOND ; {graph initialisation }
+   //addobject(1,3,rs_graph);
+
+   lVer.create('',0,cl_black,0); lHor.create('',0,cl_black,0);
+   addObject(1,1,lVer); addObject(1,1,lHor);
+
+   VCMT_memo.create(''); VCMT_memo.font.name:='Times New Roman'; VCMT_memo.font.size:=11;
+   VCMT_memo.font.color:=rgb(0,0,0);  VCMT_memo.font.style:=fs_bold;
+   addObject(1,4,VCMT_memo);
+
+   mt_dialog.create ;
+   mt_dialog.getRealA(' Pulse size (mV)',VCMT_amp,3,1,99);
+   mt_dialog.getRealA('t1',VCMT_t1,3,1,99);
+   mt_dialog.getRealA('t2',VCMT_t2,3,1,99);
+   mt_dialog.getRealA('t3',VCMT_t3,3,1,99);
+   mt_dialog.getRealA('t4',VCMT_t4,3,1,99);
+   mt_dialog.getRealA('inter-Stim-interval (s)',VCMT_interStim,3,1,99);
+   mt_dialog.getCommandA('  init() ',0,999);
+   mt_dialog.setText('');
+   mt_dialog.getCommandA(' Fit "Tau" with cursors ',0,998);
+   mt_dialog.getCommandA(' Set Global Rs, Rm & Cm ',0,997);
+   mt_dialog.OnEvent:=VCMT_event ;
+   AddDialog(1,5,mt_dialog); 
+
+   DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
+   t0_mem := 1000*60*60*Hour + 1000*60*Minute + 1000*Second + MilliSecond;
+
+   mt_cursor.create ; mt_cursor.DoubleCursor:=True ; mt_cursor.style:=cs_X ;
+   mt_cursor.position[1]:=VCMT_t2 ; mt_cursor.position[2]:=VCMT_t2+3 ; 
+   mt_cursor.InstallSource(v1);  mt_cursor.visible:=True ; 
+   prepare_mt ; // first initialisation !!! 
+end;
+
+
+{$EDIT IC_membrane_test}
+{ ==============================================================================
+--------------- BUILDING THE MEMBRANE TEST IN CURRENT CLAMP --------------------
+================================================================================ }
+
+{ Membrane Test procedure : Voltage Clamp test }
+var
+  rm_vec : Tvector ; rm_graph : Tgraph ; 
+  ICMT_amp, ICMT_t1, ICMT_t2, ICMT_interStim : real ;
+  ICMT_dialog : Tdialog ; ICMT_moy : Taverage ; ICMT_fit : TcurveFitting ;
+  ICMT_cursor : Tcursor ; ICMT_memo : Tmemo ;
+  bridge, El, holding : real ;
+  
+
+procedure Build_ICMTstim(seq:longint;var vec:Tvector);  {pulse procedure called at each buildep}
+begin 
+  vec.fill(0); vec.fill1(ICMT_amp,ICMT_t1+vec.Istart,ICMT_t2+vec.Istart);
+end;
+  
+
+{procedure to calculate rm and cm, from the average voltage response...}  
+procedure IC_RmCm(var vec:Tvector;var rm,cm:real;with_cursor : Boolean); 
+  var
+    V0,Vjump,Vs,Vbase,tau:real;
+    x0:real; x,xa,xb:real; xorg:real; 
+    {version valable uniquement pour un pulse n?gatif }
+  begin
+    V0:=vec.mean(1,ICMT_t1-2);  El :=V0 ;
+    ICMT_fit.Xorigin:=ICMT_t1;
+
+    if with_cursor then begin ICMT_fit.xstartFit:=ICMT_cursor.position[1]; ICMT_fit.XendFit:=ICMT_cursor.position[2]; end 
+    else begin ICMT_fit.xstartFit:=ICMT_t1; ICMT_fit.XendFit:=ICMT_t2;end;
+
+    ICMT_fit.execute; ICMT_fit.refresh ;
+    {Model : a1*exp(a2*x)+a3 ---> a1=-Rm*I0, a3=El+Rm*I0, a2=-1/(Rm*Cm)}
+    tau:=ICMT_fit.Param['a2'];  if tau<0 then tau:=-1/tau else tau:=1E9;
+    Vs:=ICMT_fit.Param['a1'];
+    if Vs<>0 then Rm:=-Vs/ICMT_amp*1000 else Rm:=1e9;
+    Cm:=tau/Rm*1000; { pF }
+
+    with ICMT_memo do
+    begin
+      lines[3]:='tau='+Rstr(tau,12,3)+' ms';
+      lines[5]:='rm= '+Rstr(rm,12,3)+' Mohm';
+      lines[6]:='Cm= '+Rstr(Cm,12,3)+' pF';
+      lines[8]:='El= '+Rstr(El,12,3)+' mV';
+    end;
+    ICMT_memo.refresh;
+  end;                                           
+
+
+{ ------------- then, Procedures of the Acquisition Processes (see doc) ----------}   
+ 
+
+procedure mtic_initprocess;
+begin
+  ICMT_moy.create(t_single,v1.Istart,v1.Iend);
+  ICMT_moy.cpx:=1;  ICMT_moy.cpy:=1;  ICMT_moy.color:=cl_blue;
+  
+  ICMT_fit.create('');
+  ICMT_fit.standardModel:=fm_expC1 {fm_poly5};
+  ICMT_fit.initialize:=true;  ICMT_fit.reset;  ICMT_fit.setYdata(ICMT_moy);  ICMT_fit.MaxIt:=30;
+
+  { ICMT_fit.setWorld(ICMT_moy.xmin,ICMT_moy.ymin,ICMT_moy.xmax,ICMT_moy.ymax); }
+  ICMT_fit.cpx:=1;  ICMT_fit.cpy:=1;  ICMT_fit.matchVector(v1);  ICMT_fit.color:=cl_red;
+  addObject(1,1,ICMT_fit);
+
+end;
+
+procedure mtic_process;
+begin
+     ICMT_moy.add(v1); {we add each episode result to the average}
+end;
+
+procedure mtic_endprocess;
+begin
+  addObject(1,1,ICMT_moy);
+ 
+  IC_RmCm(ICMT_moy,rm,cm,False); { and we process the analysis}
+  rm_vec.addtolist(rs); rm_vec.refresh;
+  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
+  tmem_vec.addtolist(0.001*(1000*60*60*Hour + 1000*60*Minute + 1000*Second + MilliSecond -t0_mem)); tmem_vec.refresh;
+  rm_graph.modify(tmem_vec,rm_vec,rm_vec.Istart,rm_vec.Iend); rm_graph.refresh ;
+  set_dac_to_zero;
+end;
+
+
+procedure prepare_icmt;
+begin
+   {we write all the relevant global informations}
+   clamp_index := 1 ; 
+   cont_choice := False ; 
+   episode_duration :=  ICMT_t1+ICMT_t2 ;
+   max_EP_num :=10 ; // 10 episodes !!
+   stim := True ;
+   acquisitionISI:= ICMT_interStim ;  // small beak between the stims
+   TDBrecord('PG0.Exp_Params').clear;
+   TDBrecord('PG0.Exp_Params').exp_type:='IC_MembraneTest';
+   TDBrecord('PG0.Exp_Params').pulse_amplitude:=ICMT_amp;
+   TDBrecord('PG0.Exp_params').t1:=ICMT_t1;
+   TDBrecord('PG0.Exp_params').t2:=ICMT_t2;
+   {then we initialize the stimulation}
+   InitializeChannels; // we can initialize the channels
+   stimulator.Channels[1].BuildEp := Build_ICMTstim ; 
+   stimulator.initVectors;
+   acquisition.InstallProcess(my_initprocess0, mtic_initprocess, mtic_process, mtic_endprocess);
+end;
+
+// writing the membrane parameters as a Tvector that will be loaded by other programs
+procedure Set_global_RmCm;
+begin
+     TDBrecord('PG0.global').Rm := Rm;
+     TDBrecord('PG0.global').Cm := Cm;
+     TDBrecord('PG0.global').El := El;
+     TDBrecord('PG0.global').Bridge := Bridge;
+     TDBrecord('PG0.global').Holding := Holding;
+end;               
+         
+procedure ICMT_Event(n:integer);
+var amplifier : string ; 
+begin    
+   ICMT_dialog.updatevar;
+   case n of 
+   999 : prepare_icmt;
+   998 :IC_RmCm(ICMT_moy,rm,cm,True);
+   997 :Set_global_RmCm;   
+   end;
+end;
+
+
+
+procedure ICMembTest_Init; {executed only when ze choose the protocol }
+begin
+  DestroyAllWindows(1);
+  Definewindow(1, 0, 0, PageWidth, Round(PageHeight/3.));
+  Definewindow(1, 0, Round(PageHeight/3), PageWidth, Round(PageHeight*2/3));
+  Definewindow(1, 0, Round(PageHeight*2/3), PageWidth, PageHeight);
+  DIvideWindow(1,3,3,1);
+  color:=cl_gray;
+
+   ICMT_amp:=20; ICMT_t1:=200; ICMT_t2:=500; ICMT_interStim:=1 ; // params
+   {then we display the channels}
+   addObject(1,1,v1);  addObject(1,2,v2);   addObject(1,2,v3);   
+   
+   rm_vec.create(t_single,0,-1) ; tmem_vec.create(t_single,0,-1) ; { we initialize the vector of the rs values }
+   rm_graph.create(tmem_vec,rm_vec,0,0); rm_graph.Mode := DM_LINE_DIAMOND ; {graph initialisation }
+   addobject(1,3,rm_graph);
+
+   ICMT_memo.create(''); ICMT_memo.font.name:='Times New Roman'; ICMT_memo.font.size:=11;
+   ICMT_memo.font.color:=rgb(0,0,0);  ICMT_memo.font.style:=fs_bold;
+   addObject(1,4,ICMT_memo);
+
+   ICMT_amp := ICMT_amp;
+   ICMT_dialog.create ;
+   ICMT_dialog.getRealA(' Pulse size (pA)',ICMT_amp,3,1,99);
+   ICMT_dialog.getRealA(' Interstim (s)  ',ICMT_interstim,3,1,99);
+   ICMT_dialog.getRealA(' t1  ',ICMT_t1,3,1,99);
+   ICMT_dialog.getRealA(' t2  ',ICMT_t2,3,1,99);
+   ICMT_dialog.getCommandA('  init() ',0,999);
+   ICMT_dialog.setText('');
+   ICMT_dialog.getCommandA(' Fit with cursors ',0,998);
+   ICMT_dialog.setText('');
+   ICMT_dialog.getRealA(' Bridge  (Mohm) ',bridge,3,1,99);
+   ICMT_dialog.getRealA(' Holding (pA) ',holding,3,1,99);
+   ICMT_dialog.getCommandA(' Write membrane parameters ',0,997);
+   ICMT_dialog.OnEvent:=ICMT_event ;
+   AddDialog(1,5,ICMT_dialog); 
+
+   DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
+   t0_mem := 1000*60*60*Hour + 1000*60*Minute + 1000*Second + MilliSecond;
+
+   ICMT_cursor.create ; ICMT_cursor.Doublecursor:=True ; ICMT_cursor.style:=cs_X ;
+   ICMT_cursor.position[1]:=ICMT_t1 ; ICMT_cursor.position[2]:=ICMT_t2 ; 
+   ICMT_cursor.InstallSource(v1);  ICMT_cursor.visible:=True ; 
+   prepare_icmt ; // first init
+end;
 
 {$EDIT Spont-act-sampling}
 { ==============================================================================
@@ -1532,28 +2165,34 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
   case n of
     101: begin
 	    proto := ProtocolName[protocol_index];
-	    if proto='Vm-feedback--Spont-Act-Sampling'
-	       then begin closedLoop:=False;clamp_index:=1;with_LFP:=False;InitSASdialog;InitializeChannels;Init_Vm_feedback_loop;end
+	    if proto='Seal-Test'
+	       then begin stim:=True; closedLoop:=False; opto_stim:=False; clamp_stim:=True; with_LFP:=False; SealTest_Init; end
+	    else if proto='VC-Membrane Test'
+	       then begin stim:=True; closedLoop:=False; opto_stim:=False; clamp_stim:=True; with_LFP:=False; VCMembTest_Init; end
+	    else if proto='IC-Membrane Test'
+	       then begin stim:=True; closedLoop:=False; opto_stim:=False; clamp_stim:=True; with_LFP:=False; ICMembTest_Init; end
+	    else if proto='Vm-feedback--Spont-Act-Sampling'
+	       then begin stim:=False; closedLoop:=False;opto_stim:=False;clamp_index:=1;with_LFP:=False;InitSASdialog;InitializeChannels;Init_Vm_feedback_loop;end
 	    else if proto='Vm-feedback--Current-Pulses'
-	       then begin closedLoop:=True;clamp_index:=1; clamp_stim :=True; with_LFP:=False; InitGmeasuredialog; end
+	       then begin stim:=False; closedLoop:=True;opto_stim:=False;clamp_index:=1; clamp_stim :=True; with_LFP:=False; InitGmeasuredialog; end
 	    else if proto='Vm-feedback--Opto-Stim-vs-Ctrl'
-	       then begin closedLoop:=True;clamp_index:=1;with_LFP:=False; clamp_stim :=False; InitUD_dialog; end
+	       then begin stim:=False; closedLoop:=True;opto_stim:=True;clamp_index:=1;with_LFP:=False; clamp_stim :=False; InitUD_dialog; end
 	    else if proto='Vm-feedback--oStim-at-Various-Delays'
-	       then begin closedLoop:=True; clamp_index:=1; with_LFP :=False ; clamp_stim :=False; InitUDdelayVm_dialog; end
+	       then begin stim:=False; closedLoop:=True;opto_stim:=True; clamp_index:=1; with_LFP :=False ; clamp_stim :=False; InitUDdelayVm_dialog; end
 	    else if proto='Vm-feedback--oStim-of-Various-Durations'
-	       then begin closedLoop:=True; clamp_index:=1; with_LFP :=False ; clamp_stim :=False; InitUDdurationVm_dialog; end
+	       then begin stim:=False; closedLoop:=True;opto_stim:=True; clamp_index:=1; with_LFP :=False ; clamp_stim :=False; InitUDdurationVm_dialog; end
 	    else if proto='Vm-feedback--oStim-of-Various-Amplitudes'
-	       then begin closedLoop:=True; clamp_index:=1; with_LFP :=False ; clamp_stim :=False; InitUDamplitudeVm_dialog; end
+	       then begin stim:=False; closedLoop:=True;opto_stim:=True; clamp_index:=1; with_LFP :=False ; clamp_stim :=False; InitUDamplitudeVm_dialog; end
 	    else if proto='Isyn-feedback--Spont-Act-Sampling'
-	       then begin closedLoop:=False;clamp_index:=2;with_LFP:=False;Clamp_Stim:=False;Opto_Stim:=False;InitVCSASdialog;InitializeChannels;Init_Isyn_feedback_loop;end
+	       then begin stim:=False;closedLoop:=False;clamp_index:=2;with_LFP:=False;Clamp_Stim:=False;Opto_Stim:=False;InitVCSASdialog;InitializeChannels;Init_Isyn_feedback_loop;end
 	    else if proto='Isyn-feedback--Get-Syn-Currents'
-	       then begin closedLoop:=True; clamp_index:=2; with_LFP:=False; Clamp_Stim:=True; Opto_Stim:=False; InitVCGSCdialog; end
+	       then begin stim:=False;closedLoop:=True; clamp_index:=2; with_LFP:=False; Clamp_Stim:=True; Opto_Stim:=False; InitVCGSCdialog; end
 	    else if proto='Isyn-feedback--Opto-Stim-vs-Ctrl'
-	       then begin closedLoop:=True; clamp_index:=2; with_LFP :=False ; Clamp_Stim:=True; InitUD_Isyn_dialog; end
+	       then begin stim:=False;closedLoop:=True; clamp_index:=2; with_LFP :=False ;opto_stim:=True; Clamp_Stim:=True; InitUD_Isyn_dialog; end
 	    else if proto='Isyn-feedback--oStim-at-Various-Delays'
-	       then begin closedLoop:=True; clamp_index:=2; with_LFP :=False ; InitUDdelayIsyn_dialog; end
+	       then begin stim:=False;closedLoop:=True; clamp_index:=2; with_LFP :=False ;opto_stim:=True; InitUDdelayIsyn_dialog; end
 	    else if proto='Isyn-feedback--oStim-of-Various-Durations'
-	       then begin closedLoop:=True; clamp_index:=2; with_LFP :=False ; InitUDdurationIsyn_dialog; end;
+	       then begin stim:=False;closedLoop:=True; clamp_index:=2; with_LFP :=False ;opto_stim:=True; InitUDdurationIsyn_dialog; end;
          end;
     333	: load_fake_Vm;
     334	: load_fake_LFP;

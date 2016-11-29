@@ -2600,7 +2600,7 @@ DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to 
 case flag of
   1: begin {means on the Bal setup with the multiclamp amplifier}
 	TDBrecord('PG0.global').amplifier:='multiclamp';
-	PathOfTheDay := 'D:\yann\DATA\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
+	PathOfTheDay := 'D:\yann\DATA_elphy\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
 	TDBrecord('PG0.global').loadnrnPath := 'D:/yann/elphy/nrn_files/' ; 
      end;
   2: begin {means on the Bal setup with the RTneuron-simulation mode}
@@ -2638,7 +2638,10 @@ TDBrecord('PG0.global').acquisitionISI:=1. ;
 TDBrecord('PG0.global').FadvanceON := False ;
 
 already_initiated :=True;
-InsertPage(1,'fake');DeleteAllPages('fake');InsertPage(1,'default');DeleteAllPages('default');
+DeleteAllPages('');
+InsertPage(1,'fake');DeleteAllPages('fake');
+InsertPage(1,'Classic Electrophy Protocols');
+Page:=1; color:=cl_gray;
 Color := cl_gray ;
 SetProtocolNames;
 init_windows;

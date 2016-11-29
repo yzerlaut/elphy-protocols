@@ -20,11 +20,11 @@ NEURON {
 	RANGE Delay_for_Up_stim, Delay_for_Down_stim
 	RANGE Dur_for_Up_stim, Dur_for_Down_stim
 	RANGE up_stimulation, down_stimulation
-	USEION ca READ cai WRITE cao : "cao" is the V-clamp Command and "cai" is the synaptic current !
+	USEION ca READ cai WRITE cao : "cao" is the V-clamp Command and "cai" is the synaptic current 
 }
 
 CONSTANT {
-  N = 100
+  N = 20
   Nvec = 2000
 }
 
@@ -53,8 +53,8 @@ ASSIGNED {
 	cai (pA)
 	i_LP (pA)
 	V_LASER (mV)
-	weights[100]
-	vec[100]
+	weights[20]
+	vec[20]
 	stim_vec[2000]
 	delay_vec[2000]
 	duration_vec[2000]

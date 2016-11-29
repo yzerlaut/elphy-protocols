@@ -1,5 +1,5 @@
 {$EDIT START}                                               
-{========================================================================
+{=========================================== =============================
 ------- Master file for the optogenetics experiments  ---------
 ------- phase-locked on the slow cortical oscillation ---------
 ========================================================================}
@@ -8,7 +8,7 @@ Const
    ProtocolCount = 17 ; 
    OptoCount	 = 9 ; 
    location	 = 'RT-Setup' ; // switch to 'RT-Setup' for experiments !!
-   setup	 = 'NEURON-sim' ; // switch to 'RT-Setup' for experiments !!
+   setup	 = 'RT-Setup' ; // switch to 'RT-Setup' for experiments !!
 
   {		 = ======== COMMON VARIABLES ============ }
 var
@@ -22,7 +22,7 @@ var
    gain1,gain2, episode_duration, acquisitionISI					 : real;
    gain1_index,gain2_index, max_EP_num							 : integer;
    dll_load										 : string ;
-   f_acq, El, Cm, Rm, Rs, Rs2										 : real ; // parameters of the patch recording !
+   f_acq, El, Cm, Rm, Rs, Rs2								 : real ; // parameters of the patch recording !
    hist, cum_proba									 : Tvector; 
    fraction_of_cumprob_for_Down_transition, fraction_of_cumprob_for_Up_transition	 : real;
    upward_threshold, downward_threshold, spike_threshold, subsampling_freq, Amp_for_Stim : real ;
@@ -44,7 +44,7 @@ var
    min_delay, max_delay, min_duration, max_duration, min_amp, max_amp			 : real ;
    num_delay, num_duration, num_amp, clamp_periodicity					 : integer ;
    excitatory_reversal, inhibitory_reversal, intermediate_reversal, holding_potential	 : real;
-
+   detector										 : Tdetector;
    
 { ============================================================================	   
   ----- Protocol And Constants Initialization --------------------------------
@@ -150,7 +150,7 @@ begin
    downward_threshold :=-65;
    subsampling_freq := 1.;
    spike_threshold := -30;
-   Amp_for_Stim := 5;
+   Amp_for_Stim := 1;
    Stim_Periodicity := 3 ;
    Delay_for_stim := 30 ;
    Dur_for_stim := 100   ;
@@ -163,7 +163,7 @@ begin
    num_delay := 3; num_duration:= 3; num_amp:= 3;
    flag_for_state_stimulation := 1;
    CMD_delay :=-30.; CMD_dur :=370.; clamp_periodicity := 2;
-   current_pulse := -400.;
+   current_pulse := -50.;
    excitatory_reversal := 80; inhibitory_reversal := -10.;
    intermediate_reversal := (inhibitory_reversal+excitatory_reversal)/2.;
    current_index := 1; holding_potential := -70; episode_duration := 500;
@@ -205,12 +205,14 @@ begin
       DOwn_Cursor.PosMin:=-200;Down_Cursor.PosMax:=1800;
       Up_Cursor.PosMin:=-200;Up_Cursor.PosMax:=1800;
    end;
-   Down_Cursor.InstallSource(v1); Down_Cursor.visible:=True;
+   Down_Cursor.InstallSource(v1); 
    Down_Cursor.position[1]:=downward_threshold ;
    Down_Cursor.OnChange:=UpdateCursor;
-   Up_Cursor.InstallSource(v1); Up_Cursor.visible:=True;
+   Up_Cursor.InstallSource(v1);
    Up_Cursor.position[1]:=upward_threshold ;
    Up_Cursor.OnChange:=UpdateCursor;
+   if ClosedLoop then Up_Cursor.visible:=True else Up_Cursor.visible:=False;
+   if ClosedLoop then Down_Cursor.visible:=True else Down_Cursor.visible:=False;
    v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ; v4.cpx:=1 ; v5.cpx:=1 ; v6.cpx:=1 ;
 end;
 
@@ -231,12 +233,6 @@ begin {-- we set all the variables of the acquisition class, then we create
    acquisition.Fstimulate := False ; {we DON'T stimulate in Elphy!!}
    acquisition.PeriodPerChannel:=1./f_acq ; { in ms }
  
-   for i:=1 to acquisition.ChannelCount do 
-   begin 
-     acquisition.Channels[i].ChannelType := TI_Neuron;
-     acquisition.Channels[i].DownSamplingFactor:=1;
-   end;
-   
    {===============================================================}
    {        Creating the fake (simulated) cell                     }
    {===============================================================}
@@ -249,6 +245,13 @@ begin {-- we set all the variables of the acquisition class, then we create
    RTneuron.execute('soma L=diam=79.8');
    RTneuron.Execute('soma g_pas = 5e-5');
 
+   for i:=1 to acquisition.ChannelCount do 
+   begin 
+     acquisition.Channels[i].ChannelType := TI_Neuron;
+     acquisition.Channels[i].DownSamplingFactor:=1;
+     acquisition.Channels[i].NrnSymbolName:='soma.v(0.5)'; {by default}
+   end;
+   
    { {\===============================================================!{\ }
    { {\        Recording channels                                     !{\ }
    { {\===============================================================!{\ }
@@ -260,7 +263,7 @@ begin {-- we set all the variables of the acquisition class, then we create
       acquisition.Channels[1].unitY:='mV' ;
       addObject(1,1,v1); v1.title:='Vm(t)';
       // channel 2 -->  secondary ->  Iinj
-      {to be removed on Setup RTneuron.DacChan[1].NrnSymbolName:='lfp.v(.5)'}
+      {to be removed on Setup RTneuron.DacChan[1].NrnSymbolName:='lfp.v(0.5)'}
       acquisition.Channels[2].NrnSymbolName:='soma.cai(0.5)';
       acquisition.Channels[2].unitY:='pA'; v2.title:='Iinj';
       if clamp_stim then addObject(1,2,v2); 
@@ -284,12 +287,12 @@ begin {-- we set all the variables of the acquisition class, then we create
    begin
       if ClampName[clamp_index]='I-Clamp' then
       begin
-	 RTneuron.Execute('soma UD_loop = new Vm_feedback_for_opto(.5)');
+	 RTneuron.Execute('soma UD_loop = new Vm_feedback_for_opto(0.5)');
 	 acquisition.Channels[5].NrnSymbolName:='UD_loop.v_LP'; acquisition.Channels[5].unitY:='mV' ; v5.title:='Vm_low_passed'; addObject(1,1,v5);
       end
       else {Voltage-Clamp}
       begin
-	 RTneuron.Execute('soma UD_loop = new Isyn_feedback_for_opto(.5)');
+	 RTneuron.Execute('soma UD_loop = new Isyn_feedback_for_opto(0.5)');
 	 acquisition.Channels[5].NrnSymbolName:='UD_loop.i_LP'; acquisition.Channels[5].unitY:='pA' ; v5.title:='Isyn_low_passed'; addObject(1,1,v5);
 	 { TO BE CHANGED FOR THE COMMAND : acquisition.Channels[6].NrnSymbolName:='soma.cao(0.5)';}
 	 acquisition.Channels[6].NrnSymbolName:='vclamp.vc'; acquisition.Channels[6].unitY:='mV' ; v6.title:='Vm'; addObject(1,2,v6);
@@ -299,8 +302,8 @@ begin {-- we set all the variables of the acquisition class, then we create
       if clamp_stim then begin addObject(1,3,v4);  addObject(1,3,v3); end else begin addObject(1,2,v4);  addObject(1,2,v3); end;
    end else {fake compartment to still have UD_loop created}
    begin
-      if ClampName[clamp_index]='I-Clamp' then  RTneuron.Execute('fake_comp UD_loop = new Vm_feedback_for_opto(.5)')
-      else RTneuron.Execute('fake_comp UD_loop = new Isyn_feedback_for_opto(.5)');
+      if ClampName[clamp_index]='I-Clamp' then  RTneuron.Execute('fake_comp UD_loop = new Vm_feedback_for_opto(0.5)')
+      else RTneuron.Execute('fake_comp UD_loop = new Isyn_feedback_for_opto(0.5)');
    end;
    
    {===============================================================}
@@ -320,7 +323,7 @@ begin {-- we set all the variables of the acquisition class, then we create
    else if SetupName[setup_index]='Data-Replay' then {*** only in Current-Clamp for now ***}
       begin
    	 RTneuron.execute('objref vclamp');
-   	 RTneuron.execute('soma vclamp = new SEClamp(.5)');
+   	 RTneuron.execute('soma vclamp = new SEClamp(0.5)');
    	 RTneuron.execute('vclamp.rs=1e-2');
    	 RTneuron.execute('vclamp.dur1=1e9');
    	 if not with_LFP then RTneuron.execute('vv.play(&vclamp.amp1, '+Rstr(1./f_acq)+')');
@@ -345,24 +348,41 @@ begin {-- we set all the variables of the acquisition class, then we create
    {we delete previous graphical display}
    ClearObjects(1,1); ClearObjects(1,2);
    
-   acquisition.Fcontinuous:=true;
+   acquisition.Fcontinuous:=cont_choice;
    acquisition.Fstimulate := stim ; {we DON'T stimulate in Elphy!!}
+   if stim then
+   begin
+      acquisition.Fstimulate := True;
+      acquisition.TriggerMode:= TM_internal;
+      stimulator.ChannelCount:=1;
+      stimulator.Channels[1].ChannelType:=TO_Neuron;
+      stimulator.setByProg:=true; { mais on met le build ep plus loin }
+   end else
+   begin
+      acquisition.Fstimulate := False;
+      stimulator.ChannelCount:=0;
+   end;
+    
+   acquisition.MaxEpCount := max_ep_num ;
+   acquisition.EpDuration := episode_duration ;
+   
    acquisition.PeriodPerChannel:=1./f_acq ; { in ms }
+
+   {===============================================================}
+   {        Creating the cell                     }
+   {===============================================================}
+   
+   RTneuron.FadvanceON:=closedLoop; { -->  NEURON calculus }  
+   RTneuron.execute('create soma, lfp, fake_comp');
+   RTneuron.execute('soma insert ca_ion'); {NEEDED in Voltage-Clamp, to have a non-Vm global variable...}
 
    for i:=1 to acquisition.ChannelCount do 
    begin 
      acquisition.Channels[i].ChannelType := TI_Neuron;
      acquisition.Channels[i].DownSamplingFactor:=1;
+     acquisition.Channels[i].NrnSymbolName:='soma.v(0.5)'; {by default}
    end;
    
-   {===============================================================}
-   {        Creating the fake (simulated) cell                     }
-   {===============================================================}
-   
-   RTneuron.FadvanceON:=True; { -->  NEURON calculus }  
-   RTneuron.execute('create soma, lfp, fake_comp');
-   RTneuron.execute('soma insert ca_ion'); {NEEDED in Voltage-Clamp, to have a non-Vm global variable...}
-
    { {\===============================================================!{\ }
    { {\        Recording channels                                     !{\ }
    { {\===============================================================!{\ }
@@ -370,7 +390,7 @@ begin {-- we set all the variables of the acquisition class, then we create
    if ClampName[clamp_index]='I-Clamp' then
    begin {Current-Clamp}
       // channel 1 -->  primary ->  Vm
-      RTneuron.AdcChan[0].NrnSymbolName:='soma.v(.5)';
+      RTneuron.AdcChan[0].NrnSymbolName:='soma.v(0.5)';
       RTneuron.AdcChan[0].setScale(0,32767,0,1000.0/gain1);
       acquisition.Channels[1].NrnSymbolName:='soma.v(0.5)';
       acquisition.Channels[1].unitY:='mV' ;
@@ -384,15 +404,15 @@ begin {-- we set all the variables of the acquisition class, then we create
       RTneuron.DacChan[0].NrnSymbolName:='soma.cai(0.5)';
       RTneuron.DacChan[0].setScale(0,32767,0,4000.0); // command -> I clamp
       stimulator.Channels[1].NrnSymbolName:='soma.cai(0.5)';
-      acquisition.Channels[3].NrnSymbolName:='soma.cai(0.5)';
-      acquisition.Channels[3].unitY:='pA';
+      acquisition.Channels[5].NrnSymbolName:='soma.cai(0.5)';
+      acquisition.Channels[5].unitY:='pA';
       if clamp_stim then addObject(1,2,v2); 
    end else {Voltage-Clamp}
    begin
       // channel 1 -->  primary ->  recorded Isyn
-      RTneuron.AdcChan[0].NrnSymbolName:='soma.cao(0.5)';         
+      RTneuron.AdcChan[0].NrnSymbolName:='soma.cai(0.5)';         
       RTneuron.AdcChan[0].setScale(0,32767,0,20000.0/gain1);
-      acquisition.Channels[1].NrnSymbolName:='soma.cao(0.5)';
+      acquisition.Channels[1].NrnSymbolName:='soma.cai(0.5)';
       acquisition.Channels[1].unitY:='pA' ;
       addObject(1,1,v1); v1.title:='Isyn';
       // channel 2 -->  secondary -> V_pipette (real amplifier control)
@@ -401,12 +421,13 @@ begin {-- we set all the variables of the acquisition class, then we create
       acquisition.Channels[2].NrnSymbolName:='soma.v(0.5)';
       acquisition.Channels[2].unitY:='mV'; v1.title:='V_CMD';
       // COMMAND channel ->  V_pipette (theoretical)
-      RTneuron.DacChan[0].NrnSymbolName:='soma.cai(0.5)';
-      RTneuron.DacChan[0].setScale(0,32767,0,4000.0); // command -> I clamp
-      stimulator.Channels[1].NrnSymbolName:='soma.cai(0.5)';
-      acquisition.Channels[3].NrnSymbolName:='soma.cai(0.5)';
-      acquisition.Channels[3].unitY:='pA';
-      if closedLoop then addObject(1,2,v2); 
+      RTneuron.DacChan[0].NrnSymbolName:='soma.cao(0.5)';
+      RTneuron.DacChan[0].setScale(0,32767,0,200.0); // command -> I clamp
+      stimulator.Channels[1].NrnSymbolName:='soma.cao(0.5)';
+      acquisition.Channels[6].NrnSymbolName:='soma.cao(0.5)';
+      acquisition.Channels[6].unitY:='mV';
+      if closedLoop or clamp_stim then addObject(1,2,v2); 
+      if stim then addObject(1,2,v6); 
    end;
    
    {===============================================================}
@@ -416,19 +437,19 @@ begin {-- we set all the variables of the acquisition class, then we create
    begin
       if ClampName[clamp_index]='I-Clamp' then
       begin
-	 RTneuron.Execute('soma UD_loop = new Vm_feedback_for_opto(.5)');
+	 RTneuron.Execute('soma UD_loop = new Vm_feedback_for_opto(0.5)');
 	 acquisition.Channels[5].NrnSymbolName:='UD_loop.v_LP';
 	 acquisition.Channels[5].unitY:='mV' ;
 	 v5.title:='Vm_low_passed'; addObject(1,1,v5);
       end
       else {Voltage-Clamp}
       begin
-	 RTneuron.Execute('soma UD_loop = new Isyn_feedback_for_opto(.5)');
+	 RTneuron.Execute('soma UD_loop = new Isyn_feedback_for_opto(0.5)');
 	 acquisition.Channels[5].NrnSymbolName:='UD_loop.i_LP';
 	 acquisition.Channels[5].unitY:='pA' ;
 	 v5.title:='Isyn_low_passed'; addObject(1,1,v5);
-	 acquisition.Channels[6].NrnSymbolName:='soma.cao(0.5)';
-	 acquisition.Channels[6].unitY:='mV' ; v6.title:='Vcmd'; addObject(1,2,v6);
+	 { acquisition.Channels[6].NrnSymbolName:='soma.cao(0.5)'; }
+	 { acquisition.Channels[6].unitY:='mV' ; v6.title:='Vcmd'; addObject(1,2,v6); }
       end;
       acquisition.Channels[4].NrnSymbolName:='UD_loop.Up_flag';
       acquisition.Channels[4].unitY:='mV' ; v4.title:='Up_flag'; 
@@ -436,29 +457,14 @@ begin {-- we set all the variables of the acquisition class, then we create
       acquisition.Channels[3].unitY:='mV' ; v3.title:='TTL_Input';
       // LASER COMMAND OUTPUT
       RTneuron.DacChan[1].NrnSymbolName:='UD_loop.V_LASER';
-      RTneuron.DacChan[1].setScale(0,32767,0,4000.0); 
+      RTneuron.DacChan[1].setScale(0,32767,0,10.0); 
       if clamp_stim then begin addObject(1,3,v4); addObject(1,3,v3); end
           else begin addObject(1,2,v4);  addObject(1,2,v3); end;
    end else {fake compartment to still have UD_loop created}
    begin
-      if ClampName[clamp_index]='I-Clamp' then  RTneuron.Execute('fake_comp UD_loop = new Vm_feedback_for_opto(.5)')
-      else RTneuron.Execute('fake_comp UD_loop = new Isyn_feedback_for_opto(.5)');
+      if ClampName[clamp_index]='I-Clamp' then  RTneuron.Execute('fake_comp UD_loop = new Vm_feedback_for_opto(0.5)')
+      else RTneuron.Execute('fake_comp UD_loop = new Isyn_feedback_for_opto(0.5)');
    end;
-   
-   {===============================================================}
-   {        Articifially Emulating Vm/lFP                          }
-   {===============================================================}
-   if SetupName[setup_index]='NEURON-sim.' then
-      begin
-   	 RTneuron.execute('soma insert hh_hippoc');
-   	 RTneuron.Execute('soma stim = new Exp2Syn_eiNtwk(0.5)');
-   	 if ClampName[clamp_index]='V-Clamp' then
-   	 begin {Voltage-Clamp}
-   	    RTneuron.execute('objref vclamp');
-   	    RTneuron.execute('soma vclamp = new myVClamp(0.5)');
-   	    RTneuron.execute('vclamp.rs=5.'); {15 MOhm access resistance !}
-   	 end;
-      end;
    
    // Final graphical settings
    FinalPlot_Settings;
@@ -473,10 +479,10 @@ begin
    Rtneuron.DacChan[1].HoldingValue:=0;
    with stimulator do
    begin
-      stimulator.setValue(0,0,0,0);   
-      stimulator.setValue(0,0,1,0);   
-      stimulator.setValue(0,1,0,0);  
-   end; 
+      stimulator.setValue(0,0,0,0);
+      stimulator.setValue(0,0,1,0);
+      stimulator.setValue(0,1,0,0);
+   end;
 end;
 
 {$EDIT Info_recording}
@@ -567,40 +573,37 @@ begin
    TDBrecord('PG0.Exp_params').filename := filename;
    write_Exp_params; 
    FillDBinfo(DB); 
-   if SAVING then begin CreateDir(filename); acquisition.writeDBfileinfo(DB); end;
+   if SAVING then acquisition.writeDBfileinfo(DB);
    acquisition.genericfilename := PathOfTheDay+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)+'_'+protocol ;
 end;
 
-procedure Save_Vector_From_NEURON(neuron_vector, filename: string);
-var Path, protocol, st : string ; i : integer;
+procedure Get_Transitions_Times;
+var Path, protocol, st : string ; i, imax : integer;
 begin
    protocol := ProtocolName[protocol_index];
    Path := PathOfTheDay ;
-   Path := Path+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)+'_'+protocol+'\';
-   openText(1,Path+filename,false);
-   for i:=0 to 1999 do
+   Path := Path+Istr(Hour)+'_'+Istr(Minute)+'_'+Istr(Second)+'_'+protocol+'.txt';
+   openText(1,Path,false);
+   imax := ROund(RTneuron.getNRNvalue('UD_loop.i_up')); 
+   for i:=0 to imax+4 do {4 transitions more for security to catch additional down states}
       begin
-	 st := Rstr(RTneuron.getNRNvalue(neuron_vector+'['+Istr(i)+']'), 1, 6);
+	 st := '';
+	 st := st + Rstr(RTneuron.getNRNvalue('UD_loop.up_transition_vec'+'['+Istr(i)+']'), 1, 6) + Chr(9);
+	 st := st + Rstr(RTneuron.getNRNvalue('UD_loop.down_transition_vec'+'['+Istr(i)+']'), 1, 6) + Chr(9);
+	 st := st + Rstr(RTneuron.getNRNvalue('UD_loop.stim_vec'+'['+Istr(i)+']'), 1, 6) + Chr(9);
+	 st := st + Rstr(RTneuron.getNRNvalue('UD_loop.delay_vec'+'['+Istr(i)+']'), 1, 6) + Chr(9);
+	 st := st + Rstr(RTneuron.getNRNvalue('UD_loop.duration_vec'+'['+Istr(i)+']'), 1, 6) + Chr(9);
+	 st := st + Rstr(RTneuron.getNRNvalue('UD_loop.amplitude_vec'+'['+Istr(i)+']'), 1, 6) + Chr(9);
+	 st := st + Rstr(RTneuron.getNRNvalue('UD_loop.cmd_vec'+'['+Istr(i)+']'), 1, 6);
 	 writelnText(1,st);
       end;
    closeText(1);
 end;
 
-procedure Get_Transitions_Times;
-begin
-   Save_Vector_From_NEURON('UD_loop.up_transition_vec', 'up_transitions.txt');
-   Save_Vector_From_NEURON('UD_loop.down_transition_vec', 'down_transitions.txt');
-   Save_Vector_From_NEURON('UD_loop.stim_vec', 'stim_flag.txt');
-   Save_Vector_From_NEURON('UD_loop.delay_vec', 'delays.txt');
-   Save_Vector_From_NEURON('UD_loop.duration_vec', 'durations.txt');
-   Save_Vector_From_NEURON('UD_loop.amplitude_vec', 'amplitudes.txt');
-   Save_Vector_From_NEURON('UD_loop.cmd_vec', 'commands.txt');
-end;
-
 procedure my_endprocess;
 begin
    set_dac_to_zero;
-   if SAVING then Get_Transitions_Times;
+   if SAVING and ClosedLoop then Get_Transitions_Times;
 end;
 
 {$EDIT artificial-UD}
@@ -612,12 +615,12 @@ procedure Initialize_Simulated_Up_and_Down_States;
       // we set a sequence of Up and Down states !!
 begin
    RTneuron.execute('objref ncE, nsE, ncI, nsI');
-   RTneuron.execute('soma nsE = new NetStim(.5)');
+   RTneuron.execute('soma nsE = new NetStim(0.5)');
    RTneuron.execute('nsE.start = 0'); RTneuron.execute('nsE.number = 1e30');
    RTneuron.execute('nsE.noise = 1'); // frequency and seed comes later !
    RTneuron.execute('ncE = new NetCon(nsE, stim)');
    RTneuron.execute('ncE.delay = 0');
-   RTneuron.execute('soma nsI = new NetStim(.5)');
+   RTneuron.execute('soma nsI = new NetStim(0.5)');
    RTneuron.execute('nsI.start = 0'); RTneuron.execute('nsI.number = 1e30');
    RTneuron.execute('nsI.noise = 1');
    RTneuron.execute('ncI = new NetCon(nsI, stim)');
@@ -696,7 +699,7 @@ var
   { vectors to monitor the evolution of the ileak and resistance of the seal in time } 
   seal_memo : Tmemo ;   rseal_graph : Tgraph ; iseal_graph : Tgraph ;
   i_baseline : real ; i_jump : real ; Rseal : real ; t0_seal : real ;
-  seal_dialog : Tdialog ; amp_seal, del_seal, dur_seal : real ;
+  amp_seal, del_seal, dur_seal : real ;
 
 procedure Build_SealPulse(seq:longint;var vec:Tvector);  {pulse procedure called at each buildep}
 begin { we fill of 0, except between the t0+delay and t0+delay+duration }
@@ -706,7 +709,7 @@ end;
 procedure seal_process;
 var tt : Tvector ; amplifier : string ;
 begin
-    DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
+    DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in }
 
     tt.create; Vcopy(v1,tt) ; i_baseline := tt.mean(1,del_seal-1); {constantes a ajuster en fonction des parametres du pulse}
     i_jump := tt.mean(del_seal+20,del_seal+dur_seal-5);
@@ -724,11 +727,12 @@ begin
     seal_memo.lines[3]:='Rseal= '+Rstr(Rseal,6,3)+' Mohm';
     seal_memo.lines[5]:='I baseline= '+Rstr(i_baseline,6,3)+' pA';
     seal_memo.refresh;
-    amplifier := TDBrecord('PG0.global').amplifier ;
 end;
 
 procedure Prepare_SealTest;
 begin
+   closedLoop:=False; opto_stim:=False; clamp_stim:=True;
+   with_LFP:=False;
    clamp_index := 2 ; // Voltage Clamp
    cont_choice := False ; 
    episode_duration :=  2*del_seal+dur_seal ;
@@ -745,7 +749,7 @@ end;
 procedure SealTest_Event(n:integer);
 var amplifier : string ; 
 begin    
-   seal_dialog.updatevar;
+   ud_dialog.updatevar;
    case n of 
    201 : Prepare_SealTest ;
    end;
@@ -781,14 +785,14 @@ begin {when we modify the dialog, we adjust the stimulation params}
   addobject(1,4,iseal_graph);  {then we plot the vector} 
   
   {finally the small dialog fot the parameters and the initialisation}
-  seal_dialog.create ;
-  seal_dialog.getRealA(' Pulse size (mV)',amp_seal,3,1,99);
-  seal_dialog.getRealA(' onset (ms)',del_seal,3,1,99);
-  seal_dialog.getRealA(' duration (ms)',dur_seal,3,1,99);
-  seal_dialog.getCommandA('  init() ',0,999);
-  seal_dialog.OnEvent:=SealTest_event ;
-  AddDialog(1,6,seal_dialog); 
-  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
+  ud_dialog.create ;
+  ud_dialog.getRealA(' Pulse size (mV)',amp_seal,3,1,99);
+  ud_dialog.getRealA(' onset (ms)',del_seal,3,1,99);
+  ud_dialog.getRealA(' duration (ms)',dur_seal,3,1,99);
+  ud_dialog.getCommandA('  init() ',0,999);
+  ud_dialog.OnEvent:=SealTest_event ;
+  AddDialog(1,6,ud_dialog); 
+  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in }
   t0_seal := 60*Hour + Minute + Second/60 + MilliSecond/60/1000;
   Prepare_SealTest ; // first initialization
 end;
@@ -801,11 +805,10 @@ end;
 { Membrane Test procedure : Voltage Clamp test }
 var
   VCMT_fit : TcurveFitting;  VCMT_memo:Tmemo;  lVer:TlineVer;  lHor:TlineHor;
-  VCMT_moy : Taverage; VCMT_dialog : Tdialog ;  rs_vec : Tvector ; tmem_vec : Tvector ; 
-  t0_mem : real ; rs_graph : Tgraph ;  mt_dialog : Tdialog ; 
+  VCMT_moy : Taverage; rs_vec : Tvector ; tmem_vec : Tvector ; 
+  t0_mem : real ; rs_graph : Tgraph ;  
   mt_cursor : Tcursor ; VCMT_interStim : real ;
   VCMT_amp, VCMT_t1, VCMT_t2, VCMT_t3, VCMT_t4 : real ; {this will define the coltage s}
-
 
 procedure Build_VCMTstim(seq:longint;var vec:Tvector); 
 begin
@@ -815,44 +818,6 @@ begin
    vec.fill1(-VCMT_amp/2,vec.Istart+VCMT_t3,vec.Istart+VCMT_t4);
 end;
   
- //old version,  implemented by gerard, not based on the surface...
-procedure RsCm2(var vec:Tvector;var rm,rs,cm,rs2:real;cursor : Boolean); 
-  var
-    I0,Im1,Is,Ip,tau:real;
-    x0:real;
-    x,xa,xb:real;
-    xorg:real;
-  begin
-    I0:=vec.mean(1,VCMT_t1-2);
-    Im1:=mini(vec,VCMT_t1-5,VCMT_t1+5)-I0;
-    Ip:=Im1; x0:=miniX(vec,VCMT_t1,VCMT_t1+5);
-    xorg:=FirstCrossing(vec,VCMT_t1-5,VCMT_t1+5,I0+Im1/2,false);
-    VCMT_fit.Xorigin:=xorg;
-    if cursor then begin VCMT_fit.xstartFit:=mt_cursor.position[1]; VCMT_fit.XendFit:=mt_cursor.position[2]; end 
-    else begin VCMT_fit.xstartFit:=x0+v1.convX(1); VCMT_fit.XendFit:=VCMT_t2-1;end;
-    VCMT_fit.execute; VCMT_fit.refresh ;
-    tau:=VCMT_fit.Param['a2'];
-    if tau<0 then tau:=-1/tau else tau:=1E9;
-    Is:=VCMT_fit.Param['a3']-I0;
-    Im1:=VCMT_fit.Param['a1']+Is;
-    if Im1<>0 then rs:=VCMT_amp/Im1*1000 else rs:=1E6; 
-    if Ip<>0 then rs2:=VCMT_amp/Ip*1000 else rs2:=1E6;
-    if Is<>0 then Rm:=VCMT_amp/Is*1000-Rs else Rm:=1E6;
-    Cm:=tau*(Rs+Rm)/(Rm*Rs)*1000;       
-    lHor.y:=Is+I0;
-    lVer.x:=xOrg;
-    with VCMT_memo do
-    begin
-      lines[3]:='tau='+Rstr(tau,12,3)+' ms';
-      lines[4]:='rs= '+Rstr(rs,12,3)+' Mohm';
-      lines[5]:='rm= '+Rstr(rm,12,3)+' Mohm';
-      lines[6]:='Cm= '+Rstr(Cm,12,3)+' pF';
-      lines[7]:='Rs2='+Rstr(rs2,12,3)+' Mohm';
-    end;
-    VCMT_memo.refresh;                     
-  end;
-
-
 procedure RsCm(var vec_arg:Tvector;var rm,rs,cm,rs2:real;cursor : Boolean); 
   var
     Ibase,Iend,integral_response,DI,Ijump,tau:real;
@@ -937,10 +902,10 @@ procedure mt_endprocess;
 begin
   rsCm(VCMT_moy,rm,rs,cm,rs2,False); { and we process the analysis}
   rs_vec.addtolist(rs); rs_vec.refresh;
-  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
+  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in }
   tmem_vec.addtolist(0.001*(1000*60*60*Hour + 1000*60*Minute + 1000*Second + MilliSecond -t0_mem)); tmem_vec.refresh;
   rs_graph.modify(tmem_vec,rs_vec,rs_vec.Istart,rs_vec.Iend); rs_graph.refresh ;
-  set_dac_to_zero;
+  { set_dac_to_zero; }
 end;
 
 
@@ -978,14 +943,13 @@ end;
 procedure VCMT_Event(n:integer);
 var amplifier : string ; 
 begin    
-   mt_dialog.updatevar;
+   ud_dialog.updatevar;
    case n of 
-   999 : prepare_mt ; 
-   998 : rsCm(VCMT_moy,rm,rs,cm,rs2,True);
-   997 : Set_global_RsRmCm;
+   999	: prepare_mt ; 
+   998	: rsCm(VCMT_moy,rm,rs,cm,rs2,True);
+   997	: Set_global_RsRmCm;
    end;
 end;
-
 
 procedure VCMembTest_Init; {executed only when ze choose the protocol }
 begin
@@ -1014,21 +978,21 @@ begin
    VCMT_memo.font.color:=rgb(0,0,0);  VCMT_memo.font.style:=fs_bold;
    addObject(1,4,VCMT_memo);
 
-   mt_dialog.create ;
-   mt_dialog.getRealA(' Pulse size (mV)',VCMT_amp,3,1,99);
-   mt_dialog.getRealA('t1',VCMT_t1,3,1,99);
-   mt_dialog.getRealA('t2',VCMT_t2,3,1,99);
-   mt_dialog.getRealA('t3',VCMT_t3,3,1,99);
-   mt_dialog.getRealA('t4',VCMT_t4,3,1,99);
-   mt_dialog.getRealA('inter-Stim-interval (s)',VCMT_interStim,3,1,99);
-   mt_dialog.getCommandA('  init() ',0,999);
-   mt_dialog.setText('');
-   mt_dialog.getCommandA(' Fit "Tau" with cursors ',0,998);
-   mt_dialog.getCommandA(' Set Global Rs, Rm & Cm ',0,997);
-   mt_dialog.OnEvent:=VCMT_event ;
-   AddDialog(1,5,mt_dialog); 
+   ud_dialog.create ;
+   ud_dialog.getRealA(' Pulse size (mV)',VCMT_amp,3,1,99);
+   ud_dialog.getRealA('t1',VCMT_t1,3,1,99);
+   ud_dialog.getRealA('t2',VCMT_t2,3,1,99);
+   ud_dialog.getRealA('t3',VCMT_t3,3,1,99);
+   ud_dialog.getRealA('t4',VCMT_t4,3,1,99);
+   ud_dialog.getRealA('inter-Stim-interval (s)',VCMT_interStim,3,1,99);
+   ud_dialog.getCommandA('  init() ',0,999);
+   ud_dialog.setText('');
+   ud_dialog.getCommandA(' Fit "Tau" with cursors ',0,998);
+   ud_dialog.getCommandA(' Set Global Rs, Rm & Cm ',0,997);
+   ud_dialog.OnEvent:=VCMT_event ;
+   AddDialog(1,5,ud_dialog); 
 
-   DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
+   DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in }
    t0_mem := 1000*60*60*Hour + 1000*60*Minute + 1000*Second + MilliSecond;
 
    mt_cursor.create ; mt_cursor.DoubleCursor:=True ; mt_cursor.style:=cs_X ;
@@ -1047,7 +1011,7 @@ end;
 var
   rm_vec : Tvector ; rm_graph : Tgraph ; 
   ICMT_amp, ICMT_t1, ICMT_t2, ICMT_interStim : real ;
-  ICMT_dialog : Tdialog ; ICMT_moy : Taverage ; ICMT_fit : TcurveFitting ;
+  ICMT_moy : Taverage ; ICMT_fit : TcurveFitting ;
   ICMT_cursor : Tcursor ; ICMT_memo : Tmemo ;
   bridge, holding : real ;
   
@@ -1118,10 +1082,10 @@ begin
  
   IC_RmCm(ICMT_moy,rm,cm,False); { and we process the analysis}
   rm_vec.addtolist(rs); rm_vec.refresh;
-  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
+  DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in}
   tmem_vec.addtolist(0.001*(1000*60*60*Hour + 1000*60*Minute + 1000*Second + MilliSecond -t0_mem)); tmem_vec.refresh;
   rm_graph.modify(tmem_vec,rm_vec,rm_vec.Istart,rm_vec.Iend); rm_graph.refresh ;
-  set_dac_to_zero;
+  { set_dac_to_zero; }
 end;
 
 
@@ -1159,7 +1123,7 @@ end;
 procedure ICMT_Event(n:integer);
 var amplifier : string ; 
 begin    
-   ICMT_dialog.updatevar;
+   ud_dialog.updatevar;
    case n of 
    999 : prepare_icmt;
    998 :IC_RmCm(ICMT_moy,rm,cm,True);
@@ -1191,20 +1155,20 @@ begin
    addObject(1,4,ICMT_memo);
 
    ICMT_amp := ICMT_amp;
-   ICMT_dialog.create ;
-   ICMT_dialog.getRealA(' Pulse size (pA)',ICMT_amp,3,1,99);
-   ICMT_dialog.getRealA(' Interstim (s)  ',ICMT_interstim,3,1,99);
-   ICMT_dialog.getRealA(' t1  ',ICMT_t1,3,1,99);
-   ICMT_dialog.getRealA(' t2  ',ICMT_t2,3,1,99);
-   ICMT_dialog.getCommandA('  init() ',0,999);
-   ICMT_dialog.setText('');
-   ICMT_dialog.getCommandA(' Fit with cursors ',0,998);
-   ICMT_dialog.setText('');
-   ICMT_dialog.getRealA(' Bridge  (Mohm) ',bridge,3,1,99);
-   ICMT_dialog.getRealA(' Holding (pA) ',holding,3,1,99);
-   ICMT_dialog.getCommandA(' Write membrane parameters ',0,997);
-   ICMT_dialog.OnEvent:=ICMT_event ;
-   AddDialog(1,5,ICMT_dialog); 
+   ud_dialog.create ;
+   ud_dialog.getRealA(' Pulse size (pA)',ICMT_amp,3,1,99);
+   ud_dialog.getRealA(' Interstim (s)  ',ICMT_interstim,3,1,99);
+   ud_dialog.getRealA(' t1  ',ICMT_t1,3,1,99);
+   ud_dialog.getRealA(' t2  ',ICMT_t2,3,1,99);
+   ud_dialog.getCommandA('  init() ',0,999);
+   ud_dialog.setText('');
+   ud_dialog.getCommandA(' Fit with cursors ',0,998);
+   ud_dialog.setText('');
+   ud_dialog.getRealA(' Bridge  (Mohm) ',bridge,3,1,99);
+   ud_dialog.getRealA(' Holding (pA) ',holding,3,1,99);
+   ud_dialog.getCommandA(' Write membrane parameters ',0,997);
+   ud_dialog.OnEvent:=ICMT_event ;
+   AddDialog(1,5,ud_dialog); 
 
    DecodeDateTime(Now,Year,Month,Day,Hour,Minute,Second,MilliSecond); {function to fetch date and time, variables declared in main}
    t0_mem := 1000*60*60*Hour + 1000*60*Minute + 1000*Second + MilliSecond;
@@ -1219,15 +1183,18 @@ end;
 { ==============================================================================
 --------------- Spontaneous activity sampling --------------------
 ================================================================================ }
-
+var v1_copy : Tvector;
+   
 procedure Calculate_Threshold_for_Vm;
 var i0, ii : integer; 
 begin
    // we create the vectors
+   v1_copy.create; Vcopy(v1,v1_copy);
    hist.create(t_single,0,100); hist.x0:=-80.;hist.dx:=1.;
    cum_proba.create(t_single,0,100); cum_proba.x0:=-80.;cum_proba.dx:=1.;
    // ========== CORE OF THE CALCULATION =========== //
-   Distri(v1, hist, -80, 20);
+   Distri(v1_copy, hist, -80, 20);
+   v1_copy.show;
    // RE-include this code if you want to start the cum. proba form the Peak of the Down state
    ii := 0;
    while ((hist.yvalue[ii]<0.98*hist.ymax) and (ii<hist.Iend)) do ii := ii+1;
@@ -1499,7 +1466,7 @@ begin
       getIntegerA('Periodicity (1 stim every XX cycles)', Stim_Periodicity,6,200);
       getRealA('Delay after State start (ms) ', Delay_for_stim,10,3,200);
       getRealA('Stimulus duration (ms) ', Dur_for_stim,10,3,200);
-      getRealA('Stimulus amplitude (mV) ',Amp_for_Stim,10,3,200);
+      getRealA('Stimulus amplitude (V)',Amp_for_Stim,10,3,200);
       setText('______________________________________');
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
@@ -1558,7 +1525,7 @@ begin
       getRealA('Varying Delays : Maximum (ms) ', max_delay, 10, 3, 200);
       getIntegerA('Periodicity (1 stim every XX cycles)', Stim_Periodicity, 6, 200);
       getRealA('Stimulus duration (ms) ', Dur_for_stim, 10, 3, 200);
-      getRealA('Stimulus Amplitude (mV) ',Amp_for_Stim,10,3,200);
+      getRealA('Stimulus Amplitude (V) ',Amp_for_Stim,10,3,200);
       setText('______________________________________');
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
@@ -1617,7 +1584,7 @@ begin
       getRealA('Varying Durations : Maximum (ms) ', max_duration, 10, 3, 200);
       getIntegerA('Periodicity (1 stim every XX cycles)', Stim_Periodicity, 6, 200);
       getRealA('Stimulus Delay (ms) ', Delay_for_stim, 10, 3, 200);
-      getRealA('Stimulus Amplitude (mV) ',Amp_for_Stim,10,3,200);
+      getRealA('Stimulus Amplitude (V) ',Amp_for_Stim,10,3,200);
       setText('______________________________________');
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
@@ -1948,7 +1915,7 @@ begin
       getIntegerA('Periodicity (1 stim every XX cycles)', Stim_Periodicity,6,200);
       getRealA('Delay after State start (ms) ', Delay_for_stim,10,3,200);
       getRealA('Stimulus duration (ms) ', Dur_for_stim,10,3,200);
-      getRealA('Stimulus Amplitude (mV) ',Amp_for_Stim,10,3,200);
+      getRealA('Stimulus Amplitude (V) ',Amp_for_Stim,10,3,200);
       setText('______________________________________');
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
@@ -2002,7 +1969,7 @@ begin
       getRealA('Isyn threshold for Up-to-Down transitions (mV) ',downward_threshold,10,3,200);
       setText('______________________________________');
       setText('o==> TTL parameters :');
-      getRealA('Stimulus Amplitude (mV) ',Amp_for_Stim,10,3,200);
+      getRealA('Stimulus Amplitude (V) ',Amp_for_Stim,10,3,200);
       setText('______________________________________');
       setText('o==> Stimulation parameters :');
       getIntegerA('Varying Delays : Number', num_delay, 6, 200);
@@ -2063,7 +2030,7 @@ begin
       getRealA('Isyn threshold for Up-to-Down transitions (mV) ',downward_threshold,10,3,200);
       setText('______________________________________');
       setText('o==> TTL parameters :');
-      getRealA('Stimulus Amplitude (mV) ',Amp_for_Stim,10,3,200);
+      getRealA('Stimulus Amplitude (V) ',Amp_for_Stim,10,3,200);
       setText('______________________________________');
       setText('o==> Stimulation parameters :');
       getIntegerA('Varying Durations : Number', num_duration, 6, 200);
@@ -2092,17 +2059,17 @@ begin
    DecodeDateTime(Now,Year,Month,Day,Hour2,Minute2,Second2,MilliSecond2); {function to fetch date and time}
    case location_index of
      1: begin {setup}
-	   PathOfTheDay := 'D:\Yann\DATA_elphy\Exps_Ste_and_Yann\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
+	   PathOfTheDay := 'D:\Yann\DATA_elphy\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
 	   sep :='\';
 	   loadnrnPath := 'D:/yann/elphy/nrn_files/' ; 
 	end; 
      2: begin {osx}
-	   PathOfTheDay := 'Z:\Users\yzerlaut\DATA_elphy\Exps_Ste_and_Yann\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
+	   PathOfTheDay := 'Z:\Users\yzerlaut\DATA_elphy\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ;
 	   sep :='/';
 	   loadnrnPath := 'Z:/Users/yzerlaut/work/elphy/nrn_files/' ; 
 	end;
      3: begin {linux}
-	   PathOfTheDay := 'Z:\home\yann\DATA_elphy\Exps_Ste_and_Yann\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
+	   PathOfTheDay := 'Z:\home\yann\DATA_elphy\'+Istr(Year)+'_'+Istr(Month)+'_'+Istr(Day)+'\' ; 
 	   sep :='/';
 	   loadnrnPath := 'Z:/home/yann/work/elphy/nrn_files/' ; 
 	end;
@@ -2164,7 +2131,7 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
     101: begin
 	    proto := ProtocolName[protocol_index];
 	    if proto='Seal-Test'
-	       then begin stim:=True; closedLoop:=False; opto_stim:=False; clamp_stim:=True; with_LFP:=False; SealTest_Init; end
+	       then begin SealTest_Init; end
 	    else if proto='VC-Membrane Test'
 	       then begin stim:=True; closedLoop:=False; opto_stim:=False; clamp_stim:=True; with_LFP:=False; VCMembTest_Init; end
 	    else if proto='IC-Membrane Test'
@@ -2280,22 +2247,16 @@ begin
       Delete(binary_data_path, Pos('_ELPHY', binary_data_path),Length('_ELPHY'));
       if not DirectoryExists(binary_data_path) then createDir(binary_data_path);
    end else MessageBox('Problem with directory:'+elphy_data_path);
-   // then making a folder with the protocol name
-   binary_data_path := binary_data_path+'\'+name;
+   // then creating the folder if it does not exists
    if not DirectoryExists(binary_data_path) then createDir(binary_data_path);
    // then simple name within folder
-   binary_filename := binary_data_path+'\data.bin'; // we also change the extension
-   json_filename := binary_data_path+'\metadata.json'; // we also change the extension
+   binary_filename := binary_data_path+name+'.bin'; // we also change the extension
+   json_filename := binary_data_path+name+'.json'; // we also change the extension
    // ---------------------------------------------------------
    // Copying the metadata files
    // ---------------------------------------------------------
-   st := FirstFile(elphy_data_path+name+'\*.txt');
-   while st<>'' do
-   begin
-      SplitFileNameEx(st, elphy_data_path, name, num, ext);
-      if CopyFile(st,binary_data_path+'\'+name+ext) then StatusLineTxt(st+' copied') else MessageBox('File '+st+' not copied');
-      st := NextFile;
-   end;
+   st := elphy_data_path+name+'.txt';
+   if CopyFile(st,binary_data_path+name+'.txt') then StatusLineTxt(st+' copied') else MessageBox('File '+st+' not copied');
    // ---------------------------------------------------------
    // Initializing files
    // ---------------------------------------------------------
@@ -2324,7 +2285,7 @@ begin
    // ---------------------------------------------------------
    // JSON file writing
    // ---------------------------------------------------------
-   statuslineTxt('writing JSON file (matadata)');
+   statuslineTxt('writing JSON file (metadata)');
    writelnText(1,'{'); // and we start the dict() structure
    db_info.create;  
    {we start by the informations stored in the TdbRecord associated to the acquisition file} 
@@ -2334,7 +2295,6 @@ begin
       st:= db_info.Names[jj] ;
       st2:=db_info.Valstring[jj];
       writelnText(1,'"'+st+'":"'+st2+'",');
-   TDBrecord('PG0.Exp_params').exp_type := 'Up-state-stim' ;
    end;        
    // then the gain of each channel
    for ii:=1 to datafile.ChannelCount do
@@ -2389,6 +2349,7 @@ global_init ;
 init_csts;
 Init_Main_Dialog;
 RTneuron.resetParams;
+set_dac_to_zero;
 loadNRNmech;
 
 program Convert_a_single_File

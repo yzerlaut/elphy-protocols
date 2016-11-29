@@ -23,7 +23,7 @@ NEURON {
 }
 
 CONSTANT {
-  N = 100
+  N = 20
   Nvec = 2000
 }
 
@@ -54,8 +54,8 @@ ASSIGNED {
 	cai (pA)
 	v_LP (mV)
 	V_LASER (mV)
-	weights[100]
-	vec[100]
+	weights[20]
+	vec[20]
 	stim_vec[2000]
 	delay_vec[2000]
 	duration_vec[2000]

@@ -54,19 +54,19 @@ procedure SetProtocolNames;
 var          
   i:integer;                           
 begin
-   ProtocolName[1]:= 'Seal-Test'; 
-   ProtocolName[2]:= 'VC-Membrane Test'; 
-   ProtocolName[3]:= 'IC-Membrane Test'; 
-   ProtocolName[4]:= ''; 
-   ProtocolName[5]:= 'Vm-feedback--Spont-Act-Sampling';
-   ProtocolName[6]:= 'Vm-feedback--Current-Pulses';
-   ProtocolName[7]:= 'Vm-feedback--Opto-Stim-vs-Ctrl'; 
-   ProtocolName[8]:= 'Vm-feedback--oStim-at-Various-Delays'; 
-   ProtocolName[9]:= 'Vm-feedback--oStim-of-Various-Durations'; 
-   ProtocolName[10]:= 'Vm-feedback--oStim-of-Various-Amplitudes'; 
-   ProtocolName[11]:= ''; 
-   ProtocolName[12]:= 'Isyn-feedback--Spont-Act-Sampling'; 
-   ProtocolName[13]:= 'Isyn-feedback--Get-Syn-Currents'; 
+   ProtocolName[1]:= ''; 
+   ProtocolName[2]:= ''; 
+   ProtocolName[3]:= 'Vm-feedback--Spont-Act-Sampling'; 
+   ProtocolName[4]:= 'Vm-feedback--Current-Pulses';
+   ProtocolName[5]:= 'Vm-feedback--FI-Curve';
+   ProtocolName[6]:= 'Vm-feedback--Opto-Stim-vs-Ctrl'; 
+   ProtocolName[7]:= 'Vm-feedback--oStim-at-Various-Delays'; 
+   ProtocolName[8]:= 'Vm-feedback--oStim-of-Various-Durations'; 
+   ProtocolName[9]:= 'Vm-feedback--oStim-of-Various-Amplitudes'; 
+   ProtocolName[10]:= ''; 
+   ProtocolName[11]:= 'Isyn-feedback--Spont-Act-Sampling'; 
+   ProtocolName[12]:= 'Isyn-feedback--Get-Syn-Currents'; 
+   ProtocolName[13]:= 'Isyn-feedback--IV-Curve'; 
    ProtocolName[14]:= 'Isyn-feedback--Opto-Stim-vs-Ctrl'; 
    ProtocolName[15]:= 'Isyn-feedback--oStim-at-Various-Delays'; 
    ProtocolName[16]:= 'Isyn-feedback--oStim-of-Various-Durations'; 
@@ -1316,6 +1316,13 @@ begin
    begin
       RTneuron.execute('for i = 0,1999 { UD_loop.cmd_vec[i]= '+Rstr(current_pulse)+' }' );
    end
+   else if (ProtocolName[protocol_index]='Vm-feedback--FI-Curve') then
+   begin
+      RTneuron.execute('objref v1' ); RTneuron.execute('v1 = new Vector()');
+      for j:=0 to num_amp-1 do RTneuron.execute('v1.append('+Rstr(min_amp+j*(max_amp-min_amp)/(num_amp-1))+')');
+      RTneuron.execute('j=0');
+      RTneuron.execute('for i = 0,1999 {UD_loop.cmd_vec[i]=v1.x[j%'+Istr(num_amp)+'] j=j+1 }' );
+   end
    else if (ProtocolName[protocol_index]='Vm-feedback--oStim-at-Various-Delays') then
    begin
       if num_delay>1 then
@@ -1407,6 +1414,67 @@ begin
       setText('______________________________________');
       setText('o==> Current-Pulse parameters :');
       getRealA('Pulse amplitude (pA) ',current_pulse,10,3,200);
+      getRealA('Pulse delay (ms) ', CMD_delay,10,3,200);
+      getRealA('Pulse duration (ms) ', CMD_dur,10,3,200);
+      setText('______________________________________');
+      setText('');
+      getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
+      setText('');
+      getCommandA(' Update cursors',0,203); { OnEvent flag -D  201 }
+      Caption:='Current-Pulse Stim.';
+      Show;
+   end;
+end;
+
+{$EDIT State-Dependent-FI-Curve}
+{ ==============================================================================
+--------------- FI-Curve -------------------------------
+================================================================================ }
+
+procedure FIcurve_DialogEvent(n:integer);
+begin
+   UD_dialog.updatevar;
+   case n of
+     201 : begin 
+	      if flag_for_state_stimulation=1 then begin {stimulation in Up state}
+		 Up_State_Stim:=True; Down_State_Stim:=False; end
+	      else if flag_for_state_stimulation=2 then begin {stimulation in Up state}
+		 Down_State_Stim:=True; Up_State_Stim:=False; end;
+	      InitializeChannels; Init_Vm_feedback_loop; 
+	   end;
+	      // then initialization
+     203 : updatecursor_in_NEURON;
+     end;
+     UD_dialog.update;
+end;  
+
+procedure InitFIcurvedialog;
+begin
+   num_amp := 7 ; min_amp:=10 ; max_amp:=200;
+   CMD_delay := 20.; CMD_dur:=100; 
+   init_windows;
+   Definewindow(1, 0, 0, PageWidth, Round(PageHeight/2.));
+   Definewindow(1, 0, Round(PageHeight/2.), PageWidth, Round(3.*PageHeight/4.));
+   Definewindow(1, 0, Round(3.*PageHeight/4.), PageWidth, PageHeight);
+   Page:=1; color:=cl_gray;
+   with UD_dialog do
+   begin
+      create;
+      OnEvent:=FIcurve_DialogEvent;
+      setText('__==** Optogenetical Stim. Phase-locked to the Slow Oscill.  **==__');
+      setText('______________________________________');
+      getStringList(' Stimulation in : ','Up State|Down State','1|2',flag_for_state_stimulation,37);  { Onevent flag ->199}
+      setText('______________________________________');
+      setText('o==> Real-Time analysis parameters :');
+      getRealA('SubSampling Frequency (kHz)',subsampling_freq,10,3,200);
+      getRealA('Vm threshold for Down-to-Up transitions (mV) ',upward_threshold,10,3,200);
+      getRealA('Vm threshold for Up-to-Down transitions (mV) ',downward_threshold,10,3,200);
+      getRealA('spike-cut threshold (mV) ',spike_threshold,10,3,200);
+      setText('______________________________________');
+      setText('o==> Current-Pulse parameters :');
+      getIntegerA('Varying Amplitude : Number', num_amp, 6, 200);
+      getRealA('Varying Amplitude : Minimum (pA) ', min_amp, 10, 3, 200);
+      getRealA('Varying Amplitude : Maximum (pA) ', max_amp, 10, 3, 200);
       getRealA('Pulse delay (ms) ', CMD_delay,10,3,200);
       getRealA('Pulse duration (ms) ', CMD_dur,10,3,200);
       setText('______________________________________');
@@ -1758,7 +1826,15 @@ begin
       end else RTneuron.execute('for i=0,1999 {UD_loop.cmd_vec[i]=0.}');
    end;
 
-   if (ProtocolName[protocol_index]='Isyn-feedback--Opto-Stim-vs-Ctrl') then
+   if (ProtocolName[protocol_index]='Isyn-feedback--IV-Curve') then
+      begin
+	 RTneuron.execute('for i = 0,1999 { UD_loop.stim_vec[i]=0 }' ); {we overwrite all}
+	 RTneuron.execute('objref v1' ); RTneuron.execute('v1 = new Vector()');
+	 for j:=0 to num_amp-1 do RTneuron.execute('v1.append('+Rstr(min_amp+j*(max_amp-min_amp)/(num_amp-1))+')');
+	 RTneuron.execute('j=0');
+	 RTneuron.execute('for i = 0,1999 {UD_loop.cmd_vec[i]=v1.x[j%'+Istr(num_amp)+'] j=j+1 }' );
+      end
+   else if (ProtocolName[protocol_index]='Isyn-feedback--Opto-Stim-vs-Ctrl') then
       begin
 	 RTneuron.execute('for i = 0,1999 { if (i%'+Istr(Stim_Periodicity*new_clamp_period)+'==1) { UD_loop.stim_vec[i]=1 } }' );
 	 RTneuron.execute('for i = 0,1999 { UD_loop.delay_vec[i]='+Rstr(Delay_for_stim)+'}');
@@ -1857,6 +1933,68 @@ begin
    end;
 end;
 
+{$EDIT IV-CURVE}
+{ ==============================================================================
+--------------- IV-CURVE under Spontaneous activity  ---------
+================================================================================ }
+
+
+procedure IVCURVE_DialogEvent(n:integer);
+begin
+   UD_dialog.updatevar;
+   case n of
+     201 : begin
+	      if flag_for_state_stimulation=1 then begin {stimulation in Up state}
+		 Up_State_Stim:=True; Down_State_Stim:=False;  end
+	      else if flag_for_state_stimulation=2 then begin {stimulation in Up state}
+		 Down_State_Stim:=True; Up_State_Stim:=False; end;
+	      // then initialization
+	      InitializeChannels; Init_Isyn_feedback_loop;
+	   end;
+     203 : updatecursor_in_NEURON;
+     end;
+     UD_dialog.update;
+end;  
+
+procedure InitIVCURVEdialog;
+begin
+   init_windows;
+   num_amp := 10 ; min_amp:=-30 ; max_amp:=90;
+   Definewindow(1, 0, 0, PageWidth, Round(PageHeight/2.));
+   Definewindow(1, 0, Round(PageHeight/2.), PageWidth, Round(3.*PageHeight/4.));
+   Definewindow(1, 0, Round(3.*PageHeight/4.), PageWidth, PageHeight);
+   Page:=1; color:=cl_gray;
+   with UD_dialog do
+   begin
+      create;
+      OnEvent:=IVCURVE_DialogEvent;
+      { !! Very Important : at every GUI event, we call this function}
+      setText('__==** Optogenetical Stim. Phase-locked to the Slow Oscill.  **==__');
+      setText('______________________________________');
+      getStringList(' Stimulation in : ','Up State|Down State','1|2',flag_for_state_stimulation,37);  { Onevent flag ->199}
+      getStringList(' Imaging : ', CurrentsNames, Currentslist, current_index,38);
+      setText('______________________________________');
+      setText('o==> Voltage-Pulse parameters :');
+      getIntegerA('Varying Amplitude : Number', num_amp, 6, 200);
+      getRealA('Varying Amplitude : Minimum (pA) ', min_amp, 10, 3, 200);
+      getRealA('Varying Amplitude : Maximum (pA) ', max_amp, 10, 3, 200);
+      getRealA('Pulse delay (ms) ', CMD_delay,10,3,200);
+      getRealA('Pulse duration (ms) ', CMD_dur,10,3,200);
+      setText('______________________________________');
+      setText('o==> Real-Time analysis parameters :');
+      getRealA('SubSampling Frequency (kHz)',subsampling_freq,10,3,200);
+      getRealA('Isyn threshold for Down-to-Up transitions (pA) ',upward_threshold,10,3,200);
+      getRealA('Isyn threshold for Up-to-Down transitions (pA) ',downward_threshold,10,3,200);
+      setText('______________________________________');
+      setText('');
+      getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
+      setText('');
+      getCommandA(' Update cursors',0,203); { OnEvent flag -D  201 }
+      Caption:='Real-Time-opto Up&Down';
+      Show;
+   end;
+end;
+
 
 {$EDIT Test-vs-Ctrl-Isyn-Feedback}
 { ==============================================================================
@@ -1890,7 +2028,7 @@ begin
    with UD_dialog do
    begin
       create;
-      OnEvent:=VCGSC_DialogEvent;
+      OnEvent:=IVCURVE_DialogEvent;
       { !! Very Important : at every GUI event, we call this function}
       setText('__==** Optogenetical Stim. Phase-locked to the Slow Oscill.  **==__');
       setText('______________________________________');
@@ -2140,6 +2278,8 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
 	       then begin stim:=False; closedLoop:=False;opto_stim:=False;clamp_index:=1;with_LFP:=False;InitSASdialog;InitializeChannels;Init_Vm_feedback_loop;end
 	    else if proto='Vm-feedback--Current-Pulses'
 	       then begin stim:=False; closedLoop:=True;opto_stim:=False;clamp_index:=1; clamp_stim :=True; with_LFP:=False; InitGmeasuredialog; end
+	    else if proto='Vm-feedback--FI-Curve'
+	       then begin stim:=False; closedLoop:=True;opto_stim:=False;clamp_index:=1; clamp_stim :=True; with_LFP:=False; InitFIcurvedialog; end
 	    else if proto='Vm-feedback--Opto-Stim-vs-Ctrl'
 	       then begin stim:=False; closedLoop:=True;opto_stim:=True;clamp_index:=1;with_LFP:=False; clamp_stim :=False; InitUD_dialog; end
 	    else if proto='Vm-feedback--oStim-at-Various-Delays'
@@ -2152,6 +2292,8 @@ begin { Main dialog, fot the choice of the protocol, the start/stop and saving o
 	       then begin stim:=False;closedLoop:=False;clamp_index:=2;with_LFP:=False;Clamp_Stim:=False;Opto_Stim:=False;InitVCSASdialog;InitializeChannels;Init_Isyn_feedback_loop;end
 	    else if proto='Isyn-feedback--Get-Syn-Currents'
 	       then begin stim:=False;closedLoop:=True; clamp_index:=2; with_LFP:=False; Clamp_Stim:=True; Opto_Stim:=False; InitVCGSCdialog; end
+	    else if proto='Isyn-feedback--IV-Curve'
+	       then begin stim:=False;closedLoop:=True; clamp_index:=2; with_LFP:=False; Clamp_Stim:=True; Opto_Stim:=False; InitIVCURVEdialog; end
 	    else if proto='Isyn-feedback--Opto-Stim-vs-Ctrl'
 	       then begin stim:=False;closedLoop:=True; clamp_index:=2; with_LFP :=False ;opto_stim:=True; Clamp_Stim:=True; InitUD_Isyn_dialog; end
 	    else if proto='Isyn-feedback--oStim-at-Various-Delays'

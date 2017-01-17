@@ -147,13 +147,13 @@ begin
    f_acq := 10. ;
    El := -70 ; Cm :=200 ; Rm :=100;
    upward_threshold :=-60;
-   downward_threshold :=-65;
+   downward_threshold :=-70;
    subsampling_freq := 1.;
    spike_threshold := -30;
    Amp_for_Stim := 1;
    Stim_Periodicity := 3 ;
-   Delay_for_stim := 30 ;
-   Dur_for_stim := 100   ;
+   Delay_for_stim := 100 ;
+   Dur_for_stim := 10   ;
    fraction_of_cumprob_for_Down_transition := 0.3 ;
    fraction_of_cumprob_for_Up_transition := 0.6 ;
    flag_for_state_stimulation := 1;
@@ -214,6 +214,18 @@ begin
    if ClosedLoop then Up_Cursor.visible:=True else Up_Cursor.visible:=False;
    if ClosedLoop then Down_Cursor.visible:=True else Down_Cursor.visible:=False;
    v1.cpx:=1 ; v2.cpx:=1 ; v3.cpx:=1 ; v4.cpx:=1 ; v5.cpx:=1 ; v6.cpx:=1 ;
+end;
+
+procedure ReadThresholds;
+var st :string;
+begin
+   OpenText(1, PathOfTheDay+'thresholds.txt', True); // reading
+   ReadlnText(1, st);
+   downward_threshold := ValReal(st);
+   ReadlnText(1, st);
+   upward_threshold := ValReal(st);
+   CloseText(1);
+   FinalPlot_Settings;
 end;
 
 procedure Set_DC_Channels_DEMO;   
@@ -342,7 +354,7 @@ begin {-- we set all the variables of the acquisition class, then we create
        -- the NEURON files are loaded thanks to main dialog buttons}
 
    RTneuron.ResetParams;
-   acquisition.ChannelCount := 6; 
+   acquisition.ChannelCount := 7; 
    RTneuron.Execute('objref UD_loop, stim'); // initialization so that they are put to 'nil' by default
 
    {we delete previous graphical display}
@@ -400,7 +412,12 @@ begin {-- we set all the variables of the acquisition class, then we create
       RTneuron.AdcChan[1].setScale(0,32767,0,20000.0/gain2);
       acquisition.Channels[2].NrnSymbolName:='soma.cao(0.5)';
       acquisition.Channels[2].unitY:='pA'; v2.title:='Iinj';
-      // COMMAND channel ->  Iinj (theoretical)
+      // channel 3 -->  primary ->  LFP
+      RTneuron.AdcChan[2].NrnSymbolName:='LFP';
+      RTneuron.AdcChan[2].setScale(0,32767,0,10.0/gain1);
+      acquisition.Channels[7].NrnSymbolName:='LFP';
+      acquisition.Channels[7].unitY:='mV' ;
+       // COMMAND channel ->  Iinj (theoretical)
       RTneuron.DacChan[0].NrnSymbolName:='soma.cai(0.5)';
       RTneuron.DacChan[0].setScale(0,32767,0,4000.0); // command -> I clamp
       stimulator.Channels[1].NrnSymbolName:='soma.cai(0.5)';
@@ -411,7 +428,7 @@ begin {-- we set all the variables of the acquisition class, then we create
    begin
       // channel 1 -->  primary ->  recorded Isyn
       RTneuron.AdcChan[0].NrnSymbolName:='soma.cai(0.5)';         
-      RTneuron.AdcChan[0].setScale(0,32767,0,20000.0/gain1);
+      RTneuron.AdcChan[0].setScale(0,32767,0,-20000.0/gain1);
       acquisition.Channels[1].NrnSymbolName:='soma.cai(0.5)';
       acquisition.Channels[1].unitY:='pA' ;
       addObject(1,1,v1); v1.title:='Isyn';
@@ -600,10 +617,24 @@ begin
    closeText(1);
 end;
 
+procedure save_Binary_Vm(elphy_filename:string);
+var datafile : Tdatafile ; binfile : TbinaryFile;
+    num : integer ; name, ext, binary_filename, elphy_data_path : string;
+begin
+   SplitFileNameEx(elphy_filename, elphy_data_path, name, num, ext);
+   binary_filename := elphy_data_path+name+'.bin'; // we also change the extension
+   binfile.rewrite(binary_filename);
+   v[1].SaveBinaryData(binfile, 5);
+   binfile.free;
+   statuslineTxt('Vm data saved as binary ');
+end;
+
+
 procedure my_endprocess;
 begin
    set_dac_to_zero;
    if SAVING and ClosedLoop then Get_Transitions_Times;
+   save_Binary_Vm(acquisition.genericfilename);
 end;
 
 {$EDIT artificial-UD}
@@ -1259,11 +1290,12 @@ begin
    Definewindow(1, 0, Round(2.*PageHeight/3.), Round(PageWidth/2), PageHeight);
    Definewindow(1, Round(PageWidth/2), Round(2.*PageHeight/3.), PageWidth, PageHeight);
    Page:=1; color:=cl_gray;
-   with UD_dialog do
+   UD_dialog.create;
+{   with UD_dialog do
    begin
       create;
       OnEvent:=SAS_DialogEvent;
-      { !! Very Important : at every GUI event, we call this function}
+      // !! Very Important : at every GUI event, we call this function
       setText('__==* Analyzing the *Vm* during Slow Oscill.  *==__');
       setText('______________________________________');
       setText('o==> Real-Time analysis parameters :');
@@ -1274,13 +1306,13 @@ begin
       getRealA('Vm threshold for Up-to-Down transitions (mV)',downward_threshold,10,3,200);
       getRealA('spike-cut threshold (mV) ',spike_threshold,10,3,200);
       setText('');
-      getCommandA(' Calculate optimal thresholds',0,201); { OnEvent flag -D  201 }
+      getCommandA(' Calculate optimal thresholds',0,201); 
       setText('');
       getCommandA(' Set cursors',0,202);
       getCommandA('Show Histograms',0,203);
       Caption:='Sampling Spont. Act.';
       Show;
-   end;
+   end;       }                                      
 end;
 
 
@@ -1386,6 +1418,7 @@ begin
 	   end;
 	      // then initialization
      203 : updatecursor_in_NEURON;
+     213 : ReadThresholds;
      end;
      UD_dialog.update;
 end;  
@@ -1420,7 +1453,7 @@ begin
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
       setText('');
-      getCommandA(' Update cursors',0,203); { OnEvent flag -D  201 }
+      getCommandA('Load calc. Thresholds', 0, 213) ; getCommandA('RT-Update Thresholds',0,203);
       Caption:='Current-Pulse Stim.';
       Show;
    end;
@@ -1444,6 +1477,7 @@ begin
 	   end;
 	      // then initialization
      203 : updatecursor_in_NEURON;
+     213 : ReadThresholds;
      end;
      UD_dialog.update;
 end;  
@@ -1481,7 +1515,7 @@ begin
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
       setText('');
-      getCommandA(' Update cursors',0,203); { OnEvent flag -D  201 }
+      getCommandA('Load calc. Thresholds', 0, 213) ; getCommandA('RT-Update Thresholds',0,203);
       Caption:='Current-Pulse Stim.';
       Show;
    end;
@@ -1505,6 +1539,7 @@ begin
 	      InitializeChannels; Init_Vm_feedback_loop;
 	   end;
      203 : updatecursor_in_NEURON;
+     213 : ReadThresholds;
      end;
      UD_dialog.update;
 end;  
@@ -1539,7 +1574,7 @@ begin
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
       setText('');
-      getCommandA(' Update cursors',0,203); { OnEvent flag -D  201 }
+      getCommandA('Load calc. Thresholds', 0, 213) ; getCommandA('RT-Update Thresholds',0,203);
       Caption:='Real-Time-opto Up&Down';
       Show;
    end;
@@ -1563,6 +1598,7 @@ begin
 	      InitializeChannels; Init_Vm_feedback_loop;
 	   end;
      203 : updatecursor_in_NEURON;
+     213 : ReadThresholds;
      end;
      UD_dialog.update;
 end;  
@@ -1598,7 +1634,7 @@ begin
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
       setText('');
-      getCommandA(' Update cursors',0,203); { OnEvent flag -D  201 }
+      getCommandA('Load calc. Thresholds', 0, 213) ; getCommandA('RT-Update Thresholds',0,203);
       Caption:='Real-Time-opto Up&Down';
       Show;
    end;
@@ -1622,6 +1658,7 @@ begin
 	      InitializeChannels; Init_Vm_feedback_loop;
 	   end;
      203 : updatecursor_in_NEURON;
+     213 : ReadThresholds;
      end;
      UD_dialog.update;
 end;  
@@ -1657,7 +1694,7 @@ begin
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
       setText('');
-      getCommandA(' Update cursors',0,203); { OnEvent flag -D  201 }
+      getCommandA('Load calc. Thresholds', 0, 213) ; getCommandA('RT-Update Thresholds',0,203);
       Caption:='Real-Time-opto Up&Down';
       Show;
    end;
@@ -1681,6 +1718,7 @@ begin
 	      InitializeChannels; Init_Vm_feedback_loop;
 	   end;
      203 : updatecursor_in_NEURON;
+     213 : ReadThresholds;
      end;
      UD_dialog.update;
 end;  
@@ -1716,7 +1754,7 @@ begin
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
       setText('');
-      getCommandA(' Update cursors',0,203); { OnEvent flag -D  201 }
+      getCommandA('Load calc. Thresholds', 0, 213) ; getCommandA('RT-Update Thresholds',0,203);
       Caption:='Real-Time-opto Up&Down';
       Show;
    end;
@@ -1889,6 +1927,7 @@ begin
 	      InitializeChannels; Init_Isyn_feedback_loop;
 	   end;
      203 : updatecursor_in_NEURON;
+     213 : ReadThresholds;
      end;
      UD_dialog.update;
 end;  
@@ -1927,7 +1966,7 @@ begin
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
       setText('');
-      getCommandA(' Update cursors',0,203); { OnEvent flag -D  201 }
+      getCommandA('Load calc. Thresholds', 0, 213) ; getCommandA('RT-Update Thresholds',0,203);
       Caption:='Real-Time-opto Up&Down';
       Show;
    end;
@@ -1952,6 +1991,7 @@ begin
 	      InitializeChannels; Init_Isyn_feedback_loop;
 	   end;
      203 : updatecursor_in_NEURON;
+     213 : ReadThresholds;
      end;
      UD_dialog.update;
 end;  
@@ -1989,7 +2029,7 @@ begin
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
       setText('');
-      getCommandA(' Update cursors',0,203); { OnEvent flag -D  201 }
+      getCommandA('Load calc. Thresholds', 0, 213) ; getCommandA('RT-Update Thresholds',0,203);
       Caption:='Real-Time-opto Up&Down';
       Show;
    end;
@@ -2014,6 +2054,7 @@ begin
 	      InitializeChannels; Init_Isyn_feedback_loop;
 	   end;
      203 : updatecursor_in_NEURON;
+     213 : ReadThresholds;
      end;
      UD_dialog.update;
 end;  
@@ -2058,7 +2099,7 @@ begin
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
       setText('');
-      getCommandA(' Update cursors',0,203); { OnEvent flag -D  201 }
+      getCommandA('Load calc. Thresholds', 0, 213) ; getCommandA('RT-Update Thresholds',0,203);
       Caption:='Real-Time-opto Up&Down';
       Show;
    end;
@@ -2082,6 +2123,7 @@ begin
 	      InitializeChannels; Init_Isyn_feedback_loop;
 	   end;
      203 : updatecursor_in_NEURON;
+     213 : ReadThresholds;
      end;
      UD_dialog.update;
 end;  
@@ -2119,7 +2161,7 @@ begin
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
       setText('');
-      getCommandA(' Update cursors',0,203); { OnEvent flag -D  201 }
+      getCommandA('Load calc. Thresholds', 0, 213) ; getCommandA('RT-Update Thresholds',0,203);
       Caption:='Real-Time-opto Up&Down';
       Show;
    end;
@@ -2143,6 +2185,7 @@ begin
 	      InitializeChannels; Init_Isyn_feedback_loop;
 	   end;
      203 : updatecursor_in_NEURON;
+     213 : ReadThresholds;
      end;
      UD_dialog.update;
 end;  
@@ -2180,7 +2223,7 @@ begin
       setText('');
       getCommandA(' Initialize Exp. ',0,201); { OnEvent flag -D  201 }
       setText('');
-      getCommandA(' Update cursors',0,203); { OnEvent flag -D  201 }
+      getCommandA('Load calc. Thresholds', 0, 213) ; getCommandA('RT-Update Thresholds',0,203);
       Caption:='Real-Time-opto Up&Down';
       Show;
    end;
@@ -2398,7 +2441,7 @@ begin
    // Copying the metadata files
    // ---------------------------------------------------------
    st := elphy_data_path+name+'.txt';
-   if CopyFile(st,binary_data_path+name+'.txt') then StatusLineTxt(st+' copied') else MessageBox('File '+st+' not copied');
+   CopyFile(st,binary_data_path+name+'.txt');
    // ---------------------------------------------------------
    // Initializing files
    // ---------------------------------------------------------
@@ -2502,7 +2545,8 @@ save_Binary_Json(elphy_filename);
 
 program Loop_over_files_in_root_folder
 global_init;init_csts;
-ChooseDirectory('Choose a ROOT directory to loop on ALL containing files', PathOftheDay, dat_directory);
+//ChooseDirectory('Choose a ROOT directory to loop on ALL containing files', PathOftheDay, dat_directory);
+ChooseDirectory('Choose a ROOT directory to loop on ALL containing files', 'D:\yann\DATA_elphy\', dat_directory);
 elphy_filename := FirstFile(dat_directory+'\*.DAT', True, time, size, att);
 while (elphy_filename<>'') do 
  begin
@@ -2510,7 +2554,6 @@ while (elphy_filename<>'') do
     begin
      save_Binary_Json(elphy_filename);
     end;
-    MessageBox(NextFile);
     elphy_filename := NextFile ;
  end;  
 MessageBox('Loop over the ROOT folder terminated !');

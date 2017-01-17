@@ -486,7 +486,7 @@ begin
          TDBrecord('PG0.global').episode_duration :=  2*del_seal+dur_seal ;
          TDBrecord('PG0.global').max_EP_num :=0 ;
          TDBrecord('PG0.global').stim := True ;
-         TDBrecord('PG0.global').acquisitionISI:=0.5 ;  // small beak between the stims
+         TDBrecord('PG0.global').acquisitionISI:=0.1 ;  // small beak between the stims
          if amplifier='nrn_simulation' then TDBrecord('PG0.global').FadvanceON := True else TDBrecord('PG0.global').FadvanceON := False;
          TDBrecord('PG0.Exp_Params').clear;
          TDBrecord('PG0.Exp_Params').exp_type:='seal_test';
@@ -2045,9 +2045,10 @@ end;
 
 procedure Init_FIcurve;
 begin
-  amp1_fi := 30; amp2_fi := 50; 
-  del_fi:=400.0; dur_fi:=800.0;
-  nsteps_fi := 10; subnsteps_fi:=10; interstim_fi :=0.1 ;
+  TDBrecord('PG0.global').clamp_int := 1 ; 
+  amp1_fi := -20; amp2_fi := 200; 
+  del_fi:=200.0; dur_fi:=400.0;
+  nsteps_fi := 10; subnsteps_fi:=2; interstim_fi :=0.1 ;
   
   // initialize windows 
   DestroyAllWindows(1);
@@ -2072,7 +2073,9 @@ begin
       getRealA('interstim (s)',interstim_fi,10,3,200);
       getCommandA(' init() ',0,201); { OnEvent flag -> 201 }
    end;
-   AddDialog(1, 5, FIcurve_dialog);
+   AddDialog(1, 5, FIcurve_dialog);   
+   FIcurve_Init(201); 
+
 end;
 
 {$EDIT VNP}
